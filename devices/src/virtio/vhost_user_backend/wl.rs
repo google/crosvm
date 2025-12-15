@@ -156,7 +156,7 @@ impl VhostUserDevice for WlBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::BACKEND_REQ | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
+        VhostUserProtocolFeatures::BACKEND_REQ | VhostUserProtocolFeatures::SHMEM_MAP
     }
 
     fn read_config(&self, _offset: u64, _dst: &mut [u8]) {}

@@ -191,12 +191,12 @@ pub enum BackendReq {
     VRING_CALL = 4,
     /// Indicate that an error occurred on the specific vring.
     VRING_ERR = 5,
+    /// Map a fd into a shared memory region.
+    SHMEM_MAP = 9,
+    /// Unmap a shared memory region.
+    SHMEM_UNMAP = 10,
 
     // Non-standard message types.
-    /// Indicates a request to map a fd into a shared memory region.
-    SHMEM_MAP = 1000,
-    /// Indicates a request to unmap part of a shared memory region.
-    SHMEM_UNMAP = 1001,
     /// Virtio-fs draft: map file content into the window.
     DEPRECATED__FS_MAP = 1002,
     /// Virtio-fs draft: unmap file content from the window.
@@ -455,8 +455,8 @@ bitflags! {
         const XEN_MMAP = 0x0002_0000;
         /// Support VHOST_USER_SET_DEVICE_STATE_FD and VHOST_USER_CHECK_DEVICE_STATE messages.
         const DEVICE_STATE = 0x0008_0000;
-        /// Support shared memory regions. (Non-standard.)
-        const SHARED_MEMORY_REGIONS = 0x8000_0000;
+        /// Support shared memory regions.
+        const SHMEM_MAP = 0x0010_0000;
     }
 }
 
@@ -865,24 +865,21 @@ pub struct VhostUserIotlb {
     PartialEq,
     PartialOrd,
 )]
-pub struct VhostUserShmemMapMsgFlags(u8);
+pub struct VhostUserShmemMapMsgFlags(u64);
 
 bitflags! {
-    impl VhostUserShmemMapMsgFlags: u8 {
-        /// Empty permission.
-        const EMPTY = 0x0;
-        /// Read permission.
-        const MAP_R = 0x1;
-        /// Write permission.
-        const MAP_W = 0x2;
+    impl VhostUserShmemMapMsgFlags: u64 {
+        /// Pages are mapped read-write.
+        const MAP_RW = 0x1;
     }
 }
 
 impl From<Protection> for VhostUserShmemMapMsgFlags {
     fn from(prot: Protection) -> Self {
-        let mut flags = Self::EMPTY;
-        flags.set(Self::MAP_R, prot.allows(&Protection::read()));
-        flags.set(Self::MAP_W, prot.allows(&Protection::write()));
+        let mut flags = VhostUserShmemMapMsgFlags::empty();
+        if prot.allows(&Protection::read()) && prot.allows(&Protection::write()) {
+            flags = VhostUserShmemMapMsgFlags::MAP_RW;
+        }
         flags
     }
 }
@@ -890,10 +887,8 @@ impl From<Protection> for VhostUserShmemMapMsgFlags {
 impl From<VhostUserShmemMapMsgFlags> for Protection {
     fn from(flags: VhostUserShmemMapMsgFlags) -> Self {
         let mut prot = Protection::default();
-        if flags.contains(VhostUserShmemMapMsgFlags::MAP_R) {
-            prot = prot.set_read();
-        }
-        if flags.contains(VhostUserShmemMapMsgFlags::MAP_W) {
+        prot = prot.set_read();
+        if flags.contains(VhostUserShmemMapMsgFlags::MAP_RW) {
             prot = prot.set_write();
         }
         prot
@@ -904,17 +899,18 @@ impl From<VhostUserShmemMapMsgFlags> for Protection {
 #[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserShmemMapMsg {
-    /// Flags for the mmap operation
-    pub flags: VhostUserShmemMapMsgFlags,
-    /// Shared memory region id.
+    /// Shared memory region ID.
     pub shmid: u8,
-    padding: [u8; 6],
-    /// Offset into the shared memory region.
-    pub shm_offset: u64,
+    /// Struct padding.
+    padding: [u8; 7],
     /// File offset.
     pub fd_offset: u64,
+    /// Offset into the shared memory region.
+    pub shm_offset: u64,
     /// Size of region to map.
     pub len: u64,
+    /// Flags for the mmap operation
+    pub flags: VhostUserShmemMapMsgFlags,
 }
 
 impl VhostUserMsgValidator for VhostUserShmemMapMsg {
@@ -937,7 +933,7 @@ impl VhostUserShmemMapMsg {
         Self {
             flags,
             shmid,
-            padding: [0; 6],
+            padding: [0; 7],
             shm_offset,
             fd_offset,
             len,
@@ -1034,13 +1030,18 @@ impl VhostUserExternalMapMsg {
 #[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserShmemUnmapMsg {
-    /// Shared memory region id.
+    /// Shared memory region ID.
     pub shmid: u8,
-    padding: [u8; 7],
+    /// Struct padding.
+    pub padding: [u8; 7],
+    /// File offset.
+    pub fd_offset: u64,
     /// Offset into the shared memory region.
     pub shm_offset: u64,
     /// Size of region to unmap.
     pub len: u64,
+    /// Flags for the ummap operation
+    pub flags: VhostUserShmemMapMsgFlags,
 }
 
 impl VhostUserMsgValidator for VhostUserShmemUnmapMsg {
@@ -1055,8 +1056,10 @@ impl VhostUserShmemUnmapMsg {
         Self {
             shmid,
             padding: [0; 7],
+            fd_offset: 0,
             shm_offset,
             len,
+            flags: VhostUserShmemMapMsgFlags(0),
         }
     }
 }

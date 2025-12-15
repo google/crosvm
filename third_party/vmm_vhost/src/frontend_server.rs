@@ -211,9 +211,7 @@ impl<S: Frontend> FrontendServer<S> {
         res: &Result<u64>,
     ) -> Result<()> {
         let code = req.get_code().map_err(|_| Error::InvalidMessage)?;
-        if code == BackendReq::SHMEM_MAP
-            || code == BackendReq::SHMEM_UNMAP
-            || code == BackendReq::GPU_MAP
+        if code == BackendReq::GPU_MAP
             || code == BackendReq::EXTERNAL_MAP
             || (self.reply_ack_negotiated && req.is_need_reply())
         {

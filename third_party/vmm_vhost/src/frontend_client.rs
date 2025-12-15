@@ -58,9 +58,7 @@ impl FrontendClient {
 
     fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<u64> {
         let code = hdr.get_code().map_err(|_| Error::InvalidMessage)?;
-        if code != BackendReq::SHMEM_MAP
-            && code != BackendReq::SHMEM_UNMAP
-            && code != BackendReq::GPU_MAP
+        if code != BackendReq::GPU_MAP
             && code != BackendReq::EXTERNAL_MAP
             && !self.reply_ack_negotiated
         {

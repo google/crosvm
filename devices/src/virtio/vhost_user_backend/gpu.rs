@@ -129,7 +129,7 @@ impl VhostUserDevice for GpuBackend {
         VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::BACKEND_REQ
             | VhostUserProtocolFeatures::MQ
-            | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
+            | VhostUserProtocolFeatures::SHMEM_MAP
             | VhostUserProtocolFeatures::DEVICE_STATE
     }
 

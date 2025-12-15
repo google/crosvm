@@ -143,7 +143,7 @@ impl VhostUserFrontend {
         // VHOST_USER_PROTOCOL_FEATURE_SHARED_MEMORY_REGIONS. This should either be standardized
         // (and enabled for all device types) or removed.
         let expose_shmem_descriptors_with_viommu = if device_type == DeviceType::Gpu {
-            allow_protocol_features |= VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS;
+            allow_protocol_features |= VhostUserProtocolFeatures::SHMEM_MAP;
             true
         } else {
             false
@@ -514,7 +514,7 @@ impl VirtioDevice for VhostUserFrontend {
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
         if !self
             .protocol_features
-            .contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
+            .contains(VhostUserProtocolFeatures::SHMEM_MAP)
         {
             return None;
         }
