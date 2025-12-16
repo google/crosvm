@@ -27,7 +27,6 @@ use vm_memory::GuestMemoryError;
 use super::device_slot::DeviceSlot;
 use super::interrupter::Error as InterrupterError;
 use super::interrupter::Interrupter;
-use super::ring_buffer_stop_cb::RingBufferStopCallback;
 use super::scatter_gather_buffer::Error as BufferError;
 use super::scatter_gather_buffer::ScatterGatherBuffer;
 use super::usb_hub::Error as HubError;
@@ -149,7 +148,6 @@ impl Display for XhciTransferType {
 pub struct XhciTransferManager {
     transfers: Arc<Mutex<Vec<Weak<Mutex<XhciTransferState>>>>>,
     device_slot: Weak<DeviceSlot>,
-    stop_callback: Arc<Mutex<Vec<RingBufferStopCallback>>>,
 }
 
 impl XhciTransferManager {
@@ -158,7 +156,6 @@ impl XhciTransferManager {
         XhciTransferManager {
             transfers: Arc::new(Mutex::new(Vec::new())),
             device_slot,
-            stop_callback: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -216,27 +213,16 @@ impl XhciTransferManager {
         });
     }
 
-    /// Set the callback to be called when all the transfers are actually gone. This is used to
-    /// delay the completion event for the Stop Endpoint command.
-    pub fn set_stop_callback(&self, callback: RingBufferStopCallback) {
-        if !self.transfers.lock().is_empty() {
-            self.stop_callback.lock().push(callback);
-        }
-    }
-
     fn remove_transfer(&self, t: &Arc<Mutex<XhciTransferState>>) {
         let mut transfers = self.transfers.lock();
         match transfers.iter().position(|wt| match wt.upgrade() {
             Some(wt) => Arc::ptr_eq(&wt, t),
             None => false,
         }) {
-            None => error!("attempted to remove unknown transfer"),
+            None => error!("attempted to remove unknow transfer"),
             Some(i) => {
                 transfers.swap_remove(i);
             }
-        }
-        if transfers.is_empty() {
-            self.stop_callback.lock().clear();
         }
     }
 }
