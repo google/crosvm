@@ -319,7 +319,6 @@ mod tests {
             .unwrap();
 
         ltrb.set_ring_segment_pointer(0x100);
-        ltrb.set_toggle_cycle(true);
         gm.write_obj_at_addr(ltrb, GuestAddress(0x300 + 2 * trb_size))
             .unwrap();
         gm
