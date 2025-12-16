@@ -15,7 +15,6 @@ use std::os::raw::c_void;
 use std::sync::Arc;
 use std::sync::Weak;
 
-use base::debug;
 use base::error;
 use base::handle_eintr_errno;
 use base::warn;
@@ -28,7 +27,6 @@ use base::Protection;
 use base::RawDescriptor;
 use data_model::vec_with_array_field;
 use libc::EAGAIN;
-use libc::EINVAL;
 use libc::ENODEV;
 use libc::ENOENT;
 use libc::EPIPE;
@@ -706,14 +704,10 @@ impl TransferHandle {
             ))
         } < 0
         {
-            // EINVAL is actually not an error because this is racy by nature. The target URB can
-            // be completed while we are trying to discard it.
-            let error = base::Error::last();
-            if error.errno() == EINVAL {
-                debug!("URB not found: already completed or invalid pointer to URB");
-            } else {
-                return Err(Error::IoctlFailed(usb_sys::USBDEVFS_DISCARDURB, error));
-            }
+            return Err(Error::IoctlFailed(
+                usb_sys::USBDEVFS_DISCARDURB,
+                base::Error::last(),
+            ));
         }
 
         Ok(())
