@@ -413,16 +413,6 @@ impl BackendDevice for FidoPassthroughDevice {
         )))
     }
 
-    fn build_isochronous_transfer(
-        &mut self,
-        _ep_addr: u8,
-        _transfer_buffer: TransferBuffer,
-        _packet_size: u32,
-    ) -> BackendResult<BackendTransferType> {
-        // Fido devices don't support isochronous transfer requests
-        Err(BackendError::MalformedBackendTransfer)
-    }
-
     fn get_control_transfer_state(&mut self) -> Arc<RwLock<ControlTransferState>> {
         self.control_transfer_state.clone()
     }
