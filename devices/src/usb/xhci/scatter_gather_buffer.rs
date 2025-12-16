@@ -35,8 +35,8 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-/// See xHCI spec 3.2.8 for scatter/gather transfer. It's used in bulk/interrupt transfers, and
-/// also in the DataStage of control transfers. See 3.2.10 for details.
+/// See xHCI spec 3.2.8 for scatter/gather transfer. It's used in bulk/interrupt transfers. See
+/// 3.2.10 for details.
 pub struct ScatterGatherBuffer {
     mem: GuestMemory,
     td: TransferDescriptor,

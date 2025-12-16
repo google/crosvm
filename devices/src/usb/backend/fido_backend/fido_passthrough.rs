@@ -80,7 +80,7 @@ impl FidoPassthroughDevice {
         let control_transfer_state = ControlTransferState {
             ctl_ep_state: ControlEndpointState::SetupStage,
             control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
-            data_stage_transfer: None,
+            executed: false,
         };
         let job_queue = AsyncJobQueue::init(&event_loop).map_err(Error::StartAsyncFidoQueue)?;
         Ok(FidoPassthroughDevice {

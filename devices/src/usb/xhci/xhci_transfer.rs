@@ -510,16 +510,6 @@ impl XhciTransfer {
         }
         Ok(valid)
     }
-
-    pub fn proceed(&self) -> Result<()> {
-        self.transfer_completion_event
-            .signal()
-            .map_err(Error::WriteCompletionEvent)
-    }
-
-    pub fn append_trbs(&mut self, mut transfer: XhciTransfer) {
-        self.transfer_trbs.append(&mut transfer.transfer_trbs);
-    }
 }
 
 fn trb_is_valid(atrb: &AddressedTrb) -> bool {
