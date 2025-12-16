@@ -208,37 +208,7 @@ pub struct RegisterSpec<T> {
 struct RegisterInner<T: RegisterValue> {
     spec: RegisterSpec<T>,
     value: T,
-    pending_value: Option<T>,
     write_cb: Option<Box<dyn Fn(T) -> T + Send>>,
-}
-
-impl<T: RegisterValue> RegisterInner<T> {
-    fn value(&self) -> T {
-        self.value
-    }
-
-    fn pending_value(&self) -> T {
-        match self.pending_value {
-            Some(pending_value) => pending_value,
-            None => self.value,
-        }
-    }
-
-    fn set(&mut self, value: T) {
-        self.pending_value = Some(value);
-    }
-
-    fn commit(&mut self) {
-        if let Some(value) = self.pending_value {
-            self.value = value;
-            self.pending_value = None;
-        }
-    }
-
-    fn set_and_commit(&mut self, value: T) {
-        self.set(value);
-        self.commit();
-    }
 }
 
 /// Register is a thread safe struct. It can be safely changed from any thread.
@@ -253,7 +223,6 @@ impl<T: RegisterValue> Register<T> {
             inner: Arc::new(Mutex::new(RegisterInner {
                 spec,
                 value: val,
-                pending_value: None,
                 write_cb: None,
             })),
         }
@@ -277,7 +246,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
 
     fn read(&self, addr: RegisterOffset, data: &mut [u8]) {
         let val_range = self.range();
-        let value = self.lock().value();
+        let value = self.lock().value;
         read_reg_helper(value, val_range, addr, data);
     }
 
@@ -299,7 +268,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
         let write_start_idx = (overlap.from - write_range.from) as usize;
         let total_size = (overlap.to - overlap.from) as usize + 1;
 
-        let mut reg_value: T = self.lock().pending_value();
+        let mut reg_value: T = self.lock().value;
         let value: &mut [u8] = reg_value.as_mut_bytes();
         for i in 0..total_size {
             value[my_start_idx + i] = self.apply_write_masks_to_byte(
@@ -312,9 +281,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
         // A single u64 register is done by write to lower 32 bit and then higher 32 bit. Callback
         // should only be invoked when higher is written.
         if my_range.to != overlap.to {
-            // The value of this register won't be updated until the higher 32 bit arrives, because
-            // the intermediate value should not be observed by any thread.
-            self.lock().set(reg_value);
+            self.lock().value = reg_value;
             return;
         }
 
@@ -327,7 +294,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
                 Some(cb) => cb,
                 None => {
                     // Write value if there is no callback.
-                    inner.set_and_commit(reg_value);
+                    inner.value = reg_value;
                     return;
                 }
             }
@@ -335,14 +302,13 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
         // Callback is invoked without holding any lock.
         let value = cb(reg_value);
         let mut inner = self.lock();
-        inner.set_and_commit(value);
+        inner.value = value;
         inner.write_cb = Some(cb);
     }
 
     fn reset(&self) {
         let mut locked = self.lock();
-        let reset_value = locked.spec.reset_value;
-        locked.set_and_commit(reset_value);
+        locked.value = locked.spec.reset_value;
     }
 }
 
