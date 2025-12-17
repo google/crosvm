@@ -1001,44 +1001,6 @@ impl VhostUserExternalMapMsg {
     }
 }
 
-/// Backend request message to unmap part of a shared memory region.
-#[repr(C)]
-#[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
-pub struct VhostUserShmemUnmapMsg {
-    /// Shared memory region ID.
-    pub shmid: u8,
-    /// Struct padding.
-    pub padding: [u8; 7],
-    /// File offset.
-    pub fd_offset: u64,
-    /// Offset into the shared memory region.
-    pub shm_offset: u64,
-    /// Size of region to unmap.
-    pub len: u64,
-    /// Flags for the ummap operation
-    pub flags: VhostUserMMapFlags,
-}
-
-impl VhostUserMsgValidator for VhostUserShmemUnmapMsg {
-    fn is_valid(&self) -> bool {
-        self.shm_offset.checked_add(self.len).is_some()
-    }
-}
-
-impl VhostUserShmemUnmapMsg {
-    /// New instance of VhostUserShmemUnmapMsg struct
-    pub fn new(shmid: u8, shm_offset: u64, len: u64) -> Self {
-        Self {
-            shmid,
-            padding: [0; 7],
-            fd_offset: 0,
-            shm_offset,
-            len,
-            flags: VhostUserMMapFlags(0),
-        }
-    }
-}
-
 /// Inflight I/O descriptor state for split virtqueues
 #[repr(C)]
 #[derive(Clone, Copy, Default)]

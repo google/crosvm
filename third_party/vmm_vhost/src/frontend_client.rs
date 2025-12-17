@@ -93,7 +93,7 @@ impl Frontend for FrontendClient {
     }
 
     /// Handle shared memory region unmapping requests.
-    fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, req: &VhostUserMMap) -> HandlerResult<u64> {
         self.send_message(BackendReq::SHMEM_UNMAP, req, None)
     }
 

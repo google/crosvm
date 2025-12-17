@@ -13,7 +13,6 @@ use vmm_vhost::message::VhostUserExternalMapMsg;
 use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserMMap;
 use vmm_vhost::message::VhostUserMMapFlags;
-use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::Frontend;
 use vmm_vhost::FrontendServer;
 use vmm_vhost::HandlerResult;
@@ -90,7 +89,7 @@ impl Frontend for BackendReqHandlerImpl {
         }
     }
 
-    fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, req: &VhostUserMMap) -> HandlerResult<u64> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()

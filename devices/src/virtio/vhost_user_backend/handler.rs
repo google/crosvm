@@ -89,7 +89,6 @@ use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::message::VhostUserMigrationPhase;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserShMemConfigHeader;
-use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
 use vmm_vhost::message::VhostUserTransferDirection;
 use vmm_vhost::message::VhostUserVringAddrFlags;
@@ -970,7 +969,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
             .mapped_regions
             .remove(&offset)
             .context("unknown offset")?;
-        let msg = VhostUserShmemUnmapMsg::new(self.shmid, offset, size);
+        let msg = VhostUserMMap::new(self.shmid, offset, 0, size, VhostUserMMapFlags::empty());
         shared
             .conn
             .shmem_unmap(&msg)

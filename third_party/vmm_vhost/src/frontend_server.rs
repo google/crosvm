@@ -29,7 +29,7 @@ pub trait Frontend {
     }
 
     /// Handle shared memory region unmapping requests.
-    fn shmem_unmap(&mut self, _req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, _req: &VhostUserMMap) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -126,7 +126,7 @@ impl<S: Frontend> FrontendServer<S> {
                     .map_err(Error::ReqHandlerError)
             }
             Ok(BackendReq::SHMEM_UNMAP) => {
-                let msg = self.extract_msg_body::<VhostUserShmemUnmapMsg>(&hdr, &buf)?;
+                let msg = self.extract_msg_body::<VhostUserMMap>(&hdr, &buf)?;
                 self.frontend
                     .shmem_unmap(&msg)
                     .map_err(Error::ReqHandlerError)
