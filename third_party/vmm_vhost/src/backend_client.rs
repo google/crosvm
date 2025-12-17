@@ -368,27 +368,20 @@ impl BackendClient {
         self.wait_for_ack(&hdr)
     }
 
-    /// Gets the shared memory regions used by the device.
-    pub fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
-        let hdr = self.send_request_header(FrontendReq::GET_SHARED_MEMORY_REGIONS, None)?;
-        let (body_reply, buf_reply, rfds) = self.recv_reply_with_payload::<VhostUserU64>(&hdr)?;
-        let struct_size = mem::size_of::<VhostSharedMemoryRegion>();
-        if !rfds.is_empty() || buf_reply.len() != body_reply.value as usize * struct_size {
-            return Err(VhostUserError::InvalidMessage);
+    /// Get the shared memory configuration.
+    pub fn get_shmem_config(&self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)> {
+        let hdr = self.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
+        let (body_reply, buf_reply, _rfds) =
+            self.recv_reply_with_payload::<VhostUserShMemConfigHeader>(&hdr)?;
+        let mut memory_sizes = Vec::new();
+        for i in 0..body_reply.nregions {
+            const U64_SIZE: usize = mem::size_of::<u64>();
+            let offset = (i as usize) * U64_SIZE;
+            let value =
+                VhostUserU64::read_from_bytes(&buf_reply[offset..(offset + U64_SIZE)]).unwrap();
+            memory_sizes.push(value.value);
         }
-        let mut regions = Vec::new();
-        let mut offset = 0;
-        for _ in 0..body_reply.value {
-            regions.push(
-                // Can't fail because the input is the correct size.
-                VhostSharedMemoryRegion::read_from_bytes(
-                    &buf_reply[offset..(offset + struct_size)],
-                )
-                .unwrap(),
-            );
-            offset += struct_size;
-        }
-        Ok(regions)
+        Ok((body_reply, memory_sizes))
     }
 
     fn send_request_header(

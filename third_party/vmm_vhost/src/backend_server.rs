@@ -75,7 +75,7 @@ pub trait Backend {
         fd: File,
     ) -> Result<Option<File>>;
     fn check_device_state(&mut self) -> Result<()>;
-    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>>;
+    fn get_shmem_config(&mut self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)>;
 }
 
 impl<T> Backend for T
@@ -209,8 +209,8 @@ where
         self.as_mut().check_device_state()
     }
 
-    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
-        self.as_mut().get_shared_memory_regions()
+    fn get_shmem_config(&mut self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)> {
+        self.as_mut().get_shmem_config()
     }
 }
 
@@ -655,12 +655,11 @@ impl<S: Backend> BackendServer<S> {
                 self.send_reply_message(&hdr, &msg)?;
                 res?;
             }
-            Ok(FrontendReq::GET_SHARED_MEMORY_REGIONS) => {
-                let regions = self.backend.get_shared_memory_regions()?;
+            Ok(FrontendReq::GET_SHMEM_CONFIG) => {
+                let (msg, sizes) = self.backend.get_shmem_config()?;
                 let mut buf = Vec::new();
-                let msg = VhostUserU64::new(regions.len() as u64);
-                for r in regions {
-                    buf.extend_from_slice(r.as_bytes())
+                for e in sizes {
+                    buf.extend_from_slice(e.as_bytes())
                 }
                 self.send_reply_with_payload(&hdr, &msg, buf.as_slice())?;
             }

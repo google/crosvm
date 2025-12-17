@@ -79,7 +79,6 @@ use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegion;
-use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserExternalMapMsg;
 use vmm_vhost::message::VhostUserGpuMapMsg;
@@ -87,6 +86,7 @@ use vmm_vhost::message::VhostUserInflight;
 use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::message::VhostUserMigrationPhase;
 use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserShMemConfigHeader;
 use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemMapMsgFlags;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
@@ -828,11 +828,11 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         }
     }
 
-    fn get_shared_memory_regions(&mut self) -> VhostResult<Vec<VhostSharedMemoryRegion>> {
+    fn get_shmem_config(&mut self) -> VhostResult<(VhostUserShMemConfigHeader, Vec<u64>)> {
         Ok(if let Some(r) = self.backend.get_shared_memory_region() {
-            vec![VhostSharedMemoryRegion::new(r.id, r.length)]
+            (VhostUserShMemConfigHeader::new(1), vec![r.length])
         } else {
-            Vec::new()
+            (VhostUserShMemConfigHeader::new(0), Vec::new())
         })
     }
 }

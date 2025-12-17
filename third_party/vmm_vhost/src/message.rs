@@ -151,10 +151,8 @@ pub enum FrontendReq {
     /// After transferring the back-end’s internal state during migration, check whether the
     /// back-end was able to successfully fully process the state.
     CHECK_DEVICE_STATE = 43,
-
-    // Non-standard message types.
-    /// Get a list of the device's shared memory regions.
-    GET_SHARED_MEMORY_REGIONS = 1004,
+    /// Retrieve Shared Memory Regions configuration.
+    GET_SHMEM_CONFIG = 44,
 }
 
 impl From<FrontendReq> for u32 {
@@ -1195,25 +1193,28 @@ impl QueueRegionPacked {
     }
 }
 
-/// Virtio shared memory descriptor.
 #[repr(C)]
-#[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
-pub struct VhostSharedMemoryRegion {
-    /// The shared memory region's shmid.
-    pub id: u8,
-    /// Padding
-    padding: [u8; 7],
-    /// The length of the shared memory region.
-    pub length: u64,
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
+pub struct VhostUserShMemConfigHeader {
+    /// Total number of shared memory regions
+    pub nregions: u32,
+    /// Padding for correct alignment
+    padding: u32,
 }
 
-impl VhostSharedMemoryRegion {
-    /// New instance of VhostSharedMemoryRegion struct
-    pub fn new(id: u8, length: u64) -> Self {
-        VhostSharedMemoryRegion {
-            id,
-            padding: [0; 7],
-            length,
+impl VhostUserMsgValidator for VhostUserShMemConfigHeader {
+    #[allow(clippy::if_same_then_else)]
+    fn is_valid(&self) -> bool {
+        true
+    }
+}
+
+impl VhostUserShMemConfigHeader {
+    /// Create a new instance
+    pub fn new(nregions: u32) -> Self {
+        Self {
+            nregions,
+            padding: 0,
         }
     }
 }

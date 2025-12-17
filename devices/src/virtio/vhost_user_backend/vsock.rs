@@ -24,12 +24,12 @@ use vhost::Vsock;
 use vm_memory::GuestMemory;
 use vmm_vhost::connection::Connection;
 use vmm_vhost::message::BackendReq;
-use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserInflight;
 use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::message::VhostUserMigrationPhase;
 use vmm_vhost::message::VhostUserProtocolFeatures;
+use vmm_vhost::message::VhostUserShMemConfigHeader;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
 use vmm_vhost::message::VhostUserTransferDirection;
 use vmm_vhost::message::VhostUserVringAddrFlags;
@@ -440,8 +440,8 @@ impl vmm_vhost::Backend for VsockBackend {
         Err(Error::InvalidOperation)
     }
 
-    fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
-        Ok(vec![])
+    fn get_shmem_config(&mut self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)> {
+        Ok((VhostUserShMemConfigHeader::new(0), Vec::new()))
     }
 }
 
