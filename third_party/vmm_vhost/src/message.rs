@@ -259,7 +259,7 @@ bitflags! {
 /// Common message header for vhost-user requests and replies.
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy)]
 pub struct VhostUserMsgHeader<R: Req> {
     request: u32,
@@ -461,7 +461,7 @@ bitflags! {
 }
 
 /// A generic message to encapsulate a 64-bit value.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserU64 {
     /// The encapsulated 64-bit common value.
@@ -493,7 +493,7 @@ pub struct VhostUserEmptyMessage;
 impl VhostUserMsgValidator for VhostUserEmptyMessage {}
 
 /// Memory region descriptor for the SET_MEM_TABLE request.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserMemory {
     /// Number of memory regions in the payload.
@@ -525,7 +525,7 @@ impl VhostUserMsgValidator for VhostUserMemory {
 }
 
 /// Memory region descriptors as payload for the SET_MEM_TABLE request.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserMemoryRegion {
     /// Guest physical address of the memory region.
@@ -610,7 +610,7 @@ impl VhostUserMsgValidator for VhostUserSingleMemoryRegion {
 }
 
 /// Vring state descriptor.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserVringState {
     /// Vring index.
@@ -641,7 +641,7 @@ bitflags! {
 }
 
 /// Vring address descriptor.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserVringAddr {
     /// Vring index.
@@ -722,7 +722,7 @@ bitflags! {
 }
 
 /// Message to read/write device configuration space.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserConfig {
     /// Offset of virtio device's configuration space.
@@ -824,7 +824,7 @@ impl VhostUserMsgValidator for DeviceStateTransferParameters {
 
 /*
  * TODO: support dirty log, live migration and IOTLB operations.
-#[repr(C, packed)]
+#[repr(C)]
 pub struct VhostUserVringArea {
     pub index: u32,
     pub flags: u32,
@@ -832,13 +832,13 @@ pub struct VhostUserVringArea {
     pub offset: u64,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct VhostUserLog {
     pub size: u64,
     pub offset: u64,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct VhostUserIotlb {
     pub iova: u64,
     pub size: u64,
@@ -901,7 +901,7 @@ impl From<VhostUserShmemMapMsgFlags> for Protection {
 }
 
 /// Backend request message to map a file into a shared memory region.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserShmemMapMsg {
     /// Flags for the mmap operation
@@ -946,7 +946,7 @@ impl VhostUserShmemMapMsg {
 }
 
 /// Backend request message to map GPU memory into a shared memory region.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserGpuMapMsg {
     /// Shared memory region id.
@@ -997,7 +997,7 @@ impl VhostUserGpuMapMsg {
 }
 
 /// Backend request message to map external memory into a shared memory region.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserExternalMapMsg {
     /// Shared memory region id.
@@ -1031,7 +1031,7 @@ impl VhostUserExternalMapMsg {
 }
 
 /// Backend request message to unmap part of a shared memory region.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserShmemUnmapMsg {
     /// Shared memory region id.
@@ -1062,7 +1062,7 @@ impl VhostUserShmemUnmapMsg {
 }
 
 /// Inflight I/O descriptor state for split virtqueues
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct DescStateSplit {
     /// Indicate whether this descriptor (only head) is inflight or not.
@@ -1083,7 +1083,7 @@ impl DescStateSplit {
 }
 
 /// Inflight I/O queue region for split virtqueues
-#[repr(C, packed)]
+#[repr(C)]
 pub struct QueueRegionSplit {
     /// Features flags of this region
     pub features: u64,
@@ -1114,7 +1114,7 @@ impl QueueRegionSplit {
 }
 
 /// Inflight I/O descriptor state for packed virtqueues
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct DescStatePacked {
     /// Indicate whether this descriptor (only head) is inflight or not.
@@ -1147,7 +1147,7 @@ impl DescStatePacked {
 }
 
 /// Inflight I/O queue region for packed virtqueues
-#[repr(C, packed)]
+#[repr(C)]
 pub struct QueueRegionPacked {
     /// Features flags of this region
     pub features: u64,
@@ -1193,7 +1193,7 @@ impl QueueRegionPacked {
 }
 
 /// Virtio shared memory descriptor.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostSharedMemoryRegion {
     /// The shared memory region's shmid.
