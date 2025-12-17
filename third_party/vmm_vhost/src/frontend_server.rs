@@ -24,11 +24,7 @@ pub trait Frontend {
     }
 
     /// Handle shared memory region mapping requests.
-    fn shmem_map(
-        &mut self,
-        _req: &VhostUserShmemMapMsg,
-        _fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    fn shmem_map(&mut self, _req: &VhostUserMMap, _fd: &dyn AsRawDescriptor) -> HandlerResult<u64> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -123,7 +119,7 @@ impl<S: Frontend> FrontendServer<S> {
                     .map_err(Error::ReqHandlerError)
             }
             Ok(BackendReq::SHMEM_MAP) => {
-                let msg = self.extract_msg_body::<VhostUserShmemMapMsg>(&hdr, &buf)?;
+                let msg = self.extract_msg_body::<VhostUserMMap>(&hdr, &buf)?;
                 // check_attached_files() has validated files
                 self.frontend
                     .shmem_map(&msg, &files[0])

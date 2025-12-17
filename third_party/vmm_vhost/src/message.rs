@@ -863,30 +863,30 @@ pub struct VhostUserIotlb {
     PartialEq,
     PartialOrd,
 )]
-pub struct VhostUserShmemMapMsgFlags(u64);
+pub struct VhostUserMMapFlags(u64);
 
 bitflags! {
-    impl VhostUserShmemMapMsgFlags: u64 {
+    impl VhostUserMMapFlags: u64 {
         /// Pages are mapped read-write.
         const MAP_RW = 0x1;
     }
 }
 
-impl From<Protection> for VhostUserShmemMapMsgFlags {
+impl From<Protection> for VhostUserMMapFlags {
     fn from(prot: Protection) -> Self {
-        let mut flags = VhostUserShmemMapMsgFlags::empty();
+        let mut flags = VhostUserMMapFlags::empty();
         if prot.allows(&Protection::read()) && prot.allows(&Protection::write()) {
-            flags = VhostUserShmemMapMsgFlags::MAP_RW;
+            flags = VhostUserMMapFlags::MAP_RW;
         }
         flags
     }
 }
 
-impl From<VhostUserShmemMapMsgFlags> for Protection {
-    fn from(flags: VhostUserShmemMapMsgFlags) -> Self {
+impl From<VhostUserMMapFlags> for Protection {
+    fn from(flags: VhostUserMMapFlags) -> Self {
         let mut prot = Protection::default();
         prot = prot.set_read();
-        if flags.contains(VhostUserShmemMapMsgFlags::MAP_RW) {
+        if flags.contains(VhostUserMMapFlags::MAP_RW) {
             prot = prot.set_write();
         }
         prot
@@ -896,7 +896,7 @@ impl From<VhostUserShmemMapMsgFlags> for Protection {
 /// Backend request message to map a file into a shared memory region.
 #[repr(C)]
 #[derive(Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
-pub struct VhostUserShmemMapMsg {
+pub struct VhostUserMMap {
     /// Shared memory region ID.
     pub shmid: u8,
     /// Struct padding.
@@ -908,25 +908,24 @@ pub struct VhostUserShmemMapMsg {
     /// Size of region to map.
     pub len: u64,
     /// Flags for the mmap operation
-    pub flags: VhostUserShmemMapMsgFlags,
+    pub flags: VhostUserMMapFlags,
 }
 
-impl VhostUserMsgValidator for VhostUserShmemMapMsg {
+impl VhostUserMsgValidator for VhostUserMMap {
     fn is_valid(&self) -> bool {
-        (self.flags.bits() & !VhostUserShmemMapMsgFlags::all().bits()) == 0
+        (self.flags.bits() & !VhostUserMMapFlags::all().bits()) == 0
             && self.fd_offset.checked_add(self.len).is_some()
             && self.shm_offset.checked_add(self.len).is_some()
     }
 }
 
-impl VhostUserShmemMapMsg {
-    /// New instance of VhostUserShmemMapMsg struct
+impl VhostUserMMap {
     pub fn new(
         shmid: u8,
         shm_offset: u64,
         fd_offset: u64,
         len: u64,
-        flags: VhostUserShmemMapMsgFlags,
+        flags: VhostUserMMapFlags,
     ) -> Self {
         Self {
             flags,
@@ -1039,7 +1038,7 @@ pub struct VhostUserShmemUnmapMsg {
     /// Size of region to unmap.
     pub len: u64,
     /// Flags for the ummap operation
-    pub flags: VhostUserShmemMapMsgFlags,
+    pub flags: VhostUserMMapFlags,
 }
 
 impl VhostUserMsgValidator for VhostUserShmemUnmapMsg {
@@ -1057,7 +1056,7 @@ impl VhostUserShmemUnmapMsg {
             fd_offset: 0,
             shm_offset,
             len,
-            flags: VhostUserShmemMapMsgFlags(0),
+            flags: VhostUserMMapFlags(0),
         }
     }
 }

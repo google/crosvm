@@ -88,11 +88,7 @@ impl FrontendClient {
 
 impl Frontend for FrontendClient {
     /// Handle shared memory region mapping requests.
-    fn shmem_map(
-        &mut self,
-        req: &VhostUserShmemMapMsg,
-        fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    fn shmem_map(&mut self, req: &VhostUserMMap, fd: &dyn AsRawDescriptor) -> HandlerResult<u64> {
         self.send_message(BackendReq::SHMEM_MAP, req, Some(&[fd.as_raw_descriptor()]))
     }
 

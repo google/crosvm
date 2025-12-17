@@ -11,7 +11,7 @@ use hypervisor::MemCacheType;
 use vm_control::VmMemorySource;
 use vmm_vhost::message::VhostUserExternalMapMsg;
 use vmm_vhost::message::VhostUserGpuMapMsg;
-use vmm_vhost::message::VhostUserShmemMapMsg;
+use vmm_vhost::message::VhostUserMMap;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::Frontend;
 use vmm_vhost::FrontendServer;
@@ -54,11 +54,7 @@ impl BackendReqHandlerImpl {
 }
 
 impl Frontend for BackendReqHandlerImpl {
-    fn shmem_map(
-        &mut self,
-        req: &VhostUserShmemMapMsg,
-        fd: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    fn shmem_map(&mut self, req: &VhostUserMMap, fd: &dyn AsRawDescriptor) -> HandlerResult<u64> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
