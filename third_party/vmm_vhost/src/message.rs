@@ -12,7 +12,6 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use base::Protection;
 use bitflags::bitflags;
 use zerocopy::FromBytes;
 use zerocopy::Immutable;
@@ -869,27 +868,6 @@ bitflags! {
     impl VhostUserMMapFlags: u64 {
         /// Pages are mapped read-write.
         const MAP_RW = 0x1;
-    }
-}
-
-impl From<Protection> for VhostUserMMapFlags {
-    fn from(prot: Protection) -> Self {
-        let mut flags = VhostUserMMapFlags::empty();
-        if prot.allows(&Protection::read()) && prot.allows(&Protection::write()) {
-            flags = VhostUserMMapFlags::MAP_RW;
-        }
-        flags
-    }
-}
-
-impl From<VhostUserMMapFlags> for Protection {
-    fn from(flags: VhostUserMMapFlags) -> Self {
-        let mut prot = Protection::default();
-        prot = prot.set_read();
-        if flags.contains(VhostUserMMapFlags::MAP_RW) {
-            prot = prot.set_write();
-        }
-        prot
     }
 }
 

@@ -12,6 +12,7 @@ use vm_control::VmMemorySource;
 use vmm_vhost::message::VhostUserExternalMapMsg;
 use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserMMap;
+use vmm_vhost::message::VhostUserMMapFlags;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::Frontend;
 use vmm_vhost::FrontendServer;
@@ -74,7 +75,11 @@ impl Frontend for BackendReqHandlerImpl {
                 size: req.len,
             },
             req.shm_offset,
-            Protection::from(req.flags),
+            if req.flags.contains(VhostUserMMapFlags::MAP_RW) {
+                Protection::read_write()
+            } else {
+                Protection::read()
+            },
             MemCacheType::CacheCoherent,
         ) {
             Ok(()) => Ok(0),

@@ -946,7 +946,11 @@ impl SharedMemoryMapper for VhostShmemMapper {
                     }
                     _ => bail!("unsupported source"),
                 };
-                let flags = VhostUserMMapFlags::from(prot);
+                let mut flags = VhostUserMMapFlags::empty();
+                anyhow::ensure!(prot.allows(&Protection::read()), "mapping must be readable");
+                if prot.allows(&Protection::write()) {
+                    flags |= VhostUserMMapFlags::MAP_RW;
+                }
                 let msg = VhostUserMMap::new(self.shmid, offset, fd_offset, size, flags);
                 shared
                     .conn
