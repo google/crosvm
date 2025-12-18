@@ -878,7 +878,7 @@ pub struct VhostUserMMap {
     /// Shared memory region ID.
     pub shmid: u8,
     /// Struct padding.
-    padding: [u8; 7],
+    pub padding: [u8; 7],
     /// File offset.
     pub fd_offset: u64,
     /// Offset into the shared memory region.
@@ -894,25 +894,6 @@ impl VhostUserMsgValidator for VhostUserMMap {
         (self.flags.bits() & !VhostUserMMapFlags::all().bits()) == 0
             && self.fd_offset.checked_add(self.len).is_some()
             && self.shm_offset.checked_add(self.len).is_some()
-    }
-}
-
-impl VhostUserMMap {
-    pub fn new(
-        shmid: u8,
-        shm_offset: u64,
-        fd_offset: u64,
-        len: u64,
-        flags: VhostUserMMapFlags,
-    ) -> Self {
-        Self {
-            flags,
-            shmid,
-            padding: [0; 7],
-            shm_offset,
-            fd_offset,
-            len,
-        }
     }
 }
 

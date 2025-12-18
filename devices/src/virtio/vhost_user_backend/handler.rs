@@ -950,7 +950,14 @@ impl SharedMemoryMapper for VhostShmemMapper {
                 if prot.allows(&Protection::write()) {
                     flags |= VhostUserMMapFlags::MAP_RW;
                 }
-                let msg = VhostUserMMap::new(self.shmid, offset, fd_offset, size, flags);
+                let msg = VhostUserMMap {
+                    shmid: self.shmid,
+                    padding: Default::default(),
+                    fd_offset,
+                    shm_offset: offset,
+                    len: size,
+                    flags,
+                };
                 shared
                     .conn
                     .shmem_map(&msg, &descriptor)
@@ -969,7 +976,14 @@ impl SharedMemoryMapper for VhostShmemMapper {
             .mapped_regions
             .remove(&offset)
             .context("unknown offset")?;
-        let msg = VhostUserMMap::new(self.shmid, offset, 0, size, VhostUserMMapFlags::empty());
+        let msg = VhostUserMMap {
+            shmid: self.shmid,
+            padding: Default::default(),
+            fd_offset: 0,
+            shm_offset: offset,
+            len: size,
+            flags: VhostUserMMapFlags::empty(),
+        };
         shared
             .conn
             .shmem_unmap(&msg)
