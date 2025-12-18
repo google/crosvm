@@ -479,6 +479,9 @@ impl VirtioDevice for VhostUserFrontend {
     }
 
     fn reset(&mut self) -> anyhow::Result<()> {
+        // TODO: Reset SHMEM_MAP mappings. The vhost-user spec says "mappings are automatically
+        // unmapped by the front-end across device reset operation".
+
         if let Some(sent_queues) = self.sent_queues.take() {
             for queue_index in sent_queues.into_keys() {
                 let _vring_base = self
