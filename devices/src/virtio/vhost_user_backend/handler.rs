@@ -88,7 +88,6 @@ use vmm_vhost::message::VhostUserMMapFlags;
 use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::message::VhostUserMigrationPhase;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserShMemConfigHeader;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
 use vmm_vhost::message::VhostUserTransferDirection;
 use vmm_vhost::message::VhostUserVringAddrFlags;
@@ -827,11 +826,11 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         }
     }
 
-    fn get_shmem_config(&mut self) -> VhostResult<(VhostUserShMemConfigHeader, Vec<u64>)> {
+    fn get_shmem_config(&mut self) -> VhostResult<Vec<u64>> {
         Ok(if let Some(r) = self.backend.get_shared_memory_region() {
-            (VhostUserShMemConfigHeader::new(1), vec![r.length])
+            vec![r.length]
         } else {
-            (VhostUserShMemConfigHeader::new(0), Vec::new())
+            Vec::new()
         })
     }
 }

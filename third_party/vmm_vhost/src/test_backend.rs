@@ -277,7 +277,7 @@ impl Backend for TestBackend {
         Ok(())
     }
 
-    fn get_shmem_config(&mut self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)> {
-        Ok((VhostUserShMemConfigHeader::new(0), Vec::new()))
+    fn get_shmem_config(&mut self) -> Result<Vec<u64>> {
+        Ok(Vec::new())
     }
 }

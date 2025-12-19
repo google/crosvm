@@ -369,7 +369,7 @@ impl BackendClient {
     }
 
     /// Get the shared memory configuration.
-    pub fn get_shmem_config(&self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)> {
+    pub fn get_shmem_config(&self) -> Result<Vec<u64>> {
         let hdr = self.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
         let (body_reply, buf_reply, _rfds) =
             self.recv_reply_with_payload::<VhostUserShMemConfigHeader>(&hdr)?;
@@ -381,7 +381,7 @@ impl BackendClient {
                 VhostUserU64::read_from_bytes(&buf_reply[offset..(offset + U64_SIZE)]).unwrap();
             memory_sizes.push(value.value);
         }
-        Ok((body_reply, memory_sizes))
+        Ok(memory_sizes)
     }
 
     fn send_request_header(

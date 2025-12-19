@@ -29,7 +29,6 @@ use vmm_vhost::message::VhostUserInflight;
 use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::message::VhostUserMigrationPhase;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserShMemConfigHeader;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
 use vmm_vhost::message::VhostUserTransferDirection;
 use vmm_vhost::message::VhostUserVringAddrFlags;
@@ -440,8 +439,8 @@ impl vmm_vhost::Backend for VsockBackend {
         Err(Error::InvalidOperation)
     }
 
-    fn get_shmem_config(&mut self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)> {
-        Ok((VhostUserShMemConfigHeader::new(0), Vec::new()))
+    fn get_shmem_config(&mut self) -> Result<Vec<u64>> {
+        Ok(Vec::new())
     }
 }
 

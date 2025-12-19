@@ -515,7 +515,7 @@ impl VirtioDevice for VhostUserFrontend {
         if let Some(r) = self.shmem_region.borrow().as_ref() {
             return r.clone();
         }
-        let (config_hdr, sizes) = match self
+        let sizes = match self
             .backend_client
             .get_shmem_config()
             .map_err(Error::ShmemRegions)
@@ -526,7 +526,7 @@ impl VirtioDevice for VhostUserFrontend {
                 return None;
             }
         };
-        let region = match config_hdr.nregions {
+        let region = match sizes.len() {
             0 => None,
             1 => Some(SharedMemoryRegion {
                 id: 0,
@@ -535,7 +535,7 @@ impl VirtioDevice for VhostUserFrontend {
             n => {
                 error!(
                     "Failed to get shared memory region {}",
-                    Error::TooManyShmemRegions(n as usize)
+                    Error::TooManyShmemRegions(n)
                 );
                 return None;
             }

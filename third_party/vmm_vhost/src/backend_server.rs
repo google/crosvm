@@ -75,7 +75,7 @@ pub trait Backend {
         fd: File,
     ) -> Result<Option<File>>;
     fn check_device_state(&mut self) -> Result<()>;
-    fn get_shmem_config(&mut self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)>;
+    fn get_shmem_config(&mut self) -> Result<Vec<u64>>;
 }
 
 impl<T> Backend for T
@@ -209,7 +209,7 @@ where
         self.as_mut().check_device_state()
     }
 
-    fn get_shmem_config(&mut self) -> Result<(VhostUserShMemConfigHeader, Vec<u64>)> {
+    fn get_shmem_config(&mut self) -> Result<Vec<u64>> {
         self.as_mut().get_shmem_config()
     }
 }
@@ -656,7 +656,8 @@ impl<S: Backend> BackendServer<S> {
                 res?;
             }
             Ok(FrontendReq::GET_SHMEM_CONFIG) => {
-                let (msg, sizes) = self.backend.get_shmem_config()?;
+                let sizes = self.backend.get_shmem_config()?;
+                let msg = VhostUserShMemConfigHeader::new(sizes.len().try_into().unwrap());
                 let mut buf = Vec::new();
                 for e in sizes {
                     buf.extend_from_slice(e.as_bytes())
