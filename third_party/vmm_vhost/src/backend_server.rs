@@ -658,11 +658,7 @@ impl<S: Backend> BackendServer<S> {
             Ok(FrontendReq::GET_SHMEM_CONFIG) => {
                 let sizes = self.backend.get_shmem_config()?;
                 let msg = VhostUserShMemConfigHeader::new(sizes.len().try_into().unwrap());
-                let mut buf = Vec::new();
-                for e in sizes {
-                    buf.extend_from_slice(e.as_bytes())
-                }
-                self.send_reply_with_payload(&hdr, &msg, buf.as_slice())?;
+                self.send_reply_with_payload(&hdr, &msg, sizes.as_slice().as_bytes())?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

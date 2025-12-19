@@ -373,15 +373,12 @@ impl BackendClient {
         let hdr = self.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
         let (body_reply, buf_reply, _rfds) =
             self.recv_reply_with_payload::<VhostUserShMemConfigHeader>(&hdr)?;
-        let mut memory_sizes = Vec::new();
-        for i in 0..body_reply.nregions {
-            const U64_SIZE: usize = mem::size_of::<u64>();
-            let offset = (i as usize) * U64_SIZE;
-            let value =
-                VhostUserU64::read_from_bytes(&buf_reply[offset..(offset + U64_SIZE)]).unwrap();
-            memory_sizes.push(value.value);
-        }
-        Ok(memory_sizes)
+        let memory_sizes = <[u64]>::ref_from_bytes_with_elems(
+            buf_reply.as_slice(),
+            body_reply.nregions.try_into().unwrap(),
+        )
+        .map_err(|_| VhostUserError::InvalidMessage)?;
+        Ok(memory_sizes.to_vec())
     }
 
     fn send_request_header(
