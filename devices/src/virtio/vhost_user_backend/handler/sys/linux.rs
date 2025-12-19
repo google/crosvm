@@ -34,7 +34,7 @@ where
             Err(VhostError::ClientExit) => {
                 info!("vhost-user connection closed");
                 // Exit as the client closed the connection.
-                return Ok(());
+                std::process::exit(0);
             }
             Err(e) => {
                 return Err(e.into());
