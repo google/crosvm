@@ -60,6 +60,9 @@ impl FrontendClient {
         let code = hdr.get_code().map_err(|_| Error::InvalidMessage)?;
         if code != BackendReq::GPU_MAP
             && code != BackendReq::EXTERNAL_MAP
+            // TODO(fmayle): Remove SHMEM cases once REPLY_ACK negotiation is supported.
+            && code != BackendReq::SHMEM_MAP
+            && code != BackendReq::SHMEM_UNMAP
             && !self.reply_ack_negotiated
         {
             return Ok(0);
