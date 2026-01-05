@@ -1493,6 +1493,7 @@ dependencies = [
  "protos",
  "rand",
  "remain",
+ "rutabaga_gfx",
  "serde",
  "smallvec",
  "sync",
@@ -2683,9 +2684,9 @@ dependencies = [
 
 [[package]]
 name = "rutabaga_gfx"
-version = "0.1.75"
+version = "0.1.76-chromeos"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f517ff4f36da6a1bae02e05a59865736a5e594329ff1f958eac5865989ba2e3"
+checksum = "5a806736e3d23fb7c430b67f8a3162233d98a9a34790a3f533278bcc140041af"
 dependencies = [
  "cfg-if",
  "libc",

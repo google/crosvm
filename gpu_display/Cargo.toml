@@ -35,6 +35,7 @@ protobuf = { version = "3.2", optional = true }
 euclid = { version = "0.22", optional = true }
 smallvec = { version = "1", optional = true }
 sync = { workspace = true }
+rutabaga_gfx = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 cros_tracing = { workspace = true }

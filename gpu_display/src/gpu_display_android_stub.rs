@@ -10,6 +10,7 @@
 
 use std::ffi::c_char;
 
+use crate::gpu_display_android::AHardwareBufferInfo;
 use crate::gpu_display_android::ANativeWindow_Buffer;
 use crate::gpu_display_android::AndroidDisplayContext;
 use crate::gpu_display_android::AndroidDisplaySurface;
@@ -64,6 +65,15 @@ extern "C" fn get_android_surface_buffer(
 extern "C" fn post_android_surface_buffer(
     _ctx: *mut AndroidDisplayContext,
     _surface: *mut AndroidDisplaySurface,
+) {
+    unimplemented!();
+}
+
+#[no_mangle]
+extern "C" fn android_display_flip_to(
+    _ctx: *mut AndroidDisplayContext,
+    _surface: *mut AndroidDisplaySurface,
+    _ahb_info: *const AHardwareBufferInfo,
 ) {
     unimplemented!();
 }

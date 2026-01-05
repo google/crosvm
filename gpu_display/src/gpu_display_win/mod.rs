@@ -343,6 +343,9 @@ impl DisplayT for DisplayWin {
                         DisplayExternalResourceImport::Dmabuf { .. } => {
                             bail!("gpu_display_win does not support importing dmabufs")
                         }
+                        DisplayExternalResourceImport::AHardwareBuffer { .. } => {
+                            bail!("gpu_display_win does not support importing AHardwareBuffers")
+                        }
                     }
                     Ok(())
                 }

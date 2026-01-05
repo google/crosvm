@@ -18,6 +18,7 @@ use base::EventType;
 use base::VolatileSlice;
 use base::WaitContext;
 use remain::sorted;
+use rutabaga_gfx::AhbInfo;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Waitable;
@@ -339,6 +340,9 @@ trait DisplayT: AsRawDescriptor {
 
     /// Frees a previously imported resource.
     fn release_import(&mut self, _import_id: u32, _surface_id: u32) {}
+
+    /// Releases a previously created surface.
+    fn release_surface(&mut self, _surface_id: u32) {}
 }
 
 pub trait GpuDisplayExt {
@@ -366,6 +370,9 @@ pub enum DisplayExternalResourceImport<'a> {
     },
     VulkanTimelineSemaphore {
         descriptor: &'a dyn AsRawDescriptor,
+    },
+    AHardwareBuffer {
+        info: AhbInfo,
     },
 }
 
@@ -592,6 +599,7 @@ impl GpuDisplay {
     /// Releases a previously created surface identified by the given handle.
     pub fn release_surface(&mut self, surface_id: u32) {
         self.surfaces.remove(&surface_id);
+        self.inner.release_surface(surface_id);
     }
 
     /// Gets a reference to an unused framebuffer for the identified surface.

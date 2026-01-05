@@ -98,8 +98,8 @@ use resources::SystemAllocator;
 use rutabaga_gfx::RutabagaDescriptor;
 use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaGralloc;
-use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaMappedRegion;
+use rutabaga_gfx::RutabagaMesaHandle;
 use rutabaga_gfx::VulkanInfo;
 use serde::de::Error;
 use serde::Deserialize;
@@ -493,7 +493,7 @@ impl VmMemorySource {
                 };
                 let mapped_region = gralloc
                     .import_and_map(
-                        RutabagaHandle {
+                        RutabagaMesaHandle {
                             os_handle: to_rutabaga_desciptor(descriptor),
                             handle_type,
                         },

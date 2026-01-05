@@ -2,27 +2,38 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
 use std::ffi::c_char;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::os::fd::AsFd;
+use std::os::fd::AsRawFd;
 use std::panic::catch_unwind;
 use std::process::abort;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::slice;
+use std::sync::Arc;
+use std::sync::RwLock;
 
+use anyhow::bail;
 use base::error;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::VolatileSlice;
+use rutabaga_gfx::AhbInfo;
+use sync::Waitable;
 use vm_control::gpu::DisplayParameters;
 
+use crate::DisplayExternalResourceImport;
 use crate::DisplayT;
+use crate::FlipToExtraInfo;
 use crate::GpuDisplayError;
 use crate::GpuDisplayFramebuffer;
 use crate::GpuDisplayResult;
 use crate::GpuDisplaySurface;
+use crate::SemaphoreTimepoint;
 use crate::SurfaceType;
 use crate::SysDisplayT;
 
@@ -110,6 +121,12 @@ extern "C" {
         ctx: *mut AndroidDisplayContext,
         surface: *mut AndroidDisplaySurface,
     );
+
+    fn android_display_flip_to(
+        ctx: *mut AndroidDisplayContext,
+        _surface: *mut AndroidDisplaySurface,
+        ahb_info: *const AHardwareBufferInfo,
+    );
 }
 
 unsafe extern "C" fn error_callback(message: *const c_char) {
@@ -160,9 +177,21 @@ impl From<ANativeWindow_Buffer> for GpuDisplayFramebuffer<'_> {
     }
 }
 
+#[repr(C)]
+pub struct AHardwareBufferInfo {
+    pub num_fds: usize,
+    pub fds_ptr: *const i32,
+    pub metadata_len: usize,
+    pub metadata_ptr: *const u8,
+}
+
+// The key is an import id.
+type AHardwareBufferImportMap = HashMap<u32, AhbInfo>;
+
 struct AndroidSurface {
     context: Rc<AndroidDisplayContextWrapper>,
     surface: NonNull<AndroidDisplaySurface>,
+    ahb_import_map: Arc<RwLock<AHardwareBufferImportMap>>,
 }
 
 impl GpuDisplaySurface for AndroidSurface {
@@ -193,12 +222,48 @@ impl GpuDisplaySurface for AndroidSurface {
         // SAFETY: context is an opaque handle.
         unsafe { set_android_surface_position(self.context.0.as_ptr(), x, y) };
     }
+
+    fn flip_to(
+        &mut self,
+        import_id: u32,
+        _acquire_timepoint: Option<SemaphoreTimepoint>,
+        _release_timepoint: Option<SemaphoreTimepoint>,
+        _extra_info: Option<FlipToExtraInfo>,
+    ) -> anyhow::Result<Waitable> {
+        {
+            let ahb_import_map = self.ahb_import_map.read().expect("failed to get a lock");
+            let ahb = ahb_import_map
+                .get(&import_id)
+                .ok_or(GpuDisplayError::InvalidImportId)?;
+            let fds: Vec<i32> = ahb.fds.iter().map(|fd| fd.as_fd().as_raw_fd()).collect();
+
+            let info = AHardwareBufferInfo {
+                num_fds: fds.len(),
+                fds_ptr: fds.as_ptr(),
+                metadata_len: ahb.metadata.len(),
+                metadata_ptr: ahb.metadata.as_ptr(),
+            };
+            // SAFETY:
+            // Safe because the `AHardwareBufferInfo` outlives the call, and
+            // `android_display_flip_to` does not retain the pointer.
+            unsafe {
+                android_display_flip_to(
+                    self.context.0.as_ptr(),
+                    self.surface.as_ptr(),
+                    &info as *const AHardwareBufferInfo,
+                )
+            };
+        }
+        Ok(Waitable::signaled())
+    }
 }
 
 pub struct DisplayAndroid {
     context: Rc<AndroidDisplayContextWrapper>,
     /// This event is never triggered and is used solely to fulfill AsRawDescriptor.
     event: Event,
+    // The key is a surface id.
+    surface_ahbs_map: HashMap<u32, Arc<RwLock<AHardwareBufferImportMap>>>,
 }
 
 impl DisplayAndroid {
@@ -214,6 +279,7 @@ impl DisplayAndroid {
         Ok(DisplayAndroid {
             context: context.into(),
             event,
+            surface_ahbs_map: HashMap::new(),
         })
     }
 }
@@ -222,7 +288,7 @@ impl DisplayT for DisplayAndroid {
     fn create_surface(
         &mut self,
         parent_surface_id: Option<u32>,
-        _surface_id: u32,
+        surface_id: u32,
         _scanout_id: Option<u32>,
         display_params: &DisplayParameters,
         _surf_type: SurfaceType,
@@ -238,11 +304,50 @@ impl DisplayT for DisplayAndroid {
             )
         })
         .ok_or(GpuDisplayError::CreateSurface)?;
+        let ahb_import_map = self.surface_ahbs_map.entry(surface_id).or_default();
 
         Ok(Box::new(AndroidSurface {
             context: self.context.clone(),
             surface,
+            ahb_import_map: Arc::clone(ahb_import_map),
         }))
+    }
+
+    fn release_surface(&mut self, surface_id: u32) {
+        self.surface_ahbs_map.remove(&surface_id);
+    }
+
+    fn import_resource(
+        &mut self,
+        import_id: u32,
+        surface_id: u32,
+        external_display_resource: DisplayExternalResourceImport,
+    ) -> anyhow::Result<()> {
+        let DisplayExternalResourceImport::AHardwareBuffer { info } = external_display_resource
+        else {
+            bail!("gpu_display_android only supports AHardwareBufferInfo imports");
+        };
+
+        {
+            let mut ahbs = self
+                .surface_ahbs_map
+                .entry(surface_id)
+                .or_default()
+                .write()
+                .expect("failed to get a lock");
+            ahbs.insert(import_id, info);
+        }
+        Ok(())
+    }
+
+    fn release_import(&mut self, surface_id: u32, import_id: u32) {
+        let mut ahbs = self
+            .surface_ahbs_map
+            .entry(surface_id)
+            .or_default()
+            .write()
+            .expect("failed to get a lock");
+        ahbs.remove(&import_id);
     }
 }
 
