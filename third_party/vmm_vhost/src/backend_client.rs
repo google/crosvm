@@ -28,12 +28,23 @@ use crate::SharedMemoryRegion;
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 pub struct BackendClient {
     connection: Connection<FrontendReq>,
+    set_need_reply: bool,
 }
 
 impl BackendClient {
     /// Create a new instance.
     pub fn new(connection: Connection<FrontendReq>) -> Self {
-        BackendClient { connection }
+        BackendClient {
+            connection,
+            set_need_reply: false,
+        }
+    }
+
+    /// Whether to set the "need_reply" flag in the message header for every request message.
+    ///
+    /// Requires the `VHOST_USER_PROTOCOL_F_REPLY_ACK` protocol feature to have been negotiated.
+    pub fn set_need_reply(&mut self, enable: bool) {
+        self.set_need_reply = enable;
     }
 
     /// Get a bitmask of supported virtio/vhost features.
@@ -523,7 +534,7 @@ impl BackendClient {
         request: FrontendReq,
         size: u32,
     ) -> VhostUserMsgHeader<FrontendReq> {
-        VhostUserMsgHeader::new_request_header(request, size, false)
+        VhostUserMsgHeader::new_request_header(request, size, self.set_need_reply)
     }
 }
 

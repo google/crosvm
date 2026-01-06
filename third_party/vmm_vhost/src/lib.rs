@@ -159,6 +159,7 @@ mod test_backend;
 
 #[cfg(test)]
 mod tests {
+    use std::io::ErrorKind;
     use std::sync::Arc;
     use std::sync::Barrier;
     use std::thread;
@@ -259,7 +260,16 @@ mod tests {
     }
 
     #[test]
-    fn test_client_server_process() {
+    fn test_client_server_process_no_need_reply() {
+        test_client_server_process(false);
+    }
+
+    #[test]
+    fn test_client_server_process_need_reply() {
+        test_client_server_process(true);
+    }
+
+    fn test_client_server_process(set_need_reply: bool) {
         let mbar = Arc::new(Barrier::new(2));
         let sbar = mbar.clone();
         let test_backend = TestBackend::new();
@@ -306,10 +316,6 @@ mod tests {
             // set_vring_enable
             handle_request(&mut backend_server).unwrap();
 
-            // set_log_base,set_log_fd()
-            handle_request(&mut backend_server).unwrap_err();
-            handle_request(&mut backend_server).unwrap_err();
-
             // set_vring_xxx
             handle_request(&mut backend_server).unwrap();
             handle_request(&mut backend_server).unwrap();
@@ -327,6 +333,14 @@ mod tests {
             // remove_mem_region()
             handle_request(&mut backend_server).unwrap();
 
+            // set_log_base
+            //
+            // Results in an error because it isn't implemented. When `set_need_reply` is true, the
+            // client waits for an ACK that will never come, instead they will get an error only
+            // when we drop `backend_server` below.
+            handle_request(&mut backend_server).unwrap_err();
+
+            std::mem::drop(backend_server);
             sbar.wait();
         });
 
@@ -341,6 +355,8 @@ mod tests {
         let features = backend_client.get_protocol_features().unwrap();
         assert_eq!(features.bits(), VhostUserProtocolFeatures::all().bits());
         backend_client.set_protocol_features(features).unwrap();
+
+        backend_client.set_need_reply(set_need_reply);
 
         // Retrieve inflight I/O tracking information
         let (inflight_info, inflight_file) = backend_client
@@ -393,14 +409,6 @@ mod tests {
         backend_client.set_backend_req_fd(&descriptor).unwrap();
         backend_client.set_vring_enable(0, true).unwrap();
 
-        // unimplemented yet
-        backend_client
-            .set_log_base(0, Some(event.as_raw_descriptor()))
-            .unwrap();
-        backend_client
-            .set_log_fd(event.as_raw_descriptor())
-            .unwrap();
-
         backend_client.set_vring_num(0, 256).unwrap();
         backend_client.set_vring_base(0, 0).unwrap();
         let config = VringConfigData {
@@ -430,6 +438,29 @@ mod tests {
         backend_client.add_mem_region(&region).unwrap();
 
         backend_client.remove_mem_region(&region).unwrap();
+
+        // set_log_base isn't implemented by the server and so will break the connection.
+        let result = backend_client.set_log_base(0, Some(event.as_raw_descriptor()));
+        if set_need_reply {
+            // When using `set_need_reply`, we'll get an immediate disconnect error.
+            assert!(
+                matches!(result, Err(Error::Disconnect)),
+                "unexpected result: {result:?}"
+            );
+        } else {
+            // When not using `set_need_reply`, it will seem to succeed and then the next request
+            // will fail.
+            result.unwrap();
+            let result = backend_client.get_features();
+            match &result {
+                // Windows errors with Disconnect and Unix with a SocketError.
+                Err(Error::Disconnect) => {}
+                Err(Error::SocketError(e))
+                    if e.kind() == ErrorKind::ConnectionReset
+                        || e.kind() == ErrorKind::BrokenPipe => {}
+                _ => panic!("unexpected result: {result:?}"),
+            }
+        }
 
         mbar.wait();
     }
