@@ -651,7 +651,7 @@ impl Frontend {
                 let drm_format = match virtio_gpu_format {
                     VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM => DrmFormat::new(b'X', b'R', b'2', b'4'),
                     VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM => DrmFormat::new(b'A', b'R', b'2', b'4'),
-                    VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM => DrmFormat::new(b'R', b'A', b'2', b'4'),
+                    VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM => DrmFormat::new(b'A', b'B', b'2', b'4'),
                     _ => {
                         error!("unrecognized virtio-gpu format {}", virtio_gpu_format);
                         return Err(GpuResponse::ErrUnspec);
