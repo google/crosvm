@@ -427,7 +427,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
     }
 
     fn get_protocol_features(&mut self) -> VhostResult<VhostUserProtocolFeatures> {
-        Ok(self.backend.protocol_features())
+        Ok(self.backend.protocol_features() | VhostUserProtocolFeatures::REPLY_ACK)
     }
 
     fn set_protocol_features(&mut self, features: u64) -> VhostResult<()> {
