@@ -194,9 +194,8 @@ impl<S: Frontend> FrontendServer<S> {
         &self,
         req: &VhostUserMsgHeader<BackendReq>,
     ) -> Result<VhostUserMsgHeader<BackendReq>> {
-        Ok(VhostUserMsgHeader::new(
+        Ok(VhostUserMsgHeader::new_reply_header(
             req.get_code().map_err(|_| Error::InvalidMessage)?,
-            VhostUserHeaderFlag::REPLY.bits(),
             mem::size_of::<T>() as u32,
         ))
     }

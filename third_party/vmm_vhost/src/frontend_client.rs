@@ -44,10 +44,8 @@ impl FrontendClient {
         T: IntoBytes + Immutable,
     {
         let len = mem::size_of::<T>();
-        let mut hdr = VhostUserMsgHeader::new(request, 0, len as u32);
-        if self.reply_ack_negotiated {
-            hdr.set_need_reply(true);
-        }
+        let hdr =
+            VhostUserMsgHeader::new_request_header(request, len as u32, self.reply_ack_negotiated);
         self.sock
             .send_message(&hdr, msg, fds)
             .map_err(|e| std::io::Error::other(e.to_string()))?;

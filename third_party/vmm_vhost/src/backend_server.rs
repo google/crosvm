@@ -672,9 +672,8 @@ impl<S: Backend> BackendServer<S> {
         req: &VhostUserMsgHeader<FrontendReq>,
         payload_size: usize,
     ) -> Result<VhostUserMsgHeader<FrontendReq>> {
-        Ok(VhostUserMsgHeader::new(
+        Ok(VhostUserMsgHeader::new_reply_header(
             req.get_code().map_err(|_| Error::InvalidMessage)?,
-            VhostUserHeaderFlag::REPLY.bits(),
             (mem::size_of::<T>()
                 .checked_add(payload_size)
                 .ok_or(Error::OversizedMsg)?)

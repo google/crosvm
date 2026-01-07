@@ -288,13 +288,26 @@ impl<R: Req> PartialEq for VhostUserMsgHeader<R> {
 }
 
 impl<R: Req> VhostUserMsgHeader<R> {
-    /// Create a new instance of `VhostUserMsgHeader`.
-    pub fn new(request: R, flags: u32, size: u32) -> Self {
-        // Default to protocol version 1
-        let fl = (flags & VhostUserHeaderFlag::ALL_FLAGS.bits()) | 0x1;
+    /// Header for a request.
+    pub fn new_request_header(request: R, size: u32, need_reply: bool) -> Self {
         VhostUserMsgHeader {
             request: request.into(),
-            flags: fl,
+            flags: 0x1
+                | if need_reply {
+                    VhostUserHeaderFlag::NEED_REPLY.bits()
+                } else {
+                    0
+                },
+            size,
+            _r: PhantomData,
+        }
+    }
+
+    /// Header for a reply.
+    pub fn new_reply_header(request: R, size: u32) -> Self {
+        VhostUserMsgHeader {
+            request: request.into(),
+            flags: 0x1 | VhostUserHeaderFlag::REPLY.bits(),
             size,
             _r: PhantomData,
         }
@@ -319,7 +332,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Set message type.
-    pub fn set_code(&mut self, request: R) {
+    fn set_code(&mut self, request: R) {
         self.request = request.into();
     }
 
@@ -329,7 +342,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Set message version number.
-    pub fn set_version(&mut self, ver: u32) {
+    fn set_version(&mut self, ver: u32) {
         self.flags &= !0x3;
         self.flags |= ver & 0x3;
     }
@@ -340,7 +353,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Mark message as reply.
-    pub fn set_reply(&mut self, is_reply: bool) {
+    fn set_reply(&mut self, is_reply: bool) {
         if is_reply {
             self.flags |= VhostUserHeaderFlag::REPLY.bits();
         } else {
@@ -354,7 +367,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Mark that reply for this message is needed.
-    pub fn set_need_reply(&mut self, need_reply: bool) {
+    fn set_need_reply(&mut self, need_reply: bool) {
         if need_reply {
             self.flags |= VhostUserHeaderFlag::NEED_REPLY.bits();
         } else {
@@ -373,19 +386,8 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Set message size.
-    pub fn set_size(&mut self, size: u32) {
+    fn set_size(&mut self, size: u32) {
         self.size = size;
-    }
-}
-
-impl<R: Req> Default for VhostUserMsgHeader<R> {
-    fn default() -> Self {
-        VhostUserMsgHeader {
-            request: 0,
-            flags: 0x1,
-            size: 0,
-            _r: PhantomData,
-        }
     }
 }
 
@@ -1176,7 +1178,8 @@ mod tests {
 
     #[test]
     fn msg_header_ops() {
-        let mut hdr = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, 0x100);
+        let mut hdr =
+            VhostUserMsgHeader::new_request_header(FrontendReq::GET_FEATURES, 0x100, false);
         assert_eq!(hdr.get_code(), Ok(FrontendReq::GET_FEATURES));
         hdr.set_code(FrontendReq::SET_FEATURES);
         assert_eq!(hdr.get_code(), Ok(FrontendReq::SET_FEATURES));

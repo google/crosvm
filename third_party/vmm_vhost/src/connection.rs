@@ -220,7 +220,7 @@ pub(crate) mod tests {
     #[test]
     fn send_header_only() {
         let (client_connection, server_connection) = Connection::pair().unwrap();
-        let hdr1 = VhostUserMsgHeader::new(FrontendReq::GET_FEATURES, 0, 0);
+        let hdr1 = VhostUserMsgHeader::new_request_header(FrontendReq::GET_FEATURES, 0, false);
         client_connection
             .send_header_only_message(&hdr1, None)
             .unwrap();
@@ -234,7 +234,7 @@ pub(crate) mod tests {
     #[test]
     fn send_data() {
         let (client_connection, server_connection) = Connection::pair().unwrap();
-        let hdr1 = VhostUserMsgHeader::new(FrontendReq::SET_FEATURES, 0, 8);
+        let hdr1 = VhostUserMsgHeader::new_request_header(FrontendReq::SET_FEATURES, 8, false);
         client_connection
             .send_message(&hdr1, &VhostUserU64::new(0xf00dbeefdeadf00d), None)
             .unwrap();
@@ -253,7 +253,7 @@ pub(crate) mod tests {
         write!(fd, "test").unwrap();
 
         // Normal case for sending/receiving file descriptors
-        let hdr1 = VhostUserMsgHeader::new(FrontendReq::SET_MEM_TABLE, 0, 0);
+        let hdr1 = VhostUserMsgHeader::new_request_header(FrontendReq::SET_MEM_TABLE, 0, false);
         client_connection
             .send_header_only_message(&hdr1, Some(&[fd.as_raw_descriptor()]))
             .unwrap();
