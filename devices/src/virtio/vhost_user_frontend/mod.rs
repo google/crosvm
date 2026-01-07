@@ -138,7 +138,13 @@ impl VhostUserFrontend {
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::BACKEND_REQ
             | VhostUserProtocolFeatures::DEVICE_STATE
-            | VhostUserProtocolFeatures::SHMEM_MAP;
+            | VhostUserProtocolFeatures::SHMEM_MAP
+            // NOTE: We advertise REPLY_ACK, but we don't actually set the "need_reply" bit in any
+            // `BackendClient` requests because there is a theoretical latency penalty and no
+            // obvious advantage at the moment. Instead, we negotiate it only so that the backend
+            // can choose to set the "need_reply" in the backend-to-frontend requests (e.g. to
+            // avoid race conditions when using SHMEM_MAP).
+            | VhostUserProtocolFeatures::REPLY_ACK;
 
         let mut protocol_features = VhostUserProtocolFeatures::empty();
         if avail_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
@@ -163,11 +169,14 @@ impl VhostUserFrontend {
         // if protocol feature `VhostUserProtocolFeatures::BACKEND_REQ` is negotiated.
         let backend_req_handler =
             if protocol_features.contains(VhostUserProtocolFeatures::BACKEND_REQ) {
-                let (handler, tx_fd) = create_backend_req_handler(
+                let (mut handler, tx_fd) = create_backend_req_handler(
                     BackendReqHandlerImpl::new(),
                     #[cfg(windows)]
                     backend_pid,
                 )?;
+                handler.set_reply_ack_flag(
+                    protocol_features.contains(VhostUserProtocolFeatures::REPLY_ACK),
+                );
                 backend_client
                     .set_backend_req_fd(&tx_fd)
                     .map_err(Error::SetDeviceRequestChannel)?;
