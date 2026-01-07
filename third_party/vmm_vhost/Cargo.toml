@@ -16,6 +16,7 @@ default = []
 [dependencies]
 anyhow = { workspace = true }
 base = { workspace = true }
+bit_field = { workspace = true }
 bitflags = "2.3"
 cfg-if = { workspace = true }
 enumn = { workspace = true }
