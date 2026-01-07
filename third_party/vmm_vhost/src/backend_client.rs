@@ -91,13 +91,12 @@ impl BackendClient {
     /// Set base address for page modification logging.
     pub fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
         let val = VhostUserU64::new(base);
-        let _ = self.send_request_with_body(
+        let hdr = self.send_request_with_body(
             FrontendReq::SET_LOG_BASE,
             &val,
             fd.as_ref().map(std::slice::from_ref),
         )?;
-
-        Ok(())
+        self.wait_for_ack(&hdr)
     }
 
     /// Specify an event file descriptor to signal on log write.
