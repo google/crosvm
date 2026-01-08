@@ -54,7 +54,7 @@ impl BackendReqHandlerImpl {
 }
 
 impl Frontend for BackendReqHandlerImpl {
-    fn shmem_map(&mut self, req: &VhostUserMMap, fd: &dyn AsRawDescriptor) -> HandlerResult<u64> {
+    fn shmem_map(&mut self, req: &VhostUserMMap, fd: &dyn AsRawDescriptor) -> HandlerResult<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
@@ -66,30 +66,30 @@ impl Frontend for BackendReqHandlerImpl {
             );
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.add_mapping(
-            VmMemorySource::Descriptor {
-                descriptor: SafeDescriptor::try_from(fd)
-                    .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
-                offset: req.fd_offset,
-                size: req.len,
-            },
-            req.shm_offset,
-            if req.flags.contains(VhostUserMMapFlags::MAP_RW) {
-                Protection::read_write()
-            } else {
-                Protection::read()
-            },
-            MemCacheType::CacheCoherent,
-        ) {
-            Ok(()) => Ok(0),
-            Err(e) => {
+        shared_mapper_state
+            .mapper
+            .add_mapping(
+                VmMemorySource::Descriptor {
+                    descriptor: SafeDescriptor::try_from(fd)
+                        .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
+                    offset: req.fd_offset,
+                    size: req.len,
+                },
+                req.shm_offset,
+                if req.flags.contains(VhostUserMMapFlags::MAP_RW) {
+                    Protection::read_write()
+                } else {
+                    Protection::read()
+                },
+                MemCacheType::CacheCoherent,
+            )
+            .map_err(|e| {
                 error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::other(e.context("add descriptor mapping")))
-            }
-        }
+                std::io::Error::other(e.context("add descriptor mapping"))
+            })
     }
 
-    fn shmem_unmap(&mut self, req: &VhostUserMMap) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, req: &VhostUserMMap) -> HandlerResult<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
@@ -101,22 +101,20 @@ impl Frontend for BackendReqHandlerImpl {
             );
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.remove_mapping(req.shm_offset) {
-            Ok(()) => Ok(0),
-            Err(e) => {
+        shared_mapper_state
+            .mapper
+            .remove_mapping(req.shm_offset)
+            .map_err(|e| {
                 error!("failed to remove mapping {:?}", e);
-                Err(std::io::Error::other(
-                    e.context("remove memory mapping based on shm offset"),
-                ))
-            }
-        }
+                std::io::Error::other(e.context("remove memory mapping based on shm offset"))
+            })
     }
 
     fn gpu_map(
         &mut self,
         req: &VhostUserGpuMapMsg,
         descriptor: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    ) -> HandlerResult<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
@@ -128,31 +126,29 @@ impl Frontend for BackendReqHandlerImpl {
             );
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.add_mapping(
-            VmMemorySource::Vulkan {
-                descriptor: SafeDescriptor::try_from(descriptor)
-                    .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
-                handle_type: req.handle_type,
-                memory_idx: req.memory_idx,
-                device_uuid: req.device_uuid,
-                driver_uuid: req.driver_uuid,
-                size: req.len,
-            },
-            req.shm_offset,
-            Protection::read_write(),
-            MemCacheType::CacheCoherent,
-        ) {
-            Ok(()) => Ok(0),
-            Err(e) => {
+        shared_mapper_state
+            .mapper
+            .add_mapping(
+                VmMemorySource::Vulkan {
+                    descriptor: SafeDescriptor::try_from(descriptor)
+                        .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
+                    handle_type: req.handle_type,
+                    memory_idx: req.memory_idx,
+                    device_uuid: req.device_uuid,
+                    driver_uuid: req.driver_uuid,
+                    size: req.len,
+                },
+                req.shm_offset,
+                Protection::read_write(),
+                MemCacheType::CacheCoherent,
+            )
+            .map_err(|e| {
                 error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::other(
-                    e.context("add Vulkan source mapping"),
-                ))
-            }
-        }
+                std::io::Error::other(e.context("add Vulkan source mapping"))
+            })
     }
 
-    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<()> {
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()
@@ -164,29 +160,29 @@ impl Frontend for BackendReqHandlerImpl {
             );
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match shared_mapper_state.mapper.add_mapping(
-            VmMemorySource::ExternalMapping {
-                ptr: req.ptr,
-                size: req.len,
-            },
-            req.shm_offset,
-            Protection::read_write(),
-            MemCacheType::CacheCoherent,
-        ) {
-            Ok(()) => Ok(0),
-            Err(e) => {
+        shared_mapper_state
+            .mapper
+            .add_mapping(
+                VmMemorySource::ExternalMapping {
+                    ptr: req.ptr,
+                    size: req.len,
+                },
+                req.shm_offset,
+                Protection::read_write(),
+                MemCacheType::CacheCoherent,
+            )
+            .map_err(|e| {
                 error!("failed to create mapping {:?}", e);
-                Err(std::io::Error::other(e.context("add external mapping")))
-            }
-        }
+                std::io::Error::other(e.context("add external mapping"))
+            })
     }
 
-    fn handle_config_change(&mut self) -> HandlerResult<u64> {
+    fn handle_config_change(&mut self) -> HandlerResult<()> {
         info!("Handle Config Change called");
         match &self.interrupt {
             Some(interrupt) => {
                 interrupt.signal_config_changed();
-                Ok(0)
+                Ok(())
             }
             None => {
                 error!("cannot send interrupt");

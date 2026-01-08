@@ -19,17 +19,17 @@ use crate::Result;
 /// Each method corresponds to a vhost-user protocol method. See the specification for details.
 pub trait Frontend {
     /// Handle device configuration change notifications.
-    fn handle_config_change(&mut self) -> HandlerResult<u64> {
+    fn handle_config_change(&mut self) -> HandlerResult<()> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle shared memory region mapping requests.
-    fn shmem_map(&mut self, _req: &VhostUserMMap, _fd: &dyn AsRawDescriptor) -> HandlerResult<u64> {
+    fn shmem_map(&mut self, _req: &VhostUserMMap, _fd: &dyn AsRawDescriptor) -> HandlerResult<()> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle shared memory region unmapping requests.
-    fn shmem_unmap(&mut self, _req: &VhostUserMMap) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, _req: &VhostUserMMap) -> HandlerResult<()> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
@@ -41,12 +41,12 @@ pub trait Frontend {
         &mut self,
         _req: &VhostUserGpuMapMsg,
         _descriptor: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    ) -> HandlerResult<()> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 
     /// Handle external memory region mapping requests.
-    fn external_map(&mut self, _req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+    fn external_map(&mut self, _req: &VhostUserExternalMapMsg) -> HandlerResult<()> {
         Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
     }
 }
@@ -88,7 +88,7 @@ impl<S: Frontend> FrontendServer<S> {
     /// - serialize calls to this function
     /// - decide what to do when errer happens
     /// - optional recover from failure
-    pub fn handle_request(&mut self) -> Result<u64> {
+    pub fn handle_request(&mut self) -> Result<()> {
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -197,11 +197,7 @@ impl<S: Frontend> FrontendServer<S> {
         ))
     }
 
-    fn send_reply(
-        &mut self,
-        req: &VhostUserMsgHeader<BackendReq>,
-        res: &Result<u64>,
-    ) -> Result<()> {
+    fn send_reply(&mut self, req: &VhostUserMsgHeader<BackendReq>, res: &Result<()>) -> Result<()> {
         let code = req.get_code().map_err(|_| Error::InvalidMessage)?;
         if code == BackendReq::GPU_MAP
             || code == BackendReq::EXTERNAL_MAP
@@ -210,7 +206,7 @@ impl<S: Frontend> FrontendServer<S> {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;
             let def_err = libc::EINVAL;
             let val = match res {
-                Ok(n) => *n,
+                Ok(()) => 0,
                 Err(e) => match e {
                     Error::ReqHandlerError(ioerr) => match ioerr.raw_os_error() {
                         Some(rawerr) => -rawerr as u64,

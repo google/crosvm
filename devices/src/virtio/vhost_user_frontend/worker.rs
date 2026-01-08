@@ -104,7 +104,7 @@ impl Worker {
                         };
 
                         match backend_req_handler.handle_request() {
-                            Ok(_) => (),
+                            Ok(()) => (),
                             Err(VhostError::ClientExit) | Err(VhostError::Disconnect) => {
                                 info!("backend req handler connection closed");
                                 // Stop monitoring `backend_req_handler` as the client closed

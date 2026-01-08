@@ -43,7 +43,7 @@ impl FrontendClient {
         msg: &T,
         fds: Option<&[RawDescriptor]>,
         want_reply: bool,
-    ) -> HandlerResult<u64>
+    ) -> HandlerResult<()>
     where
         T: IntoBytes + Immutable,
     {
@@ -59,13 +59,12 @@ impl FrontendClient {
             [BackendReq::GPU_MAP, BackendReq::EXTERNAL_MAP].contains(&request);
         if need_reply || non_standard_forced_reply {
             self.wait_for_reply(&hdr)
-                .map_err(|e| std::io::Error::other(e.to_string()))
-        } else {
-            Ok(0)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
         }
+        Ok(())
     }
 
-    fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<u64> {
+    fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<()> {
         let (reply, body, rfds) = self.sock.recv_message::<VhostUserU64>()?;
         if !reply.is_valid() || !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
             return Err(Error::InvalidMessage);
@@ -74,13 +73,13 @@ impl FrontendClient {
             return Err(Error::FrontendInternalError);
         }
 
-        Ok(body.value)
+        Ok(())
     }
 }
 
 impl Frontend for FrontendClient {
     /// Handle shared memory region mapping requests.
-    fn shmem_map(&mut self, req: &VhostUserMMap, fd: &dyn AsRawDescriptor) -> HandlerResult<u64> {
+    fn shmem_map(&mut self, req: &VhostUserMMap, fd: &dyn AsRawDescriptor) -> HandlerResult<()> {
         if !self.reply_ack_negotiated {
             base::warn!("SHMEM_MAP without REPLY_ACK is prone to race conditions");
         }
@@ -93,7 +92,7 @@ impl Frontend for FrontendClient {
     }
 
     /// Handle shared memory region unmapping requests.
-    fn shmem_unmap(&mut self, req: &VhostUserMMap) -> HandlerResult<u64> {
+    fn shmem_unmap(&mut self, req: &VhostUserMMap) -> HandlerResult<()> {
         self.send_message(
             BackendReq::SHMEM_UNMAP,
             req,
@@ -103,7 +102,7 @@ impl Frontend for FrontendClient {
     }
 
     /// Handle config change requests.
-    fn handle_config_change(&mut self) -> HandlerResult<u64> {
+    fn handle_config_change(&mut self) -> HandlerResult<()> {
         self.send_message(
             BackendReq::CONFIG_CHANGE_MSG,
             &VhostUserEmptyMessage,
@@ -117,7 +116,7 @@ impl Frontend for FrontendClient {
         &mut self,
         req: &VhostUserGpuMapMsg,
         descriptor: &dyn AsRawDescriptor,
-    ) -> HandlerResult<u64> {
+    ) -> HandlerResult<()> {
         self.send_message(
             BackendReq::GPU_MAP,
             req,
@@ -127,7 +126,7 @@ impl Frontend for FrontendClient {
     }
 
     /// Handle external memory region mapping requests.
-    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<u64> {
+    fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<()> {
         self.send_message(
             BackendReq::EXTERNAL_MAP,
             req,
