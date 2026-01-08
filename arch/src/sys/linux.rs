@@ -7,10 +7,12 @@ use std::sync::Arc;
 
 use acpi_tables::aml::Aml;
 use base::syslog;
+use base::warn;
 use base::AsRawDescriptors;
 use base::Tube;
 use devices::Bus;
 use devices::BusDevice;
+use devices::DevicePowerManager;
 use devices::IommuDevType;
 use devices::IrqChip;
 use devices::IrqEventSource;
@@ -139,6 +141,7 @@ pub struct PlatformBusResources {
     pub regions: Vec<(u64, u64)>, // (start address, size)
     pub irqs: Vec<(u32, u32)>,    // (IRQ number, flags)
     pub iommus: Vec<(IommuDevType, Option<u32>, Vec<u32>)>, // (IOMMU type, IOMMU identifier, IDs)
+    pub requires_power_domain: bool,
 }
 
 impl PlatformBusResources {
@@ -151,6 +154,7 @@ impl PlatformBusResources {
             regions: vec![],
             irqs: vec![],
             iommus: vec![],
+            requires_power_domain: false,
         }
     }
 }
@@ -164,6 +168,7 @@ pub fn generate_platform_bus(
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
     #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
+    dev_pm: &mut Option<DevicePowerManager>,
     protection_type: ProtectionType,
 ) -> Result<
     (
@@ -272,6 +277,24 @@ pub fn generate_platform_bus(
                 .map_err(DeviceRegistrationError::MmioInsert)?;
             device_resources.regions.push((range.0, range.1));
         }
+
+        if let Some(ref mut pm) = dev_pm {
+            let supports_power_management = arced_dev.lock().supports_power_management();
+            match supports_power_management {
+                Err(e) => warn!("Error while detecting PM support, ignoring: {e:#}"),
+                Ok(false) => {}
+                Ok(true) => {
+                    // As we currently restrict one device per vPD and to simplify having a PD ID
+                    // which the VMM, hypervisor, and guest recognize, refer to a PD using the base
+                    // of the MMIO of the device it contains.
+                    let domain_id = ranges.first().unwrap().0.try_into().unwrap();
+                    pm.attach(arced_dev.clone(), domain_id)
+                        .map_err(DeviceRegistrationError::AttachDevicePowerDomain)?;
+                    device_resources.requires_power_domain = true;
+                }
+            }
+        }
+
         bus_dev_resources.push(device_resources);
     }
     Ok((platform_devices, pid_labels, bus_dev_resources))

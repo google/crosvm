@@ -41,6 +41,7 @@ use crate::vfio::VFIO_BASE;
 pub use crate::vfio::VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY;
 pub use crate::vfio::VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY_WITH_WAKEUP;
 pub use crate::vfio::VFIO_DEVICE_FEATURE_LOW_POWER_EXIT;
+pub use crate::vfio::VFIO_DEVICE_FEATURE_PROBE;
 pub use crate::vfio::VFIO_DEVICE_FEATURE_SET;
 pub use crate::vfio::VFIO_DEVICE_FLAGS_PCI;
 pub use crate::vfio::VFIO_DEVICE_FLAGS_PLATFORM;

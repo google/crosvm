@@ -37,6 +37,7 @@ use devices::Bus;
 use devices::BusDeviceObj;
 use devices::BusError;
 use devices::BusType;
+use devices::DevicePowerManager;
 use devices::IrqChip;
 use devices::IrqChipAArch64;
 use devices::IrqEventSource;
@@ -764,6 +765,8 @@ impl arch::LinuxArch for AArch64 {
             .into_iter()
             .map(|(dev, jail_orig)| (*(dev.into_platform_device().unwrap()), jail_orig))
             .collect();
+        // vfio-platform is currently the only backend for PM of platform devices.
+        let mut dev_pm = components.vfio_platform_pm.then(DevicePowerManager::new);
         let (platform_devices, mut platform_pid_debug_label_map, dev_resources) =
             arch::sys::linux::generate_platform_bus(
                 platform_devices,
@@ -773,6 +776,7 @@ impl arch::LinuxArch for AArch64 {
                 &mut vm,
                 #[cfg(feature = "swap")]
                 swap_controller,
+                &mut dev_pm,
                 components.hv_cfg.protection_type,
             )
             .map_err(Error::CreatePlatformBus)?;

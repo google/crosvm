@@ -446,6 +446,8 @@ pub struct VmComponents {
         any(target_os = "android", target_os = "linux")
     ))]
     pub vcpu_domains: BTreeMap<usize, u32>,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub vfio_platform_pm: bool,
     #[cfg(all(
         target_arch = "aarch64",
         any(target_os = "android", target_os = "linux")
@@ -693,6 +695,8 @@ pub enum DeviceRegistrationError {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("Allocating IRQ resource: {0}")]
     AllocateIrqResource(devices::vfio::VfioError),
+    #[error("failed to attach the device to its power domain: {0}")]
+    AttachDevicePowerDomain(anyhow::Error),
     /// Broken pci topology
     #[error("pci topology is broken")]
     BrokenPciTopology,

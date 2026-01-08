@@ -131,6 +131,10 @@ pub enum VfioError {
     VfioPmLowPowerEnter(Error),
     #[error("failed to exit vfio device's low power state: {0}")]
     VfioPmLowPowerExit(Error),
+    #[error("failed to probe support for VFIO low power state entry: {0}")]
+    VfioProbePmLowPowerEntry(Error),
+    #[error("failed to probe support for VFIO low power state exit: {0}")]
+    VfioProbePmLowPowerExit(Error),
 }
 
 type Result<T> = std::result::Result<T, VfioError>;
@@ -1161,6 +1165,18 @@ impl VfioDevice {
         }
     }
 
+    /// Probes support for VFIO LOW_POWER features.
+    pub fn supports_pm_low_power(&self) -> bool {
+        if self.probe_pm_low_power_entry().is_err() {
+            false
+        } else if self.probe_pm_low_power_exit().is_err() {
+            warn!("VFIO supports LOW_POWER_ENTRY but not LOW_POWER_EXIT: ignoring feature");
+            false
+        } else {
+            true
+        }
+    }
+
     /// enter the device's low power state
     pub fn pm_low_power_enter(&self) -> Result<()> {
         self.device_feature(VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY)
@@ -1203,6 +1219,16 @@ impl VfioDevice {
     pub fn pm_low_power_exit(&self) -> Result<()> {
         self.device_feature(VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_EXIT)
             .map_err(VfioError::VfioPmLowPowerExit)
+    }
+
+    fn probe_pm_low_power_entry(&self) -> Result<()> {
+        self.device_feature(VFIO_DEVICE_FEATURE_PROBE | VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY)
+            .map_err(VfioError::VfioProbePmLowPowerEntry)
+    }
+
+    fn probe_pm_low_power_exit(&self) -> Result<()> {
+        self.device_feature(VFIO_DEVICE_FEATURE_PROBE | VFIO_DEVICE_FEATURE_LOW_POWER_EXIT)
+            .map_err(VfioError::VfioProbePmLowPowerExit)
     }
 
     fn device_feature(&self, flags: u32) -> result::Result<(), Error> {

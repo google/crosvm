@@ -2099,6 +2099,15 @@ pub struct RunCommand {
     /// path to sysfs of platform pass through
     pub vfio_platform: Vec<VfioOption>,
 
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    #[argh(switch)]
+    /// expose the LOW_POWER_ENTRY/EXIT feature of VFIO platform devices to guests, if available
+    /// (EXPERIMENTAL) The host kernel may not support the API used by CrosVM
+    pub vfio_platform_pm: Option<bool>,
+
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(switch)]
     /// (DEPRECATED): Use --net.
@@ -2333,6 +2342,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         ))]
         {
             cfg.smccc_trng = cmd.smccc_trng.unwrap_or_default();
+            cfg.vfio_platform_pm = cmd.vfio_platform_pm.unwrap_or_default();
             cfg.virt_cpufreq = cmd.virt_cpufreq.unwrap_or_default();
             cfg.virt_cpufreq_v2 = cmd.virt_cpufreq_upstream.unwrap_or_default();
             if cfg.virt_cpufreq && cfg.virt_cpufreq_v2 {

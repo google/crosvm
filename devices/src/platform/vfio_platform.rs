@@ -72,6 +72,20 @@ impl BusDevice for VfioPlatformDevice {
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
         self.write_mmio(info.address, data)
     }
+
+    fn supports_power_management(&self) -> anyhow::Result<bool> {
+        Ok(self.device.supports_pm_low_power())
+    }
+
+    fn power_on(&mut self) -> anyhow::Result<()> {
+        self.device.pm_low_power_exit()?;
+        Ok(())
+    }
+
+    fn power_off(&mut self) -> anyhow::Result<()> {
+        self.device.pm_low_power_enter()?;
+        Ok(())
+    }
 }
 
 impl Suspendable for VfioPlatformDevice {}

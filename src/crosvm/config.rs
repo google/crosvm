@@ -771,6 +771,8 @@ pub struct Config {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub vfio_isolate_hotplug: bool,
     #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub vfio_platform_pm: bool,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg(target_arch = "aarch64")]
     pub vhost_scmi: bool,
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -1001,6 +1003,8 @@ impl Default for Config {
             vfio: Vec::new(),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             vfio_isolate_hotplug: false,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            vfio_platform_pm: false,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             #[cfg(target_arch = "aarch64")]
             vhost_scmi: false,

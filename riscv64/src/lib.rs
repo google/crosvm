@@ -303,6 +303,7 @@ impl arch::LinuxArch for Riscv64 {
                 &mut vm,
                 #[cfg(feature = "swap")]
                 swap_controller,
+                &mut None,
                 components.hv_cfg.protection_type,
             )
             .map_err(Error::CreatePlatformBus)?;
