@@ -262,6 +262,24 @@ impl IntoIterator for CpuSet {
     }
 }
 
+/// Selects the interface for guest-controlled power management of assigned devices.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub enum DevicePowerManagerConfig {
+    /// Uses the protected KVM hypercall interface.
+    PkvmHvc,
+}
+
+impl FromStr for DevicePowerManagerConfig {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pkvm-hvc" => Ok(Self::PkvmHvc),
+            _ => Err(format!("DevicePowerManagerConfig '{s}' not supported")),
+        }
+    }
+}
+
 /// Deserializes a `CpuSet` from a sequence which elements can either be integers, or strings
 /// representing CPU ranges (e.g. `5-8`).
 impl<'de> Deserialize<'de> for CpuSet {
@@ -400,6 +418,7 @@ pub struct VmComponents {
     ))]
     pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,
     pub delay_rt: bool,
+    pub dev_pm: Option<DevicePowerManagerConfig>,
     pub dynamic_power_coefficient: BTreeMap<usize, u32>,
     pub extra_kernel_params: Vec<String>,
     #[cfg(target_arch = "x86_64")]

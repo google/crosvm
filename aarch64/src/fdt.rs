@@ -72,6 +72,8 @@ const PHANDLE_OPP_DOMAIN_BASE: u32 = 0x1000;
 
 // pKVM pvIOMMUs are assigned phandles starting with this number.
 const PHANDLE_PKVM_PVIOMMU: u32 = 0x2000;
+// pKVM power domains are assigned phandles starting with this number.
+const PHANDLE_PKVM_POWER_DOMAINS: u32 = 0x2800;
 
 // These are specified by the Linux GIC bindings
 const GIC_FDT_IRQ_NUM_CELLS: u32 = 3;
@@ -365,6 +367,20 @@ fn create_pkvm_pviommu_node(fdt: &mut Fdt, index: usize, id: u32) -> Result<u32>
     iommu_node.set_prop("#iommu-cells", 1u32)?;
     iommu_node.set_prop("compatible", "pkvm,pviommu")?;
     iommu_node.set_prop("id", id)?;
+
+    Ok(phandle)
+}
+
+fn create_pkvm_power_domain_node(fdt: &mut Fdt, index: usize) -> Result<u32> {
+    let name = format!("dev_pd{index}");
+    let phandle = PHANDLE_PKVM_POWER_DOMAINS
+        .checked_add(index.try_into().unwrap())
+        .unwrap();
+
+    let iommu_node = fdt.root_mut().subnode_mut(&name)?;
+    iommu_node.set_prop("phandle", phandle)?;
+    iommu_node.set_prop("#power-domain-cells", 0u32)?;
+    iommu_node.set_prop("compatible", "pkvm,device-power")?;
 
     Ok(phandle)
 }
@@ -722,13 +738,27 @@ pub fn create_fdt(
 
     let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;
 
-    let cache_offset = phandles_key_cache.len();
+    let cache_offset_pviommu = phandles_key_cache.len();
     // Hack to extend the lifetime of the Strings as keys of phandles (i.e. &str).
     phandles_key_cache.extend(pviommu_ids.iter().map(|id| format!("pviommu{id}")));
-    let pviommu_phandle_keys = &phandles_key_cache[cache_offset..];
+
+    let cache_offset_pdomains = phandles_key_cache.len();
+    let power_domain_count = platform_dev_resources
+        .iter()
+        .filter(|&d| d.requires_power_domain)
+        .count();
+    phandles_key_cache.extend((0..power_domain_count).map(|i| format!("dev_pd{i}")));
+
+    let pviommu_phandle_keys = &phandles_key_cache[cache_offset_pviommu..cache_offset_pdomains];
+    let pdomains_phandle_keys = &phandles_key_cache[cache_offset_pdomains..];
 
     for (index, (id, key)) in pviommu_ids.iter().zip(pviommu_phandle_keys).enumerate() {
         let phandle = create_pkvm_pviommu_node(&mut fdt, index, *id)?;
+        phandles.insert(key, phandle);
+    }
+
+    for (index, key) in pdomains_phandle_keys.iter().enumerate() {
+        let phandle = create_pkvm_power_domain_node(&mut fdt, index)?;
         phandles.insert(key, phandle);
     }
 

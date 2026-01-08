@@ -4,6 +4,8 @@
 
 //! Abstract device power management.
 
+pub(crate) mod hvc;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

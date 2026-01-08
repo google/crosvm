@@ -21,6 +21,8 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use arch::CpuSet;
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+use arch::DevicePowerManagerConfig;
 use arch::FdtPosition;
 #[cfg(all(target_os = "android", target_arch = "aarch64"))]
 use arch::FfaConfig;
@@ -1050,6 +1052,12 @@ pub struct RunCommand {
     #[argh(switch)]
     /// don't set VCPUs real-time until make-rt command is run
     pub delay_rt: Option<bool>,
+
+    // Currently, only pKVM is supported so limit this option to Android kernel.
+    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    #[argh(option)]
+    /// selects the interface for guest-controlled power management of assigned devices.
+    pub dev_pm: Option<DevicePowerManagerConfig>,
 
     #[argh(option, arg_name = "PATH[,filter]")]
     /// path to device tree overlay binary which will be applied to the base guest device tree
@@ -2389,6 +2397,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(all(target_os = "android", target_arch = "aarch64"))]
         {
             cfg.ffa = cmd.ffa;
+            cfg.dev_pm = cmd.dev_pm;
         }
 
         cfg.hugepages = cmd.hugepages.unwrap_or_default();

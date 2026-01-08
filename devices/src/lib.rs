@@ -126,6 +126,7 @@ pub use self::pflash::Pflash;
 pub use self::pflash::PflashParameters;
 pub use self::pl030::Pl030;
 pub use self::pmc_virt::VirtualPmc;
+pub use self::power::hvc::HvcDevicePowerManager;
 pub use self::power::DevicePowerManager;
 pub use self::serial::Serial;
 pub use self::serial_device::Error as SerialError;

@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use arch::set_default_serial_parameters;
 use arch::CpuSet;
+use arch::DevicePowerManagerConfig;
 use arch::FdtPosition;
 #[cfg(all(target_os = "android", target_arch = "aarch64"))]
 use arch::FfaConfig;
@@ -625,6 +626,7 @@ pub struct Config {
     #[cfg(feature = "crash-report")]
     pub crash_report_uuid: Option<String>,
     pub delay_rt: bool,
+    pub dev_pm: Option<DevicePowerManagerConfig>,
     pub device_tree_overlay: Vec<DtboOption>,
     pub disable_virtio_intx: bool,
     pub disks: Vec<DiskOption>,
@@ -859,6 +861,7 @@ impl Default for Config {
             cpu_ipc_ratio: BTreeMap::new(),
             delay_rt: false,
             device_tree_overlay: Vec::new(),
+            dev_pm: None,
             disks: Vec::new(),
             disable_virtio_intx: false,
             display_input_height: None,

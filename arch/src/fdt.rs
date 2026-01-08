@@ -65,6 +65,14 @@ fn get_iommu_phandle(
     .ok_or_else(|| Error::MissingIommuPhandle(format!("{iommu_type:?}"), id))
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn get_power_domain_phandle(offset: usize, phandles: &BTreeMap<&str, u32>) -> Result<u32> {
+    phandles
+        .get(format!("dev_pd{offset}").as_str())
+        .copied()
+        .ok_or(Error::MissingPowerDomain(offset))
+}
+
 // Find the device node at given path and update its `reg` and `interrupts` properties using
 // its platform resources.
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -73,6 +81,7 @@ fn update_device_nodes(
     fdt: &mut Fdt,
     resources: &PlatformBusResources,
     phandles: &BTreeMap<&str, u32>,
+    power_domain_count: &mut usize,
 ) -> Result<()> {
     const GIC_FDT_IRQ_TYPE_SPI: u32 = 0;
 
@@ -107,6 +116,12 @@ fn update_device_nodes(
             iommus_val.extend_from_slice(vsids);
         }
         node.set_prop("iommus", iommus_val)?;
+    }
+
+    if resources.requires_power_domain {
+        let phandle = get_power_domain_phandle(*power_domain_count, phandles)?;
+        node.set_prop("power-domains", phandle)?;
+        *power_domain_count += 1;
     }
 
     Ok(())
@@ -145,9 +160,10 @@ pub fn apply_device_tree_overlays(
             }
         });
 
+        let mut power_domain_count = 0;
         // Update device nodes found in this overlay, and then apply the overlay.
         for (path, res) in node_paths.into_iter().zip(&devs_in_overlay) {
-            update_device_nodes(path, &mut overlay, res, phandles)?;
+            update_device_nodes(path, &mut overlay, res, phandles, &mut power_domain_count)?;
         }
 
         // Unfiltered DTBOs applied as whole.
