@@ -150,6 +150,33 @@ pub trait BusDevice: Send + Suspendable {
     /// Invoked when the device is destroyed
     fn destroy_device(&mut self) {}
 
+    /// Supports runtime power_on()/power_off()
+    fn supports_power_management(&self) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+
+    /// Returns whether the device starts powered on.
+    fn initial_power_state(&self) -> bool {
+        // Most devices should start on, in particular if they don't support PM.
+        true
+    }
+
+    /// Powers the device on.
+    fn power_on(&mut self) -> anyhow::Result<()> {
+        Err(anyhow!(
+            "power_on not implemented for {}",
+            std::any::type_name::<Self>()
+        ))
+    }
+
+    /// Powers the device off.
+    fn power_off(&mut self) -> anyhow::Result<()> {
+        Err(anyhow!(
+            "power_off not implemented for {}",
+            std::any::type_name::<Self>()
+        ))
+    }
+
     /// Returns the secondary bus number if this bus device is pci bridge
     fn is_bridge(&self) -> Option<u8> {
         None
