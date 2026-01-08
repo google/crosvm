@@ -205,9 +205,6 @@ impl<S: Frontend> FrontendServer<S> {
         let code = req.get_code().map_err(|_| Error::InvalidMessage)?;
         if code == BackendReq::GPU_MAP
             || code == BackendReq::EXTERNAL_MAP
-            // TODO(fmayle): Remove SHMEM cases once REPLY_ACK negotiation is supported.
-            || code == BackendReq::SHMEM_MAP
-            || code == BackendReq::SHMEM_UNMAP
             || (self.reply_ack_negotiated && req.is_need_reply())
         {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;

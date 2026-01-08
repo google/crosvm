@@ -696,7 +696,11 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
 
     fn set_backend_req_fd(&mut self, ep: Connection<BackendReq>) {
         let conn = VhostBackendReqConnection::new(
-            FrontendClient::new(ep),
+            FrontendClient::new(
+                ep,
+                self.acked_protocol_features
+                    .contains(VhostUserProtocolFeatures::REPLY_ACK),
+            ),
             self.backend.get_shared_memory_region().map(|r| r.id),
         );
 
