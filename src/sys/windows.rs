@@ -290,7 +290,7 @@ type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
 fn create_vhost_user_block_device(
     cfg: &Config,
-    connection: Connection<FrontendReq>,
+    connection: Connection,
     vm_evt_wrtube: SendTube,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
@@ -333,7 +333,7 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
 #[cfg(feature = "gpu")]
 fn create_vhost_user_gpu_device(
     base_features: u64,
-    connection: Connection<FrontendReq>,
+    connection: Connection,
     vm_evt_wrtube: SendTube,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
@@ -358,7 +358,7 @@ fn create_vhost_user_gpu_device(
 #[cfg(feature = "audio")]
 fn create_vhost_user_snd_device(
     base_features: u64,
-    connection: Connection<FrontendReq>,
+    connection: Connection,
     vm_evt_wrtube: SendTube,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
@@ -417,7 +417,7 @@ fn create_mouse_device(cfg: &Config, event_pipe: StreamChannel, idx: u32) -> Dev
 #[cfg(feature = "slirp")]
 fn create_vhost_user_net_device(
     cfg: &Config,
-    connection: Connection<FrontendReq>,
+    connection: Connection,
     vm_evt_wrtube: SendTube,
 ) -> DeviceResult {
     let features = virtio::base_features(cfg.protection_type);
@@ -542,7 +542,7 @@ fn create_virtio_devices(
         info!("Starting up vhost user block backends...");
         for _disk in &cfg.disks {
             let disk_device_tube = cfg.block_vhost_user_tube.remove(0);
-            let connection = Connection::<FrontendReq>::from(disk_device_tube);
+            let connection = Connection::from(disk_device_tube);
             devs.push(create_vhost_user_block_device(
                 cfg,
                 connection,
@@ -589,7 +589,7 @@ fn create_virtio_devices(
 
     #[cfg(feature = "slirp")]
     if let Some(net_vhost_user_tube) = cfg.net_vhost_user_tube.take() {
-        let connection = Connection::<FrontendReq>::from(net_vhost_user_tube);
+        let connection = Connection::from(net_vhost_user_tube);
         devs.push(create_vhost_user_net_device(
             cfg,
             connection,
@@ -770,7 +770,7 @@ fn create_virtio_gpu_device(
         .main_vhost_user_tube
         .take()
         .expect("GPU VMM vhost-user tube should be set");
-    let connection = Connection::<FrontendReq>::from(gpu_device_tube);
+    let connection = Connection::from(gpu_device_tube);
 
     create_vhost_user_gpu_device(
         virtio::base_features(cfg.protection_type),
@@ -803,7 +803,7 @@ fn create_virtio_snd_device(
         .main_vhost_user_tube
         .take()
         .expect("Snd VMM vhost-user tube should be set");
-    let connection = Connection::<FrontendReq>::from(snd_device_tube);
+    let connection = Connection::from(snd_device_tube);
 
     create_vhost_user_snd_device(
         virtio::base_features(cfg.protection_type),

@@ -22,8 +22,6 @@ use base::ScmSocket;
 
 use crate::connection::Listener;
 use crate::frontend_server::FrontendServer;
-use crate::message::FrontendReq;
-use crate::message::Req;
 use crate::message::MAX_ATTACHED_FD_ENTRIES;
 use crate::Connection;
 use crate::Error;
@@ -85,7 +83,7 @@ impl Listener for SocketListener {
     /// * - Some(SystemListener): new SystemListener object if new incoming connection is available.
     /// * - None: no incoming connection available.
     /// * - SocketError: errors from accept().
-    fn accept(&mut self) -> Result<Option<Connection<FrontendReq>>> {
+    fn accept(&mut self) -> Result<Option<Connection>> {
         loop {
             match self.fd.accept() {
                 Ok((stream, _addr)) => {
@@ -259,7 +257,7 @@ impl ReadNotifier for SocketPlatformConnection {
     }
 }
 
-impl<R: Req> TryFrom<SafeDescriptor> for Connection<R> {
+impl TryFrom<SafeDescriptor> for Connection {
     type Error = Error;
 
     fn try_from(fd: SafeDescriptor) -> Result<Self> {
@@ -267,7 +265,7 @@ impl<R: Req> TryFrom<SafeDescriptor> for Connection<R> {
     }
 }
 
-impl<R: Req> TryFrom<UnixStream> for Connection<R> {
+impl TryFrom<UnixStream> for Connection {
     type Error = Error;
 
     fn try_from(sock: UnixStream) -> Result<Self> {
@@ -276,12 +274,11 @@ impl<R: Req> TryFrom<UnixStream> for Connection<R> {
                 sock: sock.try_into().map_err(Error::SocketError)?,
             },
             std::marker::PhantomData,
-            std::marker::PhantomData,
         ))
     }
 }
 
-impl<R: Req> Connection<R> {
+impl Connection {
     /// Create a pair of unnamed vhost-user connections connected to each other.
     pub fn pair() -> Result<(Self, Self)> {
         let (client, server) = UnixStream::pair().map_err(Error::SocketError)?;

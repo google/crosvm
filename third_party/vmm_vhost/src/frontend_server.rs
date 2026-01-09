@@ -55,7 +55,7 @@ pub trait Frontend {
 /// methods.
 pub struct FrontendServer<S: Frontend> {
     // underlying Unix domain socket for communication
-    pub(crate) sub_sock: Connection<BackendReq>,
+    pub(crate) sub_sock: Connection,
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
 
@@ -64,7 +64,7 @@ pub struct FrontendServer<S: Frontend> {
 
 impl<S: Frontend> FrontendServer<S> {
     /// Create a server to handle requests from `connection`.
-    pub(crate) fn new(frontend: S, connection: Connection<BackendReq>) -> Result<Self> {
+    pub(crate) fn new(frontend: S, connection: Connection) -> Result<Self> {
         Ok(FrontendServer {
             sub_sock: connection,
             reply_ack_negotiated: false,
@@ -149,18 +149,14 @@ impl<S: Frontend> FrontendServer<S> {
         res
     }
 
-    fn check_msg_size(&self, hdr: &VhostUserMsgHeader<BackendReq>, expected: usize) -> Result<()> {
+    fn check_msg_size(&self, hdr: &VhostUserMsgHeader, expected: usize) -> Result<()> {
         if hdr.get_size() as usize != expected {
             return Err(Error::InvalidMessage);
         }
         Ok(())
     }
 
-    fn check_attached_files(
-        &self,
-        hdr: &VhostUserMsgHeader<BackendReq>,
-        files: &[File],
-    ) -> Result<()> {
+    fn check_attached_files(&self, hdr: &VhostUserMsgHeader, files: &[File]) -> Result<()> {
         let expected_num_files = match hdr.get_code().map_err(|_| Error::InvalidMessage)? {
             // Expect a single file is passed.
             BackendReq::SHMEM_MAP | BackendReq::GPU_MAP => 1,
@@ -176,7 +172,7 @@ impl<S: Frontend> FrontendServer<S> {
 
     fn extract_msg_body<T: FromBytes + VhostUserMsgValidator>(
         &self,
-        hdr: &VhostUserMsgHeader<BackendReq>,
+        hdr: &VhostUserMsgHeader,
         buf: &[u8],
     ) -> Result<T> {
         self.check_msg_size(hdr, mem::size_of::<T>())?;
@@ -187,18 +183,18 @@ impl<S: Frontend> FrontendServer<S> {
         Ok(msg)
     }
 
-    fn new_reply_header<T: Sized>(
-        &self,
-        req: &VhostUserMsgHeader<BackendReq>,
-    ) -> Result<VhostUserMsgHeader<BackendReq>> {
+    fn new_reply_header<T: Sized>(&self, req: &VhostUserMsgHeader) -> Result<VhostUserMsgHeader> {
         Ok(VhostUserMsgHeader::new_reply_header(
-            req.get_code().map_err(|_| Error::InvalidMessage)?,
+            req.get_code::<BackendReq>()
+                .map_err(|_| Error::InvalidMessage)?,
             mem::size_of::<T>() as u32,
         ))
     }
 
-    fn send_reply(&mut self, req: &VhostUserMsgHeader<BackendReq>, res: &Result<()>) -> Result<()> {
-        let code = req.get_code().map_err(|_| Error::InvalidMessage)?;
+    fn send_reply(&mut self, req: &VhostUserMsgHeader, res: &Result<()>) -> Result<()> {
+        let code = req
+            .get_code::<BackendReq>()
+            .map_err(|_| Error::InvalidMessage)?;
         if code == BackendReq::GPU_MAP
             || code == BackendReq::EXTERNAL_MAP
             || (self.reply_ack_negotiated && req.is_need_reply())

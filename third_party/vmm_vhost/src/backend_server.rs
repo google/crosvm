@@ -14,7 +14,6 @@ use zerocopy::Ref;
 
 use crate::into_single_file;
 use crate::message::*;
-use crate::BackendReq;
 use crate::Connection;
 use crate::Error;
 use crate::FrontendReq;
@@ -60,7 +59,7 @@ pub trait Backend {
         flags: VhostUserConfigFlags,
     ) -> Result<Vec<u8>>;
     fn set_config(&mut self, offset: u32, buf: &[u8], flags: VhostUserConfigFlags) -> Result<()>;
-    fn set_backend_req_fd(&mut self, _vu_req: Connection<BackendReq>) {}
+    fn set_backend_req_fd(&mut self, _vu_req: Connection) {}
     fn get_inflight_fd(
         &mut self,
         inflight: &VhostUserInflight,
@@ -169,7 +168,7 @@ where
         self.as_mut().set_config(offset, buf, flags)
     }
 
-    fn set_backend_req_fd(&mut self, vu_req: Connection<BackendReq>) {
+    fn set_backend_req_fd(&mut self, vu_req: Connection) {
         self.as_mut().set_backend_req_fd(vu_req)
     }
 
@@ -218,7 +217,7 @@ where
 /// Handles requests from a vhost-user connection by dispatching them to [[Backend]] methods.
 pub struct BackendServer<S: Backend> {
     /// Underlying connection for communication.
-    connection: Connection<FrontendReq>,
+    connection: Connection,
     // the vhost-user backend device object
     backend: S,
 
@@ -238,7 +237,7 @@ impl<S: Backend> AsRef<S> for BackendServer<S> {
 }
 
 impl<S: Backend> BackendServer<S> {
-    pub fn new(connection: Connection<FrontendReq>, backend: S) -> Self {
+    pub fn new(connection: Connection, backend: S) -> Self {
         BackendServer {
             connection,
             backend,
@@ -297,7 +296,7 @@ impl<S: Backend> BackendServer<S> {
     ///   backend_server.process_message(&hdr, &files).unwrap();
     /// }
     /// ```
-    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<FrontendReq>, Vec<File>)> {
+    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader, Vec<File>)> {
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -332,7 +331,7 @@ impl<S: Backend> BackendServer<S> {
     /// [`BackendServer::process_message`].
     ///
     /// See [`BackendServer::recv_header`]'s doc comment for the usage.
-    pub fn needs_wait_for_payload(&self, hdr: &VhostUserMsgHeader<FrontendReq>) -> bool {
+    pub fn needs_wait_for_payload(&self, hdr: &VhostUserMsgHeader) -> bool {
         // Since the vhost-user protocol uses stream mode, we need to wait until an additional
         // payload is available if exists.
         hdr.get_size() != 0
@@ -350,11 +349,7 @@ impl<S: Backend> BackendServer<S> {
     /// * `Err(Disconnect)`: the connection was closed unexpectedly.
     /// * `Err(InvalidMessage)`: the vmm sent a illegal message.
     /// * other errors: failed to handle a request.
-    pub fn process_message(
-        &mut self,
-        hdr: VhostUserMsgHeader<FrontendReq>,
-        files: Vec<File>,
-    ) -> Result<()> {
+    pub fn process_message(&mut self, hdr: VhostUserMsgHeader, files: Vec<File>) -> Result<()> {
         let (buf, extra_files) = self.connection.recv_body_bytes(&hdr)?;
         let size = buf.len();
         if !extra_files.is_empty() {
@@ -636,7 +631,7 @@ impl<S: Backend> BackendServer<S> {
                     // Just in case, set the "invalid FD" flag on error.
                     Err(_) => (VhostUserU64::new(0x101), None),
                 };
-                let reply_hdr: VhostUserMsgHeader<FrontendReq> =
+                let reply_hdr: VhostUserMsgHeader =
                     self.new_reply_header::<VhostUserU64>(&hdr, 0)?;
                 self.connection.send_message(
                     &reply_hdr,
@@ -669,11 +664,12 @@ impl<S: Backend> BackendServer<S> {
 
     fn new_reply_header<T: Sized>(
         &self,
-        req: &VhostUserMsgHeader<FrontendReq>,
+        req: &VhostUserMsgHeader,
         payload_size: usize,
-    ) -> Result<VhostUserMsgHeader<FrontendReq>> {
+    ) -> Result<VhostUserMsgHeader> {
         Ok(VhostUserMsgHeader::new_reply_header(
-            req.get_code().map_err(|_| Error::InvalidMessage)?,
+            req.get_code::<FrontendReq>()
+                .map_err(|_| Error::InvalidMessage)?,
             (mem::size_of::<T>()
                 .checked_add(payload_size)
                 .ok_or(Error::OversizedMsg)?)
@@ -683,14 +679,9 @@ impl<S: Backend> BackendServer<S> {
     }
 
     /// Sends reply back to Vhost frontend in response to a message.
-    fn send_ack_message(
-        &mut self,
-        req: &VhostUserMsgHeader<FrontendReq>,
-        success: bool,
-    ) -> Result<()> {
+    fn send_ack_message(&mut self, req: &VhostUserMsgHeader, success: bool) -> Result<()> {
         if self.reply_ack_enabled && req.is_need_reply() {
-            let hdr: VhostUserMsgHeader<FrontendReq> =
-                self.new_reply_header::<VhostUserU64>(req, 0)?;
+            let hdr: VhostUserMsgHeader = self.new_reply_header::<VhostUserU64>(req, 0)?;
             let val = if success { 0 } else { 1 };
             let msg = VhostUserU64::new(val);
             self.connection.send_message(&hdr, &msg, None)?;
@@ -700,7 +691,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn send_reply_message<T: IntoBytes + Immutable>(
         &mut self,
-        req: &VhostUserMsgHeader<FrontendReq>,
+        req: &VhostUserMsgHeader,
         msg: &T,
     ) -> Result<()> {
         let hdr = self.new_reply_header::<T>(req, 0)?;
@@ -710,7 +701,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn send_reply_with_payload<T: IntoBytes + Immutable>(
         &mut self,
-        req: &VhostUserMsgHeader<FrontendReq>,
+        req: &VhostUserMsgHeader,
         msg: &T,
         payload: &[u8],
     ) -> Result<()> {
@@ -722,7 +713,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn set_mem_table(
         &mut self,
-        hdr: &VhostUserMsgHeader<FrontendReq>,
+        hdr: &VhostUserMsgHeader,
         size: usize,
         buf: &[u8],
         files: Vec<File>,
@@ -759,7 +750,7 @@ impl<S: Backend> BackendServer<S> {
         self.backend.set_mem_table(&regions, files)
     }
 
-    fn get_config(&mut self, hdr: &VhostUserMsgHeader<FrontendReq>, buf: &[u8]) -> Result<()> {
+    fn get_config(&mut self, hdr: &VhostUserMsgHeader, buf: &[u8]) -> Result<()> {
         let (msg, payload) =
             Ref::<_, VhostUserConfig>::from_prefix(buf).map_err(|_| Error::InvalidMessage)?;
         if !msg.is_valid() {
@@ -849,7 +840,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn check_request_size(
         &self,
-        hdr: &VhostUserMsgHeader<FrontendReq>,
+        hdr: &VhostUserMsgHeader,
         size: usize,
         expected: usize,
     ) -> Result<()> {
@@ -863,11 +854,7 @@ impl<S: Backend> BackendServer<S> {
         Ok(())
     }
 
-    fn check_attached_files(
-        &self,
-        hdr: &VhostUserMsgHeader<FrontendReq>,
-        files: &[File],
-    ) -> Result<()> {
+    fn check_attached_files(&self, hdr: &VhostUserMsgHeader, files: &[File]) -> Result<()> {
         match hdr.get_code() {
             Ok(FrontendReq::SET_MEM_TABLE)
             | Ok(FrontendReq::SET_VRING_CALL)
@@ -887,7 +874,7 @@ impl<S: Backend> BackendServer<S> {
 
     fn extract_request_body<T: Sized + FromBytes + VhostUserMsgValidator>(
         &self,
-        hdr: &VhostUserMsgHeader<FrontendReq>,
+        hdr: &VhostUserMsgHeader,
         size: usize,
         buf: &[u8],
     ) -> Result<T> {

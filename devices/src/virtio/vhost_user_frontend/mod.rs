@@ -104,7 +104,7 @@ impl VhostUserFrontend {
     pub fn new(
         device_type: DeviceType,
         mut base_features: u64,
-        connection: vmm_vhost::Connection<vmm_vhost::FrontendReq>,
+        connection: vmm_vhost::Connection,
         vm_evt_wrtube: SendTube,
         max_queue_size: Option<u16>,
         pci_address: Option<PciAddress>,

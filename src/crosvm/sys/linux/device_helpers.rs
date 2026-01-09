@@ -388,7 +388,7 @@ impl<'a> VirtioDeviceBuilder for &'a ScsiConfig<'a> {
 fn vhost_user_connection(
     path: &Path,
     connect_timeout_ms: Option<u64>,
-) -> Result<vmm_vhost::Connection<vmm_vhost::FrontendReq>> {
+) -> Result<vmm_vhost::Connection> {
     let deadline = connect_timeout_ms.map(|t| Instant::now() + Duration::from_millis(t));
     let mut first = true;
     loop {

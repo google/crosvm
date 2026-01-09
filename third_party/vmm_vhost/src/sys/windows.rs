@@ -20,7 +20,6 @@ use serde::Serialize;
 use tube_transporter::packed_tube;
 pub use TubePlatformConnection as PlatformConnection;
 
-use crate::message::Req;
 use crate::Connection;
 use crate::Error;
 use crate::Frontend;
@@ -172,7 +171,7 @@ impl TubePlatformConnection {
     }
 }
 
-impl<R: Req> TryFrom<SafeDescriptor> for Connection<R> {
+impl TryFrom<SafeDescriptor> for Connection {
     type Error = Error;
 
     fn try_from(fd: SafeDescriptor) -> Result<Self> {
@@ -182,17 +181,13 @@ impl<R: Req> TryFrom<SafeDescriptor> for Connection<R> {
     }
 }
 
-impl<R: Req> From<Tube> for Connection<R> {
+impl From<Tube> for Connection {
     fn from(tube: Tube) -> Self {
-        Self(
-            PlatformConnection::from(tube),
-            std::marker::PhantomData,
-            std::marker::PhantomData,
-        )
+        Self(PlatformConnection::from(tube), std::marker::PhantomData)
     }
 }
 
-impl<R: Req> Connection<R> {
+impl Connection {
     /// Create a pair of unnamed vhost-user connections connected to each other.
     pub fn pair() -> Result<(Self, Self)> {
         let (client, server) = Tube::pair().map_err(Error::TubeError)?;

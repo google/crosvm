@@ -27,13 +27,13 @@ use crate::SharedMemoryRegion;
 
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 pub struct BackendClient {
-    connection: Connection<FrontendReq>,
+    connection: Connection,
     set_need_reply: bool,
 }
 
 impl BackendClient {
     /// Create a new instance.
-    pub fn new(connection: Connection<FrontendReq>) -> Self {
+    pub fn new(connection: Connection) -> Self {
         BackendClient {
             connection,
             set_need_reply: false,
@@ -403,7 +403,7 @@ impl BackendClient {
         &self,
         code: FrontendReq,
         fds: Option<&[RawDescriptor]>,
-    ) -> VhostUserResult<VhostUserMsgHeader<FrontendReq>> {
+    ) -> VhostUserResult<VhostUserMsgHeader> {
         let hdr = self.new_request_header(code, 0);
         self.connection.send_header_only_message(&hdr, fds)?;
         Ok(hdr)
@@ -414,7 +414,7 @@ impl BackendClient {
         code: FrontendReq,
         msg: &T,
         fds: Option<&[RawDescriptor]>,
-    ) -> VhostUserResult<VhostUserMsgHeader<FrontendReq>> {
+    ) -> VhostUserResult<VhostUserMsgHeader> {
         let hdr = self.new_request_header(code, mem::size_of::<T>() as u32);
         self.connection.send_message(&hdr, msg, fds)?;
         Ok(hdr)
@@ -426,7 +426,7 @@ impl BackendClient {
         msg: &T,
         payload: &[u8],
         fds: Option<&[RawDescriptor]>,
-    ) -> VhostUserResult<VhostUserMsgHeader<FrontendReq>> {
+    ) -> VhostUserResult<VhostUserMsgHeader> {
         let len = mem::size_of::<T>()
             .checked_add(payload.len())
             .ok_or(VhostUserError::OversizedMsg)?;
@@ -444,7 +444,7 @@ impl BackendClient {
         code: FrontendReq,
         queue_index: usize,
         fd: RawDescriptor,
-    ) -> VhostUserResult<VhostUserMsgHeader<FrontendReq>> {
+    ) -> VhostUserResult<VhostUserMsgHeader> {
         // Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag.
         // This flag is set when there is no file descriptor in the ancillary data. This signals
         // that polling will be used instead of waiting for the call.
@@ -456,7 +456,7 @@ impl BackendClient {
 
     fn recv_reply<T: Sized + FromBytes + IntoBytes + Default + VhostUserMsgValidator>(
         &self,
-        hdr: &VhostUserMsgHeader<FrontendReq>,
+        hdr: &VhostUserMsgHeader,
     ) -> VhostUserResult<T> {
         if hdr.is_reply() {
             return Err(VhostUserError::InvalidParam(
@@ -472,7 +472,7 @@ impl BackendClient {
 
     fn recv_reply_with_files<T: Sized + IntoBytes + FromBytes + Default + VhostUserMsgValidator>(
         &self,
-        hdr: &VhostUserMsgHeader<FrontendReq>,
+        hdr: &VhostUserMsgHeader,
     ) -> VhostUserResult<(T, Vec<File>)> {
         if hdr.is_reply() {
             return Err(VhostUserError::InvalidParam(
@@ -491,7 +491,7 @@ impl BackendClient {
         T: Sized + IntoBytes + FromBytes + Default + VhostUserMsgValidator,
     >(
         &self,
-        hdr: &VhostUserMsgHeader<FrontendReq>,
+        hdr: &VhostUserMsgHeader,
     ) -> VhostUserResult<(T, Vec<u8>, Vec<File>)> {
         if hdr.is_reply() {
             return Err(VhostUserError::InvalidParam(
@@ -513,7 +513,7 @@ impl BackendClient {
         Ok((body, buf, files))
     }
 
-    fn wait_for_ack(&self, hdr: &VhostUserMsgHeader<FrontendReq>) -> VhostUserResult<()> {
+    fn wait_for_ack(&self, hdr: &VhostUserMsgHeader) -> VhostUserResult<()> {
         if !hdr.is_need_reply() {
             return Ok(());
         }
@@ -529,11 +529,7 @@ impl BackendClient {
     }
 
     #[inline]
-    fn new_request_header(
-        &self,
-        request: FrontendReq,
-        size: u32,
-    ) -> VhostUserMsgHeader<FrontendReq> {
+    fn new_request_header(&self, request: FrontendReq, size: u32) -> VhostUserMsgHeader {
         VhostUserMsgHeader::new_request_header(request, size, self.set_need_reply)
     }
 }
@@ -583,7 +579,7 @@ mod tests {
     const BUFFER_SIZE: usize = 0x1001;
     const INVALID_PROTOCOL_FEATURE: u64 = 1 << 63;
 
-    fn create_pair() -> (BackendClient, Connection<FrontendReq>) {
+    fn create_pair() -> (BackendClient, Connection) {
         let (client_connection, server_connection) = Connection::pair().unwrap();
         let backend_client = BackendClient::new(client_connection);
         (backend_client, server_connection)

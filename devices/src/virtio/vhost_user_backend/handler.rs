@@ -92,7 +92,6 @@ use vmm_vhost::message::VhostUserSingleMemoryRegion;
 use vmm_vhost::message::VhostUserTransferDirection;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
-use vmm_vhost::BackendReq;
 use vmm_vhost::Connection;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::Frontend;
@@ -694,7 +693,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         Ok(())
     }
 
-    fn set_backend_req_fd(&mut self, ep: Connection<BackendReq>) {
+    fn set_backend_req_fd(&mut self, ep: Connection) {
         let conn = VhostBackendReqConnection::new(
             FrontendClient::new(
                 ep,
@@ -1154,8 +1153,7 @@ mod tests {
     fn test_vhost_user_lifecycle_parameterized(allow_backend_req: bool) {
         const QUEUES_NUM: usize = 2;
 
-        let (client_connection, server_connection) =
-            vmm_vhost::Connection::<FrontendReq>::pair().unwrap();
+        let (client_connection, server_connection) = vmm_vhost::Connection::pair().unwrap();
 
         let vmm_bar = Arc::new(Barrier::new(2));
         let dev_bar = vmm_bar.clone();

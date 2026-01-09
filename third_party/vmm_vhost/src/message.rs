@@ -10,7 +10,6 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use std::fmt::Debug;
-use std::marker::PhantomData;
 
 use bitflags::bitflags;
 use zerocopy::FromBytes;
@@ -252,39 +251,16 @@ pub struct VhostUserHeaderFlags {
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
 #[repr(C)]
-#[derive(Copy)]
-pub struct VhostUserMsgHeader<R: Req> {
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct VhostUserMsgHeader {
     request: u32,
     flags: VhostUserHeaderFlags,
     size: u32,
-    _r: PhantomData<R>,
 }
 
-impl<R: Req> Debug for VhostUserMsgHeader<R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VhostUserMsgHeader")
-            .field("request", &{ self.request })
-            .field("flags", &{ self.flags })
-            .field("size", &{ self.size })
-            .finish()
-    }
-}
-
-impl<R: Req> Clone for VhostUserMsgHeader<R> {
-    fn clone(&self) -> VhostUserMsgHeader<R> {
-        *self
-    }
-}
-
-impl<R: Req> PartialEq for VhostUserMsgHeader<R> {
-    fn eq(&self, other: &Self) -> bool {
-        self.request == other.request && self.flags == other.flags && self.size == other.size
-    }
-}
-
-impl<R: Req> VhostUserMsgHeader<R> {
+impl VhostUserMsgHeader {
     /// Header for a request.
-    pub fn new_request_header(request: R, size: u32, need_reply: bool) -> Self {
+    pub fn new_request_header(request: impl Req, size: u32, need_reply: bool) -> Self {
         let mut flags = VhostUserHeaderFlags::new();
         flags.set_version(1);
         flags.set_need_reply(need_reply);
@@ -292,12 +268,11 @@ impl<R: Req> VhostUserMsgHeader<R> {
             request: request.into(),
             flags,
             size,
-            _r: PhantomData,
         }
     }
 
     /// Header for a reply.
-    pub fn new_reply_header(request: R, size: u32) -> Self {
+    pub fn new_reply_header(request: impl Req, size: u32) -> Self {
         let mut flags = VhostUserHeaderFlags::new();
         flags.set_version(1);
         flags.set_is_reply(true);
@@ -305,7 +280,6 @@ impl<R: Req> VhostUserMsgHeader<R> {
             request: request.into(),
             flags,
             size,
-            _r: PhantomData,
         }
     }
 
@@ -318,17 +292,16 @@ impl<R: Req> VhostUserMsgHeader<R> {
             request: raw[0],
             flags: zerocopy::transmute!(raw[1]),
             size: raw[2],
-            _r: PhantomData,
         }
     }
 
     /// Get message type.
-    pub fn get_code(&self) -> std::result::Result<R, R::Error> {
+    pub fn get_code<R: Req>(&self) -> std::result::Result<R, R::Error> {
         R::try_from(self.request)
     }
 
     /// Set message type.
-    fn set_code(&mut self, request: R) {
+    fn set_code(&mut self, request: impl Req) {
         self.request = request.into();
     }
 
@@ -348,7 +321,7 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 
     /// Check whether it's the reply message for the request `req`.
-    pub fn is_reply_for(&self, req: &VhostUserMsgHeader<R>) -> bool {
+    pub fn is_reply_for(&self, req: &VhostUserMsgHeader) -> bool {
         self.is_reply() && !req.is_reply() && self.request == req.request
     }
 
@@ -358,12 +331,10 @@ impl<R: Req> VhostUserMsgHeader<R> {
     }
 }
 
-impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
+impl VhostUserMsgValidator for VhostUserMsgHeader {
     #[allow(clippy::if_same_then_else)]
     fn is_valid(&self) -> bool {
-        if self.get_code().is_err() {
-            return false;
-        } else if self.get_version() != 0x1 {
+        if self.get_version() != 0x1 {
             return false;
         } else if self.flags.get_reserved() != 0 {
             return false;
@@ -1196,11 +1167,6 @@ mod tests {
         assert!(!hdr.is_valid());
         hdr.flags.set_version(0x1);
         assert!(hdr.is_valid());
-
-        // Test Debug, Clone, PartiaEq trait
-        assert_eq!(hdr, hdr.clone());
-        assert_eq!(hdr.clone().get_code(), hdr.get_code());
-        assert_eq!(format!("{:?}", hdr.clone()), format!("{:?}", hdr));
     }
 
     #[test]

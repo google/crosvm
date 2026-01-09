@@ -19,7 +19,7 @@ use crate::Result;
 
 /// Client for a vhost-user frontend. Allows a backend to send requests to the frontend.
 pub struct FrontendClient {
-    sock: Connection<BackendReq>,
+    sock: Connection,
 
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     //
@@ -30,7 +30,7 @@ pub struct FrontendClient {
 
 impl FrontendClient {
     /// Create a new instance from the given connection.
-    pub fn new(ep: Connection<BackendReq>, reply_ack_negotiated: bool) -> Self {
+    pub fn new(ep: Connection, reply_ack_negotiated: bool) -> Self {
         FrontendClient {
             sock: ep,
             reply_ack_negotiated,
@@ -64,7 +64,7 @@ impl FrontendClient {
         Ok(())
     }
 
-    fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader<BackendReq>) -> Result<()> {
+    fn wait_for_reply(&mut self, hdr: &VhostUserMsgHeader) -> Result<()> {
         let (reply, body, rfds) = self.sock.recv_message::<VhostUserU64>()?;
         if !reply.is_valid() || !reply.is_reply_for(hdr) || !rfds.is_empty() || !body.is_valid() {
             return Err(Error::InvalidMessage);

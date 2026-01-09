@@ -78,7 +78,7 @@ pub async fn run_handler(
     pin_mut!(close_event_fut);
     pin_mut!(exit_event_fut);
 
-    let mut pending_header: Option<(VhostUserMsgHeader<FrontendReq>, Vec<std::fs::File>)> = None;
+    let mut pending_header: Option<(VhostUserMsgHeader, Vec<std::fs::File>)> = None;
     loop {
         select! {
             _read_res = read_event_fut => {
