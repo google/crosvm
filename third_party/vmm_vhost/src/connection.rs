@@ -10,6 +10,7 @@ use std::mem;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use zerocopy::FromBytes;
+use zerocopy::FromZeros;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 
@@ -67,8 +68,7 @@ impl Connection {
         hdr: &VhostUserMsgHeader,
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
-        self.0
-            .send_message(hdr.into_raw().as_bytes(), &[], &[], fds)
+        self.0.send_message(hdr.as_bytes(), &[], &[], fds)
     }
 
     /// Send a message with header and body. Optional file descriptors may be attached to
@@ -80,7 +80,7 @@ impl Connection {
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
         self.0
-            .send_message(hdr.into_raw().as_bytes(), body.as_bytes(), &[], fds)
+            .send_message(hdr.as_bytes(), body.as_bytes(), &[], fds)
     }
 
     /// Send a message with header and body. `payload` is appended to the end of the body. Optional
@@ -93,7 +93,7 @@ impl Connection {
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
         self.0
-            .send_message(hdr.into_raw().as_bytes(), body.as_bytes(), payload, fds)
+            .send_message(hdr.as_bytes(), body.as_bytes(), payload, fds)
     }
 
     /// Reads all bytes into the given scatter/gather vectors with optional attached files. Will
@@ -143,9 +143,8 @@ impl Connection {
     /// Note, only the first MAX_ATTACHED_FD_ENTRIES file descriptors will be accepted and all
     /// other file descriptor will be discard silently.
     pub fn recv_header(&self) -> Result<(VhostUserMsgHeader, Vec<File>)> {
-        let mut hdr_raw = [0u32; 3];
-        let files = self.recv_into_bufs_all(&mut [hdr_raw.as_mut_bytes()])?;
-        let hdr = VhostUserMsgHeader::from_raw(hdr_raw);
+        let mut hdr = VhostUserMsgHeader::new_zeroed();
+        let files = self.recv_into_bufs_all(&mut [hdr.as_mut_bytes()])?;
         Ok((hdr, files))
     }
 
@@ -165,13 +164,10 @@ impl Connection {
     pub fn recv_message<T: IntoBytes + FromBytes>(
         &self,
     ) -> Result<(VhostUserMsgHeader, T, Vec<File>)> {
-        let mut hdr_raw = [0u32; 3];
+        let mut hdr = VhostUserMsgHeader::new_zeroed();
         let mut body = T::new_zeroed();
-        let mut slices = [hdr_raw.as_mut_bytes(), body.as_mut_bytes()];
+        let mut slices = [hdr.as_mut_bytes(), body.as_mut_bytes()];
         let files = self.recv_into_bufs_all(&mut slices)?;
-
-        let hdr = VhostUserMsgHeader::from_raw(hdr_raw);
-
         Ok((hdr, body, files))
     }
 

@@ -251,7 +251,7 @@ pub struct VhostUserHeaderFlags {
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, FromBytes, Immutable, IntoBytes, KnownLayout)]
 pub struct VhostUserMsgHeader {
     request: u32,
     flags: VhostUserHeaderFlags,
@@ -280,18 +280,6 @@ impl VhostUserMsgHeader {
             request: request.into(),
             flags,
             size,
-        }
-    }
-
-    pub fn into_raw(self) -> [u32; 3] {
-        [self.request, zerocopy::transmute!(self.flags), self.size]
-    }
-
-    pub fn from_raw(raw: [u32; 3]) -> Self {
-        Self {
-            request: raw[0],
-            flags: zerocopy::transmute!(raw[1]),
-            size: raw[2],
         }
     }
 
