@@ -137,6 +137,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Result of request handler.
 pub type HandlerResult<T> = std::result::Result<T, IOError>;
 
+#[derive(Copy, Clone)]
+pub struct SharedMemoryRegion {
+    /// The id of the shared memory region. A device may have multiple regions, but each
+    /// must have a unique id. The meaning of a particular region is device-specific.
+    pub id: u8,
+    pub length: u64,
+}
+
 /// Utility function to convert a vector of files into a single file.
 /// Returns `None` if the vector contains no files or more than one file.
 pub(crate) fn into_single_file(mut files: Vec<File>) -> Option<File> {

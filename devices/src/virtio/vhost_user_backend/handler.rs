@@ -830,12 +830,12 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
         }
     }
 
-    fn get_shmem_config(&mut self) -> VhostResult<Vec<u64>> {
-        Ok(if let Some(r) = self.backend.get_shared_memory_region() {
-            vec![r.length]
-        } else {
-            Vec::new()
-        })
+    fn get_shmem_config(&mut self) -> VhostResult<Vec<SharedMemoryRegion>> {
+        Ok(self
+            .backend
+            .get_shared_memory_region()
+            .into_iter()
+            .collect())
     }
 }
 

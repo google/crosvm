@@ -43,6 +43,8 @@ pub mod vhost_user_backend;
 pub mod vhost_user_frontend;
 pub mod vsock;
 
+pub use vmm_vhost::SharedMemoryRegion;
+
 #[cfg(feature = "balloon")]
 pub use self::balloon::Balloon;
 #[cfg(feature = "balloon")]
@@ -102,7 +104,6 @@ pub use self::vhost_user_frontend::VhostUserFrontend;
 pub use self::video::VideoDevice;
 pub use self::virtio_device::SharedMemoryMapper;
 pub use self::virtio_device::SharedMemoryPrepareType;
-pub use self::virtio_device::SharedMemoryRegion;
 pub use self::virtio_device::VirtioDevice;
 pub use self::virtio_mmio_device::VirtioMmioDevice;
 pub use self::virtio_pci_device::PciCapabilityType;

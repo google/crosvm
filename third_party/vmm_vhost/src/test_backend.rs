@@ -7,6 +7,7 @@ use crate::message::*;
 use crate::Backend;
 use crate::Error;
 use crate::Result;
+use crate::SharedMemoryRegion;
 
 pub const MAX_QUEUE_NUM: usize = 2;
 pub const MAX_VRING_NUM: usize = 256;
@@ -277,7 +278,7 @@ impl Backend for TestBackend {
         Ok(())
     }
 
-    fn get_shmem_config(&mut self) -> Result<Vec<u64>> {
+    fn get_shmem_config(&mut self) -> Result<Vec<SharedMemoryRegion>> {
         Ok(Vec::new())
     }
 }

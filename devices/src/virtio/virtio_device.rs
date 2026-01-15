@@ -31,14 +31,6 @@ pub enum SharedMemoryPrepareType {
     DynamicPerMapping,
 }
 
-#[derive(Clone)]
-pub struct SharedMemoryRegion {
-    /// The id of the shared memory region. A device may have multiple regions, but each
-    /// must have a unique id. The meaning of a particular region is device-specific.
-    pub id: u8,
-    pub length: u64,
-}
-
 /// Trait for mapping memory into the device's shared memory region.
 pub trait SharedMemoryMapper: Send {
     /// Maps the given |source| into the shared memory region at |offset|.

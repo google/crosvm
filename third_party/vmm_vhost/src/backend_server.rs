@@ -1,6 +1,7 @@
 // Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::cmp::max;
 use std::fs::File;
 use std::mem;
 
@@ -19,6 +20,7 @@ use crate::Connection;
 use crate::Error;
 use crate::FrontendReq;
 use crate::Result;
+use crate::SharedMemoryRegion;
 
 /// Trait for vhost-user backends.
 ///
@@ -75,7 +77,7 @@ pub trait Backend {
         fd: File,
     ) -> Result<Option<File>>;
     fn check_device_state(&mut self) -> Result<()>;
-    fn get_shmem_config(&mut self) -> Result<Vec<u64>>;
+    fn get_shmem_config(&mut self) -> Result<Vec<SharedMemoryRegion>>;
 }
 
 impl<T> Backend for T
@@ -209,7 +211,7 @@ where
         self.as_mut().check_device_state()
     }
 
-    fn get_shmem_config(&mut self) -> Result<Vec<u64>> {
+    fn get_shmem_config(&mut self) -> Result<Vec<SharedMemoryRegion>> {
         self.as_mut().get_shmem_config()
     }
 }
@@ -656,9 +658,14 @@ impl<S: Backend> BackendServer<S> {
                 res?;
             }
             Ok(FrontendReq::GET_SHMEM_CONFIG) => {
-                let sizes = self.backend.get_shmem_config()?;
-                let msg = VhostUserShMemConfigHeader::new(sizes.len().try_into().unwrap());
-                self.send_reply_with_payload(&hdr, &msg, sizes.as_slice().as_bytes())?;
+                let regions = self.backend.get_shmem_config()?;
+                let msg = VhostUserShMemConfigHeader::new(regions.len().try_into().unwrap());
+                let mut buf = Vec::new();
+                for region in regions {
+                    buf.resize(max(buf.len(), usize::from(region.id) + 1), 0);
+                    buf[usize::from(region.id)] = region.length;
+                }
+                self.send_reply_with_payload(&hdr, &msg, buf.as_bytes())?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

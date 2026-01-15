@@ -23,6 +23,7 @@ use crate::Error as VhostUserError;
 use crate::FrontendReq;
 use crate::Result as VhostUserResult;
 use crate::Result;
+use crate::SharedMemoryRegion;
 
 /// Client for a vhost-user device. The API is a thin abstraction over the vhost-user protocol.
 pub struct BackendClient {
@@ -368,16 +369,23 @@ impl BackendClient {
     }
 
     /// Get the shared memory configuration.
-    pub fn get_shmem_config(&self) -> Result<Vec<u64>> {
+    pub fn get_shmem_config(&self) -> Result<Vec<SharedMemoryRegion>> {
         let hdr = self.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
         let (body_reply, buf_reply, _rfds) =
             self.recv_reply_with_payload::<VhostUserShMemConfigHeader>(&hdr)?;
-        let memory_sizes = <[u64]>::ref_from_bytes_with_elems(
-            buf_reply.as_slice(),
-            body_reply.nregions.try_into().unwrap(),
-        )
-        .map_err(|_| VhostUserError::InvalidMessage)?;
-        Ok(memory_sizes.to_vec())
+        let memory_sizes =
+            <[u64]>::ref_from_bytes(&buf_reply).map_err(|_| VhostUserError::InvalidMessage)?;
+
+        let shared_memory_regions = memory_sizes
+            .iter()
+            .enumerate()
+            .filter(|&(_, &n)| n != 0)
+            .take(body_reply.nregions.try_into().unwrap())
+            .map(|(id, &length)| id.try_into().map(|id| SharedMemoryRegion { id, length }))
+            .collect::<std::result::Result<_, _>>()
+            .map_err(|_| VhostUserError::OversizedMsg)?;
+
+        Ok(shared_memory_regions)
     }
 
     fn send_request_header(

@@ -35,6 +35,7 @@ use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
 use vmm_vhost::Result;
+use vmm_vhost::SharedMemoryRegion;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::IntoBytes;
 
@@ -439,7 +440,7 @@ impl vmm_vhost::Backend for VsockBackend {
         Err(Error::InvalidOperation)
     }
 
-    fn get_shmem_config(&mut self) -> Result<Vec<u64>> {
+    fn get_shmem_config(&mut self) -> Result<Vec<SharedMemoryRegion>> {
         Ok(Vec::new())
     }
 }
