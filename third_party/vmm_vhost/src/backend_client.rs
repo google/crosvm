@@ -371,19 +371,19 @@ impl BackendClient {
     /// Get the shared memory configuration.
     pub fn get_shmem_config(&self) -> Result<Vec<SharedMemoryRegion>> {
         let hdr = self.send_request_header(FrontendReq::GET_SHMEM_CONFIG, None)?;
-        let (body_reply, buf_reply, _rfds) =
-            self.recv_reply_with_payload::<VhostUserShMemConfigHeader>(&hdr)?;
-        let memory_sizes =
-            <[u64]>::ref_from_bytes(&buf_reply).map_err(|_| VhostUserError::InvalidMessage)?;
+        let reply: VhostUserShMemConfig = self.recv_reply(&hdr)?;
 
-        let shared_memory_regions = memory_sizes
-            .iter()
+        let shared_memory_regions = reply
+            .sizes
+            .into_iter()
             .enumerate()
-            .filter(|&(_, &n)| n != 0)
-            .take(body_reply.nregions.try_into().unwrap())
-            .map(|(id, &length)| id.try_into().map(|id| SharedMemoryRegion { id, length }))
-            .collect::<std::result::Result<_, _>>()
-            .map_err(|_| VhostUserError::OversizedMsg)?;
+            .filter(|&(_, n)| n != 0)
+            .take(reply.nregions.try_into().unwrap())
+            .map(|(id, length)| SharedMemoryRegion {
+                id: id as u8,
+                length,
+            })
+            .collect();
 
         Ok(shared_memory_regions)
     }

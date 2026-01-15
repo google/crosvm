@@ -1,7 +1,6 @@
 // Copyright (C) 2019 Alibaba Cloud Computing. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::cmp::max;
 use std::fs::File;
 use std::mem;
 
@@ -658,14 +657,8 @@ impl<S: Backend> BackendServer<S> {
                 res?;
             }
             Ok(FrontendReq::GET_SHMEM_CONFIG) => {
-                let regions = self.backend.get_shmem_config()?;
-                let msg = VhostUserShMemConfigHeader::new(regions.len().try_into().unwrap());
-                let mut buf = Vec::new();
-                for region in regions {
-                    buf.resize(max(buf.len(), usize::from(region.id) + 1), 0);
-                    buf[usize::from(region.id)] = region.length;
-                }
-                self.send_reply_with_payload(&hdr, &msg, buf.as_bytes())?;
+                let msg = VhostUserShMemConfig::new(&self.backend.get_shmem_config()?);
+                self.send_reply_message(&hdr, &msg)?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

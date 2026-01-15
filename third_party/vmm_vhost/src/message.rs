@@ -18,6 +18,7 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
+use crate::SharedMemoryRegion;
 use crate::VringConfigData;
 
 /// The VhostUserMemory message has variable message size and variable number of attached file
@@ -1116,27 +1117,45 @@ impl QueueRegionPacked {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
-pub struct VhostUserShMemConfigHeader {
+#[derive(Debug, Copy, Clone, FromBytes, Immutable, IntoBytes, KnownLayout)]
+pub struct VhostUserShMemConfig {
     /// Total number of shared memory regions
     pub nregions: u32,
     /// Padding for correct alignment
     padding: u32,
+    /// Sizes of each shared memory region.
+    pub sizes: [u64; 256],
 }
 
-impl VhostUserMsgValidator for VhostUserShMemConfigHeader {
+impl Default for VhostUserShMemConfig {
+    fn default() -> Self {
+        VhostUserShMemConfig {
+            nregions: 0,
+            padding: 0,
+            sizes: [0; 256],
+        }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserShMemConfig {
     #[allow(clippy::if_same_then_else)]
     fn is_valid(&self) -> bool {
         true
     }
 }
 
-impl VhostUserShMemConfigHeader {
+impl VhostUserShMemConfig {
     /// Create a new instance
-    pub fn new(nregions: u32) -> Self {
+    pub fn new(regions: &[SharedMemoryRegion]) -> Self {
+        let mut sizes = [0; 256];
+        for region in regions {
+            *sizes.get_mut(usize::from(region.id)).unwrap() = region.length;
+        }
+
         Self {
-            nregions,
+            nregions: regions.len().try_into().unwrap(),
             padding: 0,
+            sizes,
         }
     }
 }
