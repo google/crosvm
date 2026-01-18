@@ -441,7 +441,7 @@ impl<T: VhostUserDevice> vmm_vhost::Backend for DeviceRequestHandler<T> {
                 return Err(VhostError::InvalidOperation);
             }
         };
-        let supported = self.backend.protocol_features();
+        let supported = self.get_protocol_features()?;
         self.acked_protocol_features = features & supported;
         Ok(())
     }
