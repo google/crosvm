@@ -18,8 +18,6 @@ use base::Error;
 use base::IoctlNr;
 use base::MappedRegion;
 use base::Result;
-use data_model::vec_with_array_field;
-use data_model::FlexibleArrayWrapper;
 use kvm_sys::*;
 use libc::E2BIG;
 use libc::EAGAIN;
@@ -31,6 +29,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
+use zerocopy::FromZeros;
 
 use super::Config;
 use super::Kvm;
@@ -66,7 +65,6 @@ use crate::VmX86_64;
 use crate::Xsave;
 use crate::NUM_IOAPIC_PINS;
 
-type KvmCpuId = FlexibleArrayWrapper<kvm_cpuid2, kvm_cpuid_entry2>;
 const KVM_XSAVE_MAX_SIZE: usize = 4096;
 const MSR_IA32_APICBASE: u32 = 0x0000001b;
 
@@ -126,14 +124,16 @@ pub fn get_cpuid_with_initial_capacity<T: AsRawDescriptor>(
     let mut entries: usize = initial_capacity;
 
     loop {
-        let mut kvm_cpuid = KvmCpuId::new(entries);
+        let mut kvm_cpuid =
+            kvm_cpuid2::<[kvm_cpuid_entry2]>::new_box_zeroed_with_elems(entries).unwrap();
+        kvm_cpuid.nent = entries.try_into().unwrap();
 
         let ret = {
             // SAFETY:
             // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the
-            // memory allocated for the struct. The limit is read from nent within KvmCpuId,
+            // memory allocated for the struct. The limit is read from nent within kvm_cpuid2,
             // which is set to the allocated size above.
-            unsafe { ioctl_with_mut_ptr(descriptor, kind, kvm_cpuid.as_mut_ptr()) }
+            unsafe { ioctl_with_mut_ref(descriptor, kind, &mut *kvm_cpuid) }
         };
         if ret < 0 {
             let err = Error::last();
@@ -149,7 +149,7 @@ pub fn get_cpuid_with_initial_capacity<T: AsRawDescriptor>(
                 _ => return Err(err),
             }
         } else {
-            return Ok(CpuId::from(&kvm_cpuid));
+            return Ok(CpuId::from(&*kvm_cpuid));
         }
     }
 }
@@ -183,33 +183,26 @@ impl HypervisorX86_64 for Kvm {
     fn get_msr_index_list(&self) -> Result<Vec<u32>> {
         const MAX_KVM_MSR_ENTRIES: usize = 256;
 
-        let mut msr_list = vec_with_array_field::<kvm_msr_list, u32>(MAX_KVM_MSR_ENTRIES);
-        msr_list[0].nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+        let mut msr_list = kvm_msr_list::<[u32; MAX_KVM_MSR_ENTRIES]>::new_zeroed();
+        msr_list.nmsrs = MAX_KVM_MSR_ENTRIES as u32;
 
         let ret = {
             // SAFETY:
             // ioctl is unsafe. The kernel is trusted not to write beyond the bounds of the memory
             // allocated for the struct. The limit is read from nmsrs, which is set to the allocated
             // size (MAX_KVM_MSR_ENTRIES) above.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST, &mut msr_list[0]) }
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSR_INDEX_LIST, &mut msr_list) }
         };
         if ret < 0 {
             return errno_result();
         }
 
-        let mut nmsrs = msr_list[0].nmsrs;
+        let mut nmsrs = msr_list.nmsrs;
+        if nmsrs > MAX_KVM_MSR_ENTRIES as u32 {
+            nmsrs = MAX_KVM_MSR_ENTRIES as u32;
+        }
 
-        // SAFETY:
-        // Mapping the unsized array to a slice is unsafe because the length isn't known.  Using
-        // the length we originally allocated with eliminates the possibility of overflow.
-        let indices: &[u32] = unsafe {
-            if nmsrs > MAX_KVM_MSR_ENTRIES as u32 {
-                nmsrs = MAX_KVM_MSR_ENTRIES as u32;
-            }
-            msr_list[0].indices.as_slice(nmsrs as usize)
-        };
-
-        Ok(indices.to_vec())
+        Ok(msr_list.indices[..nmsrs as usize].to_vec())
     }
 }
 
@@ -987,19 +980,14 @@ impl VcpuX86_64 for KvmVcpu {
     }
 
     fn get_msr(&self, msr_index: u32) -> Result<u64> {
-        let mut msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(1);
-        msrs[0].nmsrs = 1;
-
-        // SAFETY: We initialize a one-element array using `vec_with_array_field` above.
-        unsafe {
-            let msr_entries = msrs[0].entries.as_mut_slice(1);
-            msr_entries[0].index = msr_index;
-        }
+        let mut msrs = kvm_msrs::<[kvm_msr_entry; 1]>::new_zeroed();
+        msrs.nmsrs = 1;
+        msrs.entries[0].index = msr_index;
 
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSRS, &mut msrs[0]) }
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSRS, &mut msrs) }
         };
         if ret < 0 {
             return errno_result();
@@ -1010,36 +998,25 @@ impl VcpuX86_64 for KvmVcpu {
             return Err(base::Error::new(libc::ENOENT));
         }
 
-        // SAFETY:
-        // Safe because we trust the kernel to return the correct array length on success.
-        let value = unsafe {
-            let msr_entries = msrs[0].entries.as_slice(1);
-            msr_entries[0].data
-        };
-
-        Ok(value)
+        Ok(msrs.entries[0].data)
     }
 
     fn get_all_msrs(&self) -> Result<BTreeMap<u32, u64>> {
         let msr_index_list = self.kvm.get_msr_index_list()?;
-        let mut kvm_msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(msr_index_list.len());
-        kvm_msrs[0].nmsrs = msr_index_list.len() as u32;
-        // SAFETY:
-        // Mapping the unsized array to a slice is unsafe because the length isn't known.
-        // Providing the length used to create the struct guarantees the entire slice is valid.
-        unsafe {
-            kvm_msrs[0]
-                .entries
-                .as_mut_slice(msr_index_list.len())
-                .iter_mut()
-                .zip(msr_index_list.iter())
-                .for_each(|(msr_entry, msr_index)| msr_entry.index = *msr_index);
-        }
+
+        let mut kvm_msrs =
+            kvm_msrs::<[kvm_msr_entry]>::new_box_zeroed_with_elems(msr_index_list.len()).unwrap();
+        kvm_msrs.nmsrs = msr_index_list.len() as u32;
+        kvm_msrs
+            .entries
+            .iter_mut()
+            .zip(msr_index_list.iter())
+            .for_each(|(msr_entry, msr_index)| msr_entry.index = *msr_index);
 
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read or write past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSRS, &mut kvm_msrs[0]) }
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_MSRS, &mut *kvm_msrs) }
         };
         if ret < 0 {
             return errno_result();
@@ -1056,36 +1033,26 @@ impl VcpuX86_64 for KvmVcpu {
             return Err(base::Error::new(libc::EPERM));
         }
 
-        // SAFETY:
-        // Safe because we trust the kernel to return the correct array length on success.
-        let msrs = unsafe {
-            BTreeMap::from_iter(
-                kvm_msrs[0]
-                    .entries
-                    .as_slice(count)
-                    .iter()
-                    .map(|kvm_msr| (kvm_msr.index, kvm_msr.data)),
-            )
-        };
+        let msrs = BTreeMap::from_iter(
+            kvm_msrs
+                .entries
+                .iter()
+                .map(|kvm_msr| (kvm_msr.index, kvm_msr.data)),
+        );
 
         Ok(msrs)
     }
 
     fn set_msr(&self, msr_index: u32, value: u64) -> Result<()> {
-        let mut kvm_msrs = vec_with_array_field::<kvm_msrs, kvm_msr_entry>(1);
-        kvm_msrs[0].nmsrs = 1;
-
-        // SAFETY: We initialize a one-element array using `vec_with_array_field` above.
-        unsafe {
-            let msr_entries = kvm_msrs[0].entries.as_mut_slice(1);
-            msr_entries[0].index = msr_index;
-            msr_entries[0].data = value;
-        }
+        let mut kvm_msrs = kvm_msrs::<[kvm_msr_entry; 1]>::new_zeroed();
+        kvm_msrs.nmsrs = 1;
+        kvm_msrs.entries[0].index = msr_index;
+        kvm_msrs.entries[0].data = value;
 
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ref(self, KVM_SET_MSRS, &kvm_msrs[0]) }
+            unsafe { ioctl_with_ref(self, KVM_SET_MSRS, &kvm_msrs) }
         };
         if ret < 0 {
             return errno_result();
@@ -1101,11 +1068,11 @@ impl VcpuX86_64 for KvmVcpu {
     }
 
     fn set_cpuid(&self, cpuid: &CpuId) -> Result<()> {
-        let cpuid = KvmCpuId::from(cpuid);
+        let cpuid = Box::<kvm_cpuid2<[kvm_cpuid_entry2]>>::from(cpuid);
         let ret = {
             // SAFETY:
             // Here we trust the kernel not to read past the end of the kvm_msrs struct.
-            unsafe { ioctl_with_ptr(self, KVM_SET_CPUID2, cpuid.as_ptr()) }
+            unsafe { ioctl_with_ref(self, KVM_SET_CPUID2, &*cpuid) }
         };
         if ret == 0 {
             Ok(())
@@ -1261,9 +1228,9 @@ impl KvmVcpu {
     }
 }
 
-impl<'a> From<&'a KvmCpuId> for CpuId {
-    fn from(kvm_cpuid: &'a KvmCpuId) -> CpuId {
-        let kvm_entries = kvm_cpuid.entries_slice();
+impl<'a> From<&'a kvm_cpuid2<[kvm_cpuid_entry2]>> for CpuId {
+    fn from(kvm_cpuid: &'a kvm_cpuid2<[kvm_cpuid_entry2]>) -> CpuId {
+        let kvm_entries = &kvm_cpuid.entries[..kvm_cpuid.nent as usize];
         let mut cpu_id_entries = Vec::with_capacity(kvm_entries.len());
 
         for entry in kvm_entries {
@@ -1284,12 +1251,14 @@ impl<'a> From<&'a KvmCpuId> for CpuId {
     }
 }
 
-impl From<&CpuId> for KvmCpuId {
-    fn from(cpuid: &CpuId) -> KvmCpuId {
-        let mut kvm = KvmCpuId::new(cpuid.cpu_id_entries.len());
-        let entries = kvm.mut_entries_slice();
+impl From<&CpuId> for Box<kvm_cpuid2<[kvm_cpuid_entry2]>> {
+    fn from(cpuid: &CpuId) -> Box<kvm_cpuid2<[kvm_cpuid_entry2]>> {
+        let mut kvm =
+            kvm_cpuid2::<[kvm_cpuid_entry2]>::new_box_zeroed_with_elems(cpuid.cpu_id_entries.len())
+                .unwrap();
+        kvm.nent = cpuid.cpu_id_entries.len().try_into().unwrap();
         for (i, &e) in cpuid.cpu_id_entries.iter().enumerate() {
-            entries[i] = kvm_cpuid_entry2 {
+            kvm.entries[i] = kvm_cpuid_entry2 {
                 function: e.function,
                 index: e.index,
                 flags: e.flags,

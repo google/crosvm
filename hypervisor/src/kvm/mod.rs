@@ -47,7 +47,6 @@ use base::Result;
 use base::SafeDescriptor;
 pub use cap::KvmCap;
 use cfg_if::cfg_if;
-use data_model::vec_with_array_field;
 use kvm_sys::*;
 use libc::open64;
 use libc::EFAULT;
@@ -68,6 +67,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 #[cfg(target_arch = "x86_64")]
 pub use x86_64::*;
+use zerocopy::FromZeros;
 
 use crate::BalloonEvent;
 use crate::ClockState;
@@ -455,25 +455,22 @@ impl KvmVm {
     /// `set_gsi_routing`.
     pub fn set_gsi_routing(&self, routes: &[IrqRoute]) -> Result<()> {
         let mut irq_routing =
-            vec_with_array_field::<kvm_irq_routing, kvm_irq_routing_entry>(routes.len());
-        irq_routing[0].nr = routes.len() as u32;
+            kvm_irq_routing::<[kvm_irq_routing_entry]>::new_box_zeroed_with_elems(routes.len())
+                .unwrap();
+        irq_routing.nr = routes.len() as u32;
 
         let cap_msi_devid = *self
             .caps
             .msi_devid
             .get_or_init(|| self.check_raw_capability(KvmCap::MsiDevid));
 
-        // SAFETY:
-        // Safe because we ensured there is enough space in irq_routing to hold the number of
-        // route entries.
-        let irq_routes = unsafe { irq_routing[0].entries.as_mut_slice(routes.len()) };
-        for (route, irq_route) in routes.iter().zip(irq_routes.iter_mut()) {
+        for (route, irq_route) in routes.iter().zip(irq_routing.entries.iter_mut()) {
             *irq_route = to_kvm_irq_routing_entry(route, cap_msi_devid);
         }
 
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING, &irq_routing[0]) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GSI_ROUTING, &*irq_routing) };
         if ret == 0 {
             Ok(())
         } else {

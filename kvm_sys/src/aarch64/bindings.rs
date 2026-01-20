@@ -53,36 +53,6 @@ pub struct kvm_vfio_iommu_config {
     pub __reserved: u32,
 }
 
-#[repr(C)]
-#[derive(Default)]
-pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>, [T; 0]);
-impl<T> __IncompleteArrayField<T> {
-    #[inline]
-    pub const fn new() -> Self {
-        __IncompleteArrayField(::std::marker::PhantomData, [])
-    }
-    #[inline]
-    pub fn as_ptr(&self) -> *const T {
-        self as *const _ as *const T
-    }
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut T {
-        self as *mut _ as *mut T
-    }
-    #[inline]
-    pub unsafe fn as_slice(&self, len: usize) -> &[T] {
-        ::std::slice::from_raw_parts(self.as_ptr(), len)
-    }
-    #[inline]
-    pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
-        ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
-    }
-}
-impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
-    fn fmt(&self, fmt: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        fmt.write_str("__IncompleteArrayField")
-    }
-}
 pub const KVM_SPSR_EL1: u32 = 0;
 pub const KVM_SPSR_SVC: u32 = 0;
 pub const KVM_SPSR_ABT: u32 = 1;
@@ -1619,12 +1589,14 @@ impl Default for kvm_coalesced_mmio {
     }
 }
 #[repr(C)]
-pub struct kvm_coalesced_mmio_ring {
+pub struct kvm_coalesced_mmio_ring<FAM: ?Sized = [kvm_coalesced_mmio; 0]> {
     pub first: u32,
     pub last: u32,
-    pub coalesced_mmio: __IncompleteArrayField<kvm_coalesced_mmio>,
+    pub coalesced_mmio: FAM,
 }
-impl Default for kvm_coalesced_mmio_ring {
+impl kvm_coalesced_mmio_ring<[kvm_coalesced_mmio]> {}
+impl kvm_coalesced_mmio_ring<[kvm_coalesced_mmio; 0]> {}
+impl Default for kvm_coalesced_mmio_ring<[kvm_coalesced_mmio; 0]> {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
         unsafe {
@@ -1713,10 +1685,12 @@ impl Default for kvm_clear_dirty_log {
 }
 #[repr(C)]
 #[derive(Debug, Default)]
-pub struct kvm_signal_mask {
+pub struct kvm_signal_mask<FAM: ?Sized = [u8; 0]> {
     pub len: u32,
-    pub sigset: __IncompleteArrayField<u8>,
+    pub sigset: FAM,
 }
+impl kvm_signal_mask<[u8]> {}
+impl kvm_signal_mask<[u8; 0]> {}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_tpr_access_ctl {
@@ -1785,13 +1759,13 @@ impl Default for kvm_enable_cap {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub struct kvm_irq_routing_irqchip {
     pub irqchip: u32,
     pub pin: u32,
 }
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub struct kvm_irq_routing_msi {
     pub address_lo: u32,
     pub address_hi: u32,
@@ -1799,7 +1773,7 @@ pub struct kvm_irq_routing_msi {
     pub __bindgen_anon_1: kvm_irq_routing_msi__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub union kvm_irq_routing_msi__bindgen_ty_1 {
     pub pad: u32,
     pub devid: u32,
@@ -1823,7 +1797,7 @@ impl Default for kvm_irq_routing_msi {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub struct kvm_irq_routing_s390_adapter {
     pub ind_addr: u64,
     pub summary_addr: u64,
@@ -1832,20 +1806,20 @@ pub struct kvm_irq_routing_s390_adapter {
     pub adapter_id: u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub struct kvm_irq_routing_hv_sint {
     pub vcpu: u32,
     pub sint: u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub struct kvm_irq_routing_xen_evtchn {
     pub port: u32,
     pub vcpu: u32,
     pub priority: u32,
 }
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub struct kvm_irq_routing_entry {
     pub gsi: u32,
     pub type_: u32,
@@ -1854,7 +1828,7 @@ pub struct kvm_irq_routing_entry {
     pub u: kvm_irq_routing_entry__bindgen_ty_1,
 }
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, Immutable, KnownLayout)]
 pub union kvm_irq_routing_entry__bindgen_ty_1 {
     pub irqchip: kvm_irq_routing_irqchip,
     pub msi: kvm_irq_routing_msi,
@@ -1882,12 +1856,15 @@ impl Default for kvm_irq_routing_entry {
     }
 }
 #[repr(C)]
-pub struct kvm_irq_routing {
+#[derive(FromBytes, Immutable, KnownLayout)]
+pub struct kvm_irq_routing<FAM: ?Sized = [kvm_irq_routing_entry; 0]> {
     pub nr: u32,
     pub flags: u32,
-    pub entries: __IncompleteArrayField<kvm_irq_routing_entry>,
+    pub entries: FAM,
 }
-impl Default for kvm_irq_routing {
+impl kvm_irq_routing<[kvm_irq_routing_entry]> {}
+impl kvm_irq_routing<[kvm_irq_routing_entry; 0]> {}
+impl Default for kvm_irq_routing<[kvm_irq_routing_entry; 0]> {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
         unsafe {
@@ -1930,11 +1907,13 @@ pub struct kvm_dirty_tlb {
     pub num_dirty: u32,
 }
 #[repr(C)]
-#[derive(Debug, Default)]
-pub struct kvm_reg_list {
+#[derive(Debug, Default, FromBytes, Immutable, KnownLayout)]
+pub struct kvm_reg_list<FAM: ?Sized = [u64; 0]> {
     pub n: u64,
-    pub reg: __IncompleteArrayField<u64>,
+    pub reg: FAM,
 }
+impl kvm_reg_list<[u64]> {}
+impl kvm_reg_list<[u64; 0]> {}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_one_reg {
@@ -2016,14 +1995,16 @@ pub struct kvm_stats_header {
 }
 #[repr(C)]
 #[derive(Debug, Default)]
-pub struct kvm_stats_desc {
+pub struct kvm_stats_desc<FAM: ?Sized = [::std::os::raw::c_char; 0]> {
     pub flags: u32,
     pub exponent: i16,
     pub size: u16,
     pub offset: u32,
     pub bucket_size: u32,
-    pub name: __IncompleteArrayField<::std::os::raw::c_char>,
+    pub name: FAM,
 }
+impl kvm_stats_desc<[::std::os::raw::c_char]> {}
+impl kvm_stats_desc<[::std::os::raw::c_char; 0]> {}
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_memory_attributes {

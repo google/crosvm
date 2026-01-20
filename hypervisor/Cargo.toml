@@ -32,6 +32,7 @@ snapshot = { workspace = true }
 sync = { workspace = true }
 base = { workspace = true }
 vm_memory = { workspace = true }
+zerocopy = { version = "0.8.13", features = ["derive", "alloc"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 kvm_sys = { workspace = true }
@@ -41,7 +42,6 @@ aarch64_sys_reg = { workspace = true }
 
 [target.'cfg(target_arch = "x86_64")'.dev-dependencies]
 hypervisor_test_macro = { workspace = true }
-zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 thiserror = { workspace = true }

@@ -21,7 +21,6 @@ use base::warn;
 use base::Error;
 use base::Result;
 use cros_fdt::Fdt;
-use data_model::vec_with_array_field;
 use kvm_sys::*;
 use libc::EINVAL;
 use libc::ENOMEM;
@@ -31,6 +30,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use vm_memory::GuestAddress;
+use zerocopy::FromZeros;
 
 use super::Config;
 use super::Kvm;
@@ -418,25 +418,21 @@ impl KvmVcpu {
     }
 
     fn get_reg_list(&self) -> Result<Vec<u64>> {
-        let mut kvm_reg_list = vec_with_array_field::<kvm_reg_list, u64>(AARCH64_MAX_REG_COUNT);
-        kvm_reg_list[0].n = AARCH64_MAX_REG_COUNT as u64;
+        let mut kvm_reg_list = kvm_reg_list::<[u64; AARCH64_MAX_REG_COUNT]>::new_zeroed();
+        kvm_reg_list.n = AARCH64_MAX_REG_COUNT as u64;
         let ret =
             // SAFETY:
             // We trust the kernel not to read/write past the end of kvm_reg_list struct.
-            unsafe { ioctl_with_mut_ref(self, KVM_GET_REG_LIST, &mut kvm_reg_list[0]) };
+            unsafe { ioctl_with_mut_ref(self, KVM_GET_REG_LIST, &mut kvm_reg_list) };
         if ret < 0 {
             return errno_result();
         }
-        let n = kvm_reg_list[0].n;
+        let n = kvm_reg_list.n;
         assert!(
             n <= AARCH64_MAX_REG_COUNT as u64,
             "Get reg list returned more registers than possible"
         );
-        // SAFETY:
-        // Mapping the unsized array to a slice is unsafe because the length isn't known.
-        // Providing the length used to create the struct guarantees the entire slice is valid.
-        let reg_list: &[u64] = unsafe { kvm_reg_list[0].reg.as_slice(n as usize) };
-        Ok(reg_list.to_vec())
+        Ok(kvm_reg_list.reg[..n as usize].to_vec())
     }
 
     fn get_features_bitmap(&self, features: &[VcpuFeature]) -> Result<u32> {

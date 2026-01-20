@@ -55,6 +55,7 @@ pub struct kvm_vfio_iommu_config {
 }"
 
 bindgen_generate \
+    --flexarray-dst \
     --raw-line "${KVM_EXTRAS}" \
     --blocklist-item='__kernel.*' \
     --blocklist-item='__BITS_PER_.*' \
@@ -80,6 +81,20 @@ bindgen_generate \
     --with-derive-custom "kvm_pit_state2=FromBytes,Immutable,IntoBytes,KnownLayout" \
     --with-derive-custom "kvm_clock_data=FromBytes,Immutable,IntoBytes,KnownLayout" \
     --with-derive-custom "kvm_pit_channel_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_cpuid2=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_cpuid_entry2=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_entry=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_entry__bindgen_ty_1=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_hv_sint=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_irqchip=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_msi=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_msi__bindgen_ty_1=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_s390_adapter=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_xen_evtchn=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_msr_entry=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_msr_list=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_msrs=FromBytes,Immutable,KnownLayout" \
     "${BINDGEN_LINUX_X86_HEADERS}/include/linux/kvm.h" \
     -- \
     -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
@@ -87,6 +102,7 @@ bindgen_generate \
     > kvm_sys/src/x86/bindings.rs
 
 bindgen_generate \
+    --flexarray-dst \
     --raw-line "${KVM_EXTRAS}" \
     --blocklist-item='__kernel.*' \
     --blocklist-item='__BITS_PER_.*' \
@@ -100,6 +116,16 @@ bindgen_generate \
     --with-derive-custom "kvm_mp_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
     --with-derive-custom "user_fpsimd_state=FromBytes,Immutable,IntoBytes,KnownLayout" \
     --with-derive-custom "user_pt_regs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_reg_list=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_entry=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_entry__bindgen_ty_1=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_hv_sint=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_irqchip=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_msi=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_msi__bindgen_ty_1=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_s390_adapter=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_xen_evtchn=FromBytes,Immutable,KnownLayout" \
     "${BINDGEN_LINUX_ARM64_HEADERS}/include/linux/kvm.h" \
     -- \
     -isystem "${BINDGEN_LINUX_ARM64_HEADERS}/include" \
@@ -107,12 +133,22 @@ bindgen_generate \
     > kvm_sys/src/aarch64/bindings.rs
 
 bindgen_generate \
+    --flexarray-dst \
     --raw-line "${KVM_EXTRAS}" \
     --blocklist-item='__kernel.*' \
     --blocklist-item='__BITS_PER_.*' \
     --blocklist-item='__FD_SETSIZE' \
     --blocklist-item='_?IOC.*' \
     --with-derive-custom "kvm_regs=FromBytes,Immutable,IntoBytes,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_entry=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_entry__bindgen_ty_1=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_hv_sint=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_irqchip=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_msi=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_msi__bindgen_ty_1=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_s390_adapter=FromBytes,Immutable,KnownLayout" \
+    --with-derive-custom "kvm_irq_routing_xen_evtchn=FromBytes,Immutable,KnownLayout" \
     "${BINDGEN_LINUX_RISCV_HEADERS}/include/linux/kvm.h" \
     -- \
     -isystem "${BINDGEN_LINUX_RISCV_HEADERS}/include" \

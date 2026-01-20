@@ -24,11 +24,8 @@ pub mod x86 {
     use base::ioctl_ior_nr;
     use base::ioctl_iow_nr;
     use base::ioctl_iowr_nr;
-    use data_model::flexible_array_impl;
 
     pub use crate::bindings::*;
-
-    flexible_array_impl!(kvm_cpuid2, kvm_cpuid_entry2, nent, entries);
 
     pub const KVM_MSR_FILTER_RANGE_MAX_BITS: usize = 0x2000;
     pub const KVM_MSR_FILTER_RANGE_MAX_BYTES: usize = KVM_MSR_FILTER_RANGE_MAX_BITS / 8;
