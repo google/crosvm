@@ -522,7 +522,7 @@ impl VirtioDevice for VhostUserFrontend {
             return None;
         }
         if let Some(r) = self.shmem_region.borrow().as_ref() {
-            return r.clone();
+            return *r;
         }
         let regions = match self
             .backend_client
@@ -546,7 +546,7 @@ impl VirtioDevice for VhostUserFrontend {
                 return None;
             }
         };
-        *self.shmem_region.borrow_mut() = Some(region.clone());
+        *self.shmem_region.borrow_mut() = Some(region);
         region
     }
 
@@ -565,7 +565,6 @@ impl VirtioDevice for VhostUserFrontend {
         let shmid = self
             .shmem_region
             .borrow()
-            .clone()
             .flatten()
             .expect("missing shmid")
             .id;
