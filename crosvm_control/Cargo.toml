@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 audio = ["vm_control/audio"]
+gpu = ["vm_control/gpu"]
 pci-hotplug = ["vm_control/pci-hotplug"]
 registered_events = ["vm_control/registered_events"]
 

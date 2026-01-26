@@ -38,6 +38,12 @@ use libc::c_int;
 use libc::c_void;
 use libc::ssize_t;
 pub use swap::SwapStatus;
+#[cfg(feature = "gpu")]
+use vm_control::client::do_gpu_display_add;
+#[cfg(feature = "gpu")]
+use vm_control::client::do_gpu_display_list;
+#[cfg(feature = "gpu")]
+use vm_control::client::do_gpu_display_remove;
 use vm_control::client::do_modify_battery;
 use vm_control::client::do_net_add;
 use vm_control::client::do_net_remove;
@@ -49,6 +55,12 @@ use vm_control::client::do_usb_list;
 use vm_control::client::handle_request;
 use vm_control::client::handle_request_with_timeout;
 use vm_control::client::vms_request;
+#[cfg(feature = "gpu")]
+use vm_control::gpu::DisplayMode;
+#[cfg(feature = "gpu")]
+use vm_control::gpu::DisplayParameters;
+#[cfg(feature = "gpu")]
+use vm_control::gpu::GpuControlResult;
 use vm_control::BalloonControlCommand;
 use vm_control::BatProperty;
 use vm_control::DiskControlCommand;
@@ -60,6 +72,73 @@ use vm_control::UsbControlResult;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
 use vm_control::USB_CONTROL_MAX_PORTS;
+
+#[cfg(feature = "gpu")]
+pub struct CrosvmDisplayEntry {
+    pub id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub refresh_rate: u32,
+    pub horizontal_dpi: u32,
+    pub vertical_dpi: u32,
+}
+
+#[cfg(feature = "gpu")]
+pub fn gpu_display_add(
+    socket_path: &Path,
+    width: u32,
+    height: u32,
+    refresh_rate: u32,
+    horizontal_dpi: u32,
+    vertical_dpi: u32,
+) -> std::result::Result<(), String> {
+    let mode = DisplayMode::Windowed(width, height);
+    let params = DisplayParameters::new(
+        mode,
+        false, // hidden
+        refresh_rate,
+        horizontal_dpi,
+        vertical_dpi,
+    );
+    let result = do_gpu_display_add(socket_path, vec![params]).map_err(|e| e.to_string())?;
+    match result {
+        GpuControlResult::DisplaysUpdated => Ok(()),
+        other => Err(format!("Unexpected response: {other}")),
+    }
+}
+
+#[cfg(feature = "gpu")]
+pub fn gpu_display_list(
+    socket_path: &Path,
+) -> std::result::Result<Vec<CrosvmDisplayEntry>, String> {
+    let result = do_gpu_display_list(socket_path).map_err(|e| e.to_string())?;
+    match result {
+        GpuControlResult::DisplayList { displays } => Ok(displays
+            .into_iter()
+            .map(|(id, params)| {
+                let (width, height) = params.get_window_size();
+                CrosvmDisplayEntry {
+                    id,
+                    width,
+                    height,
+                    refresh_rate: params.refresh_rate,
+                    horizontal_dpi: params.horizontal_dpi(),
+                    vertical_dpi: params.vertical_dpi(),
+                }
+            })
+            .collect()),
+        other => Err(format!("Unexpected response: {other}")),
+    }
+}
+
+#[cfg(feature = "gpu")]
+pub fn gpu_display_remove(socket_path: &Path, display_id: u32) -> std::result::Result<(), String> {
+    let result = do_gpu_display_remove(socket_path, vec![display_id]).map_err(|e| e.to_string())?;
+    match result {
+        GpuControlResult::DisplaysUpdated => Ok(()),
+        other => Err(format!("Unexpected response: {other}")),
+    }
+}
 
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;
 pub const VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS: usize = 15;
