@@ -51,7 +51,7 @@ impl From<SmcccTrngError> for NegativeI32 {
     }
 }
 
-/// An backend implementation of the SMCCC TRNG (DEN0098).
+/// A backend implementation of the SMCCC TRNG (DEN0098).
 ///
 /// Might not be fully spec-compliant regarding the conditioned entropy.
 pub struct SmcccTrng {}

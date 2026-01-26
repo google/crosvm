@@ -68,7 +68,7 @@ pub trait TransferDescriptorHandler {
     /// guest kernel requests to stop the ring buffer controller. Transfer descriptor handler will
     /// return true, thus RingBufferController would transfer to Stopping state. It will be stopped
     /// when all pending transfer completed.
-    /// On the other hand, if hander does not have any pending transfers, it would return false.
+    /// On the other hand, if handler does not have any pending transfers, it would return false.
     fn stop(&self) -> bool {
         true
     }

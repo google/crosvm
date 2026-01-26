@@ -39,7 +39,7 @@ impl fmt::Display for StreamSource {
         match self {
             #[cfg(feature = "audio_cras")]
             StreamSource::CRAS => write!(f, "cras"),
-            _ => write!(f, "unknow stream source"),
+            _ => write!(f, "unknown stream source"),
         }
     }
 }

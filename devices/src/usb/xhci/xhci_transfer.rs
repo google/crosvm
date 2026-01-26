@@ -219,7 +219,7 @@ impl XhciTransferManager {
             Some(wt) => Arc::ptr_eq(&wt, t),
             None => false,
         }) {
-            None => error!("attempted to remove unknow transfer"),
+            None => error!("attempted to remove unknown transfer"),
             Some(i) => {
                 transfers.swap_remove(i);
             }
