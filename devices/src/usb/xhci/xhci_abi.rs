@@ -4,6 +4,7 @@
 
 use std::fmt;
 use std::fmt::Display;
+use std::ops::Deref;
 
 use bit_field::Error as BitFieldError;
 use bit_field::*;
@@ -895,7 +896,44 @@ pub struct AddressedTrb {
     pub gpa: u64,
 }
 
-pub type TransferDescriptor = Vec<AddressedTrb>;
+/// Transfer Descriptor that contains at least one TRB.
+// To preserve the non-empty invariant, this type does not expose methods
+// that would move out the contained TRBs.
+#[derive(Clone, Debug)]
+pub struct TransferDescriptor(Vec<AddressedTrb>);
+
+impl TransferDescriptor {
+    /// Create a new `TransferDescriptor` from a non-empty `Vec`.
+    pub fn new(trbs: Vec<AddressedTrb>) -> Option<Self> {
+        if trbs.is_empty() {
+            return None;
+        }
+        Some(TransferDescriptor(trbs))
+    }
+
+    /// Return the first TRB.
+    pub fn first_atrb(&self) -> &AddressedTrb {
+        self.first().expect("TransferDescriptor must be non-empty")
+    }
+}
+
+impl Deref for TransferDescriptor {
+    type Target = [AddressedTrb];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// It should be enough to implement the borrowing iterator, but not the consuming iterator.
+impl<'a> IntoIterator for &'a TransferDescriptor {
+    type Item = &'a AddressedTrb;
+    type IntoIter = std::slice::Iter<'a, AddressedTrb>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -167,11 +167,10 @@ impl XhciTransferManager {
         interrupter: Arc<Mutex<Interrupter>>,
         slot_id: u8,
         endpoint_id: u8,
-        transfer_trbs: TransferDescriptor,
+        transfer_descriptor: TransferDescriptor,
         completion_event: Event,
         stream_id: Option<u16>,
     ) -> XhciTransfer {
-        assert!(!transfer_trbs.is_empty());
         let transfer_dir = {
             if endpoint_id == 0 {
                 TransferDirection::Control
@@ -191,7 +190,7 @@ impl XhciTransferManager {
             slot_id,
             endpoint_id,
             transfer_dir,
-            transfer_trbs,
+            transfer_descriptor,
             device_slot: self.device_slot.clone(),
             stream_id,
         };
@@ -245,7 +244,7 @@ pub struct XhciTransfer {
     // id of endpoint in device slot.
     endpoint_id: u8,
     transfer_dir: TransferDirection,
-    transfer_trbs: TransferDescriptor,
+    transfer_descriptor: TransferDescriptor,
     transfer_completion_event: Event,
     device_slot: Weak<DeviceSlot>,
     stream_id: Option<u16>,
@@ -261,8 +260,8 @@ impl fmt::Debug for XhciTransfer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "xhci_transfer slot id: {}, endpoint id {}, transfer_dir {:?}, transfer_trbs {:?}",
-            self.slot_id, self.endpoint_id, self.transfer_dir, self.transfer_trbs
+            "xhci_transfer slot id: {}, endpoint id {}, transfer_dir {:?}, transfer_descriptor {:?}",
+            self.slot_id, self.endpoint_id, self.transfer_dir, self.transfer_descriptor
         )
     }
 }
@@ -277,7 +276,9 @@ impl XhciTransfer {
     pub fn get_transfer_type(&self) -> Result<XhciTransferType> {
         // We can figure out transfer type from the first trb.
         // See transfer descriptor description in xhci spec for more details.
-        match self.transfer_trbs[0]
+        match self
+            .transfer_descriptor
+            .first_atrb()
             .trb
             .get_trb_type()
             .map_err(Error::TrbType)?
@@ -294,13 +295,14 @@ impl XhciTransfer {
 
     /// Create a scatter gather buffer for the given xhci transfer
     pub fn create_buffer(&self) -> Result<ScatterGatherBuffer> {
-        ScatterGatherBuffer::new(self.mem.clone(), self.transfer_trbs.clone())
+        ScatterGatherBuffer::new(self.mem.clone(), self.transfer_descriptor.clone())
             .map_err(Error::CreateBuffer)
     }
 
     /// Create a usb request setup for the control transfer buffer
     pub fn create_usb_request_setup(&self) -> Result<UsbRequestSetup> {
-        let trb = self.transfer_trbs[0]
+        let first_atrb = self.transfer_descriptor.first_atrb();
+        let trb = first_atrb
             .trb
             .checked_cast::<SetupStageTrb>()
             .map_err(Error::CastTrb)?;
@@ -389,7 +391,7 @@ impl XhciTransfer {
         //   2. When a short transfer occurs during the execution of a Transfer TRB and the
         //      Interrupt-on-Short Packet flag is set.
         //   3. If an error occurs during the execution of a Transfer TRB.
-        for atrb in &self.transfer_trbs {
+        for atrb in &self.transfer_descriptor {
             edtla += atrb.trb.transfer_length().map_err(Error::TransferLength)?;
             if atrb.trb.interrupt_on_completion()
                 || (atrb.trb.interrupt_on_short_packet() && edtla > bytes_transferred)
@@ -492,7 +494,7 @@ impl XhciTransfer {
     // parameters. Returns true iff the transfer descriptor is valid.
     fn validate_transfer(&self) -> Result<bool> {
         let mut valid = true;
-        for atrb in &self.transfer_trbs {
+        for atrb in &self.transfer_descriptor {
             if !trb_is_valid(atrb) {
                 self.interrupter
                     .lock()

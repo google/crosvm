@@ -158,7 +158,7 @@ mod test {
     #[test]
     fn scatter_gather_buffer_test() {
         let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-        let mut td = TransferDescriptor::new();
+        let mut trbs = Vec::new();
 
         // In this td, we are going to have scatter buffer at 0x100, length 4, 0x200 length 2 and
         // 0x300 length 1.
@@ -168,22 +168,23 @@ mod test {
         ntrb.set_trb_type(TrbType::Normal);
         ntrb.set_data_buffer_pointer(0x100);
         ntrb.set_trb_transfer_length(4);
-        td.push(AddressedTrb { trb, gpa: 0 });
+        trbs.push(AddressedTrb { trb, gpa: 0 });
 
         let mut trb = Trb::new();
         let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
         ntrb.set_trb_type(TrbType::Normal);
         ntrb.set_data_buffer_pointer(0x200);
         ntrb.set_trb_transfer_length(2);
-        td.push(AddressedTrb { trb, gpa: 0 });
+        trbs.push(AddressedTrb { trb, gpa: 0 });
 
         let mut trb = Trb::new();
         let ntrb = trb.cast_mut::<NormalTrb>().unwrap();
         ntrb.set_trb_type(TrbType::Normal);
         ntrb.set_data_buffer_pointer(0x300);
         ntrb.set_trb_transfer_length(1);
-        td.push(AddressedTrb { trb, gpa: 0 });
+        trbs.push(AddressedTrb { trb, gpa: 0 });
 
+        let td = TransferDescriptor::new(trbs).unwrap();
         let buffer = ScatterGatherBuffer::new(gm.clone(), td).unwrap();
 
         assert_eq!(buffer.len().unwrap(), 7);
@@ -206,7 +207,6 @@ mod test {
     #[test]
     fn immediate_data_test() {
         let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-        let mut td = TransferDescriptor::new();
 
         let expected_immediate_data: [u8; 8] = [0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0D, 0xCA, 0xFE];
 
@@ -216,7 +216,7 @@ mod test {
         ntrb.set_data_buffer_pointer(u64::from_le_bytes(expected_immediate_data));
         ntrb.set_trb_transfer_length(8);
         ntrb.set_immediate_data(1);
-        td.push(AddressedTrb { trb, gpa: 0xC00 });
+        let td = TransferDescriptor::new(vec![AddressedTrb { trb, gpa: 0xC00 }]).unwrap();
 
         gm.write_obj_at_addr(trb, GuestAddress(0xc00)).unwrap();
 

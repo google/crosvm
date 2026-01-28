@@ -261,7 +261,7 @@ mod tests {
             descriptor: TransferDescriptor,
             complete_event: Event,
         ) -> anyhow::Result<()> {
-            for atrb in descriptor {
+            for atrb in &descriptor {
                 assert_eq!(atrb.trb.get_trb_type().unwrap(), TrbType::Normal);
                 self.sender.send(atrb.trb.get_parameter() as i32).unwrap();
             }

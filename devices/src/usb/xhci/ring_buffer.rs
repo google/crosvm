@@ -69,7 +69,7 @@ impl RingBuffer {
 
     /// Dequeue next transfer descriptor from the transfer ring.
     pub fn dequeue_transfer_descriptor(&mut self) -> Result<Option<TransferDescriptor>> {
-        let mut td: TransferDescriptor = TransferDescriptor::new();
+        let mut trbs = Vec::new();
         while let Some(addressed_trb) = self.get_current_trb()? {
             if let Ok(TrbType::Link) = addressed_trb.trb.get_trb_type() {
                 let link_trb = addressed_trb
@@ -94,15 +94,15 @@ impl RingBuffer {
                 self.name.as_str(),
                 addressed_trb.trb
             );
-            td.push(addressed_trb);
+            trbs.push(addressed_trb);
             if !addressed_trb.trb.get_chain_bit().map_err(Error::TrbChain)? {
                 debug!("xhci: trb chain is false returning");
                 break;
             }
         }
         // A valid transfer descriptor contains at least one addressed trb and the last trb has
-        // chain bit != 0.
-        match td.last() {
+        // chain bit == 0.
+        match trbs.last() {
             Some(t) => {
                 if t.trb.get_chain_bit().map_err(Error::TrbChain)? {
                     return Ok(None);
@@ -110,7 +110,7 @@ impl RingBuffer {
             }
             None => return Ok(None),
         }
-        Ok(Some(td))
+        Ok(TransferDescriptor::new(trbs))
     }
 
     /// Get dequeue pointer of the ring buffer.
