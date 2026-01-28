@@ -401,12 +401,11 @@ impl DeviceSlot {
         Ok(true)
     }
 
-    /// Enable the slot. This function returns false if it's already enabled.
+    /// Enable the slot. This function returns false if it's already enabled. It's not an error
+    /// when this was called for an already enabled slot, because this is repeatedly called to find
+    /// and enable the next available slot.
     pub fn enable(&self) -> bool {
         let was_already_enabled = self.enabled.swap(true, Ordering::SeqCst);
-        if was_already_enabled {
-            error!("device slot is already enabled");
-        }
         !was_already_enabled
     }
 
@@ -417,7 +416,7 @@ impl DeviceSlot {
         slot: &Arc<DeviceSlot>,
         mut callback: C,
     ) -> Result<()> {
-        if slot.enabled.load(Ordering::SeqCst) {
+        if slot.enabled.swap(false, Ordering::SeqCst) {
             let slot_weak = Arc::downgrade(slot);
             let auto_callback =
                 RingBufferStopCallback::new(fallible_closure(fail_handle, move || {
@@ -1085,5 +1084,189 @@ impl DeviceSlot {
         endpoint_context.set_endpoint_state(EndpointState::Halted);
         self.set_device_context(device_context)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::thread;
+
+    use base::Event;
+
+    use super::*;
+    use crate::usb::xhci::xhci_controller::XhciFailHandle;
+    use crate::usb::xhci::XhciRegs;
+
+    struct TestDeviceSlots {
+        pub device_slots: DeviceSlots,
+        event_loop: Arc<EventLoop>,
+        join_handle: Option<thread::JoinHandle<()>>,
+    }
+
+    impl TestDeviceSlots {
+        fn cleanup(&mut self) {
+            if let Some(join_handle) = self.join_handle.take() {
+                self.event_loop.stop();
+                join_handle.join().unwrap();
+            }
+        }
+    }
+
+    fn setup_test_device_slots() -> TestDeviceSlots {
+        let test_reg32 = register!(
+            name: "test",
+            ty: u32,
+            offset: 0x0,
+            reset_value: 0,
+            guest_writeable_mask: 0x0,
+            guest_write_1_to_clear_mask: 0,
+        );
+        let test_reg64 = register!(
+            name: "test",
+            ty: u64,
+            offset: 0x0,
+            reset_value: 0,
+            guest_writeable_mask: 0x0,
+            guest_write_1_to_clear_mask: 0,
+        );
+        let xhci_regs = XhciRegs {
+            usbcmd: test_reg32.clone(),
+            usbsts: test_reg32.clone(),
+            dnctrl: test_reg32.clone(),
+            crcr: test_reg64.clone(),
+            dcbaap: test_reg64.clone(),
+            config: test_reg64.clone(),
+            portsc: vec![test_reg32.clone(); 16],
+            doorbells: Vec::new(),
+            iman: test_reg32.clone(),
+            imod: test_reg32.clone(),
+            erstsz: test_reg32.clone(),
+            erstba: test_reg64.clone(),
+            erdp: test_reg64.clone(),
+        };
+        let fail_handle: Arc<dyn FailHandle> = Arc::new(XhciFailHandle::new(&xhci_regs));
+        let mem = GuestMemory::new(&[]).unwrap();
+        let event = Event::new().unwrap();
+        let interrupter = Arc::new(Mutex::new(Interrupter::new(mem.clone(), event, &xhci_regs)));
+        let hub = Arc::new(UsbHub::new(&xhci_regs, interrupter.clone()));
+        let (event_loop, join_handle) =
+            EventLoop::start("test".to_string(), Some(fail_handle.clone())).unwrap();
+        let event_loop = Arc::new(event_loop);
+
+        let device_slots = DeviceSlots::new(
+            fail_handle.clone(),
+            test_reg64.clone(),
+            hub,
+            interrupter,
+            event_loop.clone(),
+            mem,
+        );
+        TestDeviceSlots {
+            device_slots,
+            event_loop,
+            join_handle: Some(join_handle),
+        }
+    }
+
+    #[test]
+    fn valid_slot() {
+        let mut test_device_slots = setup_test_device_slots();
+        for i in 1..=MAX_SLOTS {
+            let slot = test_device_slots.device_slots.slot(i);
+            assert!(slot.is_some());
+        }
+
+        test_device_slots.cleanup();
+    }
+
+    #[test]
+    fn invalid_slot() {
+        let mut test_device_slots = setup_test_device_slots();
+        let slot = test_device_slots.device_slots.slot(0);
+        assert!(slot.is_none());
+        let slot = test_device_slots.device_slots.slot(MAX_SLOTS + 1);
+        assert!(slot.is_none());
+
+        test_device_slots.cleanup();
+    }
+
+    #[test]
+    fn slot_is_disabled_first() {
+        let mut test_device_slots = setup_test_device_slots();
+        for i in 1..=MAX_SLOTS {
+            let _ = test_device_slots
+                .device_slots
+                .disable_slot(i, move |completion_code| {
+                    assert_eq!(completion_code, TrbCompletionCode::SlotNotEnabledError);
+                    Ok(())
+                });
+        }
+
+        test_device_slots.cleanup();
+    }
+
+    #[test]
+    fn slot_enable_disable_enable() {
+        let mut test_device_slots = setup_test_device_slots();
+        for i in 1..=MAX_SLOTS {
+            assert!(test_device_slots.device_slots.slot(i).unwrap().enable());
+            let _ = test_device_slots
+                .device_slots
+                .disable_slot(i, move |completion_code| {
+                    assert_eq!(completion_code, TrbCompletionCode::Success);
+                    Ok(())
+                });
+            assert!(test_device_slots.device_slots.slot(i).unwrap().enable());
+        }
+
+        test_device_slots.cleanup();
+    }
+
+    #[test]
+    fn slot_enable_disable_disable() {
+        let mut test_device_slots = setup_test_device_slots();
+        for i in 1..=MAX_SLOTS {
+            assert!(test_device_slots.device_slots.slot(i).unwrap().enable());
+            let _ = test_device_slots
+                .device_slots
+                .disable_slot(i, move |completion_code| {
+                    assert_eq!(completion_code, TrbCompletionCode::Success);
+                    Ok(())
+                });
+            let _ = test_device_slots
+                .device_slots
+                .disable_slot(i, move |completion_code| {
+                    assert_eq!(completion_code, TrbCompletionCode::SlotNotEnabledError);
+                    Ok(())
+                });
+        }
+
+        test_device_slots.cleanup();
+    }
+
+    #[test]
+    fn slot_find_disabled() {
+        let mut test_device_slots = setup_test_device_slots();
+        for i in 1..=MAX_SLOTS {
+            assert!(test_device_slots.device_slots.slot(i).unwrap().enable());
+        }
+        let free_slot = 5;
+        let _ = test_device_slots
+            .device_slots
+            .disable_slot(free_slot, move |completion_code| {
+                assert_eq!(completion_code, TrbCompletionCode::Success);
+                Ok(())
+            });
+        let mut found = false;
+        for i in 1..=MAX_SLOTS {
+            if test_device_slots.device_slots.slot(i).unwrap().enable() {
+                assert_eq!(free_slot, i);
+                found = true;
+                break;
+            }
+        }
+        assert!(found);
+
+        test_device_slots.cleanup();
     }
 }
