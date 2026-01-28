@@ -58,8 +58,6 @@ pub enum Error {
     /// Cannot get interface descriptor for (interface, altsetting).
     #[error("failed to get interface descriptor for interface {0}, alt setting {1}")]
     GetInterfaceDescriptor(u8, u8),
-    #[error("failed to get xhci transfer type: {0}")]
-    GetXhciTransferType(XhciTransferError),
     #[error("the backend received the wrong transfer request")]
     MalformedBackendTransfer,
     #[error("request missing required data buffer")]

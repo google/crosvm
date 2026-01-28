@@ -554,15 +554,15 @@ impl BackendDeviceType {
         )
     }
 
+    // This function should return an error only when we want to remove the ring handler from the
+    // event loop. For any error that might originate from the guest driver, it should report an
+    // error to the guest and return Ok.
     fn handle_control_transfer(&mut self, transfer: XhciTransfer) -> Result<()> {
         let xhci_transfer = Arc::new(transfer);
-        let transfer_type = xhci_transfer
-            .get_transfer_type()
-            .map_err(Error::GetXhciTransferType)?;
         let control_transfer_state_binding = self.get_control_transfer_state();
         let mut control_transfer_state = control_transfer_state_binding.write().unwrap();
-        match transfer_type {
-            XhciTransferType::SetupStage => {
+        match xhci_transfer.get_transfer_type() {
+            Ok(XhciTransferType::SetupStage) => {
                 let setup = xhci_transfer
                     .create_usb_request_setup()
                     .map_err(Error::CreateUsbRequestSetup)?;
@@ -577,7 +577,7 @@ impl BackendDeviceType {
                     .map_err(Error::TransferComplete)?;
                 control_transfer_state.ctl_ep_state = ControlEndpointState::DataStage;
             }
-            XhciTransferType::DataStage => {
+            Ok(XhciTransferType::DataStage) => {
                 if control_transfer_state.ctl_ep_state != ControlEndpointState::DataStage {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
@@ -593,7 +593,7 @@ impl BackendDeviceType {
                 control_transfer_state.executed = true;
                 control_transfer_state.ctl_ep_state = ControlEndpointState::StatusStage;
             }
-            XhciTransferType::StatusStage => {
+            Ok(XhciTransferType::StatusStage) => {
                 if control_transfer_state.ctl_ep_state == ControlEndpointState::SetupStage {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
@@ -615,15 +615,18 @@ impl BackendDeviceType {
                 control_transfer_state.executed = false;
                 control_transfer_state.ctl_ep_state = ControlEndpointState::SetupStage;
             }
-            _ => {
+            Ok(ty) => {
                 // Non control transfer should not be handled in this function.
-                error!(
-                    "Non control {} transfer sent to control endpoint.",
-                    transfer_type,
-                );
-                xhci_transfer
-                    .on_transfer_complete(&TransferStatus::Completed, 0)
-                    .map_err(Error::TransferComplete)?;
+                error!("Non control {} transfer sent to control endpoint.", ty);
+                return xhci_transfer
+                    .on_transfer_complete(&TransferStatus::Error, 0)
+                    .map_err(Error::TransferComplete);
+            }
+            Err(e) => {
+                error!("failed to get transfer type: {}", e);
+                return xhci_transfer
+                    .on_transfer_complete(&TransferStatus::Error, 0)
+                    .map_err(Error::TransferComplete);
             }
         }
         Ok(())
