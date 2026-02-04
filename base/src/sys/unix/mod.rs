@@ -24,6 +24,7 @@ pub use sock_ctrl_msg::*;
 pub use stream_channel::*;
 pub use system_info::iov_max;
 pub use system_info::number_of_logical_cores;
+pub use system_info::number_of_online_cores;
 pub use system_info::pagesize;
 pub use time::duration_to_timespec;
 

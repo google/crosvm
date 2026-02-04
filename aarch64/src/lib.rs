@@ -27,6 +27,7 @@ use arch::RunnableLinuxVm;
 use arch::VcpuAffinity;
 use arch::VmComponents;
 use arch::VmImage;
+use base::warn;
 use base::MemoryMappingBuilder;
 use base::SendTube;
 use base::Tube;
@@ -1111,54 +1112,50 @@ impl arch::LinuxArch for AArch64 {
         Err(Error::Unsupported)
     }
 
+    /// Returns a mapping of online CPUs to their max frequency.
     fn get_host_cpu_max_freq_khz() -> std::result::Result<BTreeMap<usize, u32>, Self::Error> {
-        Ok(Self::collect_for_each_cpu(base::logical_core_max_freq_khz)
-            .map_err(Error::CpuFrequencies)?
-            .into_iter()
-            .enumerate()
-            .collect())
+        Self::collect_for_online_cpus(base::logical_core_max_freq_khz)
+            .map_err(Error::CpuFrequencies)
     }
 
+    /// Returns a mapping of online CPUs to their supported frequencies.
     fn get_host_cpu_frequencies_khz() -> std::result::Result<BTreeMap<usize, Vec<u32>>, Self::Error>
     {
-        Ok(
-            Self::collect_for_each_cpu(base::logical_core_frequencies_khz)
-                .map_err(Error::CpuFrequencies)?
-                .into_iter()
-                .enumerate()
-                .collect(),
-        )
+        Self::collect_for_online_cpus(base::logical_core_frequencies_khz)
+            .map_err(Error::CpuFrequencies)
     }
 
-    // Returns a (cpu_id -> value) map of the DMIPS/MHz capacities of logical cores
-    // in the host system.
+    /// Returns a (cpu_id -> value) map of the DMIPS/MHz capacities of logical cores
+    /// in the host system. Map only contains online CPUs.
     fn get_host_cpu_capacity() -> std::result::Result<BTreeMap<usize, u32>, Self::Error> {
-        Ok(Self::collect_for_each_cpu(base::logical_core_capacity)
-            .map_err(Error::CpuTopology)?
-            .into_iter()
-            .enumerate()
-            .collect())
+        Self::collect_for_online_cpus(base::logical_core_capacity).map_err(Error::CpuTopology)
     }
 
-    // Creates CPU cluster mask for each CPU in the host system.
+    /// Creates CPU cluster mask for each online CPU in the host system.
     fn get_host_cpu_clusters() -> std::result::Result<Vec<CpuSet>, Self::Error> {
-        let cluster_ids = Self::collect_for_each_cpu(base::logical_core_cluster_id)
+        let cluster_ids = Self::collect_for_online_cpus(base::logical_core_cluster_id)
             .map_err(Error::CpuTopology)?;
-        let mut unique_clusters: Vec<CpuSet> = cluster_ids
-            .iter()
-            .map(|&vcpu_cluster_id| {
-                cluster_ids
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, &cpu_cluster_id)| vcpu_cluster_id == cpu_cluster_id)
-                    .map(|(cpu_id, _)| cpu_id)
-                    .collect()
-            })
-            .collect();
-        unique_clusters.sort_unstable();
-        unique_clusters.dedup();
-        Ok(unique_clusters)
+        get_host_cpu_clusters_for_cluster_ids(cluster_ids)
     }
+}
+
+fn get_host_cpu_clusters_for_cluster_ids(
+    cluster_ids: BTreeMap<usize, u32>,
+) -> std::result::Result<Vec<CpuSet>, Error> {
+    let mut unique_clusters: Vec<CpuSet> = cluster_ids
+        .iter()
+        .map(|(_, &vcpu_cluster_id)| {
+            cluster_ids
+                .iter()
+                .filter(|(_, &other_vcpu_cluster_id)| vcpu_cluster_id == other_vcpu_cluster_id)
+                .map(|(cpu_id, _)| cpu_id)
+                .copied()
+                .collect()
+        })
+        .collect();
+    unique_clusters.sort_unstable();
+    unique_clusters.dedup();
+    Ok(unique_clusters)
 }
 
 #[cfg(feature = "gdb")]
@@ -1503,11 +1500,46 @@ impl AArch64 {
         VcpuInitAArch64 { regs }
     }
 
-    fn collect_for_each_cpu<F, T>(func: F) -> std::result::Result<Vec<T>, base::Error>
+    /// Returns a mapping of `cpu_id`s to the output of `map_func` for online CPUs.
+    fn collect_for_online_cpus<G, T>(
+        map_func: G,
+    ) -> std::result::Result<BTreeMap<usize, T>, base::Error>
     where
-        F: Fn(usize) -> std::result::Result<T, base::Error>,
+        G: Fn(usize) -> std::result::Result<T, base::Error>,
     {
-        (0..base::number_of_logical_cores()?).map(func).collect()
+        let cpu_map = Self::collect_for_each_cpu(
+            base::number_of_logical_cores().expect("Failed to read number of CPUs"),
+            base::is_cpu_online,
+            map_func,
+        )?;
+
+        let online_cpus =
+            base::number_of_online_cores().expect("Failed to read number of online CPUs");
+        let actual_cpus = cpu_map.len();
+        if online_cpus != actual_cpus {
+            warn!("Only able to check {actual_cpus} of {online_cpus} online CPUs.");
+        }
+        Ok(cpu_map)
+    }
+
+    /// Returns a mapping of `cpu_id`s to the output of `map_func` for CPUs where `filter_func`
+    /// returns true.
+    fn collect_for_each_cpu<F, G, T>(
+        num_cpus: usize,
+        filter_func: F,
+        map_func: G,
+    ) -> std::result::Result<BTreeMap<usize, T>, base::Error>
+    where
+        F: Fn(usize) -> std::result::Result<bool, base::Error>,
+        G: Fn(usize) -> std::result::Result<T, base::Error>,
+    {
+        let mut cpu_map = BTreeMap::new();
+        for cpu_id in 0..num_cpus {
+            if filter_func(cpu_id)? {
+                cpu_map.insert(cpu_id, map_func(cpu_id)?);
+            }
+        }
+        Ok(cpu_map)
     }
 }
 
@@ -1602,5 +1634,91 @@ mod tests {
 
         // X2: image size
         assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::X(2)), Some(&0x1000));
+    }
+
+    #[test]
+    fn collect_for_each_cpu_simple() {
+        let num_cpus = 2;
+        let filter_func = |_cpu_id: usize| -> std::result::Result<bool, base::Error> { Ok(true) };
+        let map_func = |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id) };
+        let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func).unwrap();
+
+        assert_eq!(result.len(), num_cpus);
+        assert_eq!(result.get(&0), Some(0).as_ref());
+        assert_eq!(result.get(&1), Some(1).as_ref());
+    }
+
+    #[test]
+    fn collect_for_each_cpu_filter() {
+        let num_cpus = 2;
+        let filter_func =
+            |cpu_id: usize| -> std::result::Result<bool, base::Error> { Ok(cpu_id % 2 == 0) };
+        let map_func = |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id) };
+        let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get(&0), Some(0).as_ref());
+    }
+
+    #[test]
+    fn collect_for_each_cpu_map() {
+        let num_cpus = 4;
+        let filter_func = |_| -> std::result::Result<bool, base::Error> { Ok(true) };
+        let map_func =
+            |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id * 2) };
+        let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func).unwrap();
+
+        assert_eq!(result.len(), num_cpus);
+        assert_eq!(result.get(&0), Some(0).as_ref());
+        assert_eq!(result.get(&1), Some(2).as_ref());
+    }
+
+    #[test]
+    fn collect_for_each_cpu_filter_error() {
+        let num_cpus = 1;
+        let filter_func =
+            |_| -> std::result::Result<bool, base::Error> { Err(base::Error::new(libc::EINVAL)) };
+        let map_func = |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id) };
+        let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().errno(), libc::EINVAL);
+    }
+
+    #[test]
+    fn collect_for_each_cpu_map_error() {
+        let num_cpus = 1;
+        let filter_func = |_| -> std::result::Result<bool, base::Error> { Ok(true) };
+        let map_func =
+            |_| -> std::result::Result<usize, base::Error> { Err(base::Error::new(libc::EINVAL)) };
+        let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().errno(), libc::EINVAL);
+    }
+
+    #[test]
+    fn test_get_host_cpu_clusters_for_cluster_ids_unique() {
+        let cluster_ids = BTreeMap::from([(0, 0), (1, 1), (2, 2)]);
+        let result = get_host_cpu_clusters_for_cluster_ids(cluster_ids)
+            .expect("shouldn't fail to get clusters");
+        assert_eq!(
+            vec![CpuSet::new([0]), CpuSet::new([1]), CpuSet::new([2])],
+            result
+        );
+    }
+
+    #[test]
+    fn get_host_cpu_clusters_for_cluster_ids_clustered() {
+        let cluster_ids = BTreeMap::from([(0, 0), (1, 1), (2, 1)]);
+        let result = get_host_cpu_clusters_for_cluster_ids(cluster_ids)
+            .expect("shouldn't fail to get clusters");
+        assert_eq!(vec![CpuSet::new([0]), CpuSet::new([1, 2])], result);
+    }
+
+    #[test]
+    fn get_host_cpu_clusters_for_cluster_ids_skip_cpu() {
+        let cluster_ids = BTreeMap::from([(0, 0), (2, 1), (3, 1)]);
+        let result = get_host_cpu_clusters_for_cluster_ids(cluster_ids)
+            .expect("shouldn't fail to get clusters");
+        assert_eq!(vec![CpuSet::new([0]), CpuSet::new([2, 3])], result);
     }
 }

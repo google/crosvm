@@ -1067,12 +1067,12 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         }
 
         let pcpu_count =
-            base::number_of_logical_cores().expect("Could not read number of logical cores");
+            base::number_of_online_cores().expect("Could not read number of online cores");
         if let Some(vcpu_count) = cfg.vcpu_count {
             if pcpu_count != vcpu_count {
                 return Err(format!(
                     "`host-cpu-topology` requires the count of vCPUs({vcpu_count}) to equal the \
-                            count of CPUs({pcpu_count}) on host."
+                            count of online CPUs({pcpu_count}) on host."
                 ));
             }
         } else {
@@ -1081,10 +1081,11 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
         match &cfg.vcpu_affinity {
             None => {
-                let mut affinity_map = BTreeMap::new();
-                for cpu_id in 0..cfg.vcpu_count.unwrap() {
-                    affinity_map.insert(cpu_id, CpuSet::new([cpu_id]));
-                }
+                let vcpu_count = cfg.vcpu_count.unwrap();
+                let max_cores = base::number_of_logical_cores()
+                    .expect("Could not read number of logical cores");
+                let affinity_map =
+                    default_vcpu_affinity_map(vcpu_count, max_cores, base::is_cpu_online);
                 cfg.vcpu_affinity = Some(VcpuAffinity::PerVcpu(affinity_map));
             }
             _ => {
@@ -1242,6 +1243,26 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
     // Validate platform specific things
     super::sys::config::validate_config(cfg)
+}
+
+fn default_vcpu_affinity_map(
+    vcpu_count: usize,
+    max_cores: usize,
+    is_cpu_online: impl Fn(usize) -> base::Result<bool>,
+) -> BTreeMap<usize, CpuSet> {
+    let mut affinity_map = BTreeMap::new();
+    let mut vcpu_id = 0;
+    for cpu_id in 0..max_cores {
+        if is_cpu_online(cpu_id).expect("Couldn't check if cpu is online") {
+            affinity_map.insert(vcpu_id, CpuSet::new([cpu_id]));
+            vcpu_id += 1;
+        }
+        if vcpu_id >= vcpu_count {
+            // Exit early if we've allocated all the vcpu's.
+            break;
+        }
+    }
+    affinity_map
 }
 
 fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Result<(), String> {
@@ -2383,5 +2404,23 @@ mod tests {
         assert!(validate_pmem(&pmem)
             .unwrap_err()
             .contains("swap-interval parameter can only be set for writable pmem device"));
+    }
+
+    #[test]
+    fn test_default_vcpu_affinity_map() {
+        // Simple 1:1 mapping of vcpu:cpu.
+        let affinity = default_vcpu_affinity_map(4, 4, |_| Ok(true));
+        assert_eq!(affinity.len(), 4);
+        assert_eq!(affinity.get(&0), Some(&CpuSet::new([0])));
+        assert_eq!(affinity.get(&1), Some(&CpuSet::new([1])));
+        assert_eq!(affinity.get(&2), Some(&CpuSet::new([2])));
+        assert_eq!(affinity.get(&3), Some(&CpuSet::new([3])));
+
+        // cpu 1 is offline, so skip it when assigning vcpu's.
+        let affinity = default_vcpu_affinity_map(3, 4, |id| Ok(id != 1));
+        assert_eq!(affinity.len(), 3);
+        assert_eq!(affinity.get(&0), Some(&CpuSet::new([0])));
+        assert_eq!(affinity.get(&1), Some(&CpuSet::new([2])));
+        assert_eq!(affinity.get(&2), Some(&CpuSet::new([3])));
     }
 }

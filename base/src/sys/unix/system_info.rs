@@ -5,6 +5,7 @@
 use libc::sysconf;
 use libc::_SC_IOV_MAX;
 use libc::_SC_NPROCESSORS_CONF;
+use libc::_SC_NPROCESSORS_ONLN;
 use libc::_SC_PAGESIZE;
 
 use crate::errno_result;
@@ -39,7 +40,7 @@ pub fn pagesize() -> usize {
     pagesize as usize
 }
 
-/// Returns the number of online logical cores on the system.
+/// Returns the number of logical cores on the system.
 #[inline(always)]
 pub fn number_of_logical_cores() -> Result<usize> {
     // SAFETY:
@@ -49,5 +50,18 @@ pub fn number_of_logical_cores() -> Result<usize> {
         errno_result()
     } else {
         Ok(nprocs_conf as usize)
+    }
+}
+
+/// Returns the number of online cores on the system.
+#[inline(always)]
+pub fn number_of_online_cores() -> Result<usize> {
+    // SAFETY:
+    // Safe because we pass a flag for this call and the host supports this system call
+    let nprocs_onln = unsafe { sysconf(_SC_NPROCESSORS_ONLN) };
+    if nprocs_onln < 0 {
+        errno_result()
+    } else {
+        Ok(nprocs_onln as usize)
     }
 }

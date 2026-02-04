@@ -117,6 +117,9 @@ pub type Uid = libc::uid_t;
 pub type Gid = libc::gid_t;
 pub type Mode = libc::mode_t;
 
+// Directory that holds cpu sysinfo files.
+const CPU_DIR: &str = "/sys/devices/system/cpu";
+
 /// Safe wrapper for PR_SET_NAME(2const)
 #[inline(always)]
 pub fn set_thread_name(name: &str) -> Result<()> {
@@ -640,14 +643,28 @@ pub fn move_proc_to_cgroup(cgroup_path: PathBuf, process_id: Pid) -> Result<()> 
     move_to_cgroup(cgroup_path, process_id, "cgroup.procs")
 }
 
+fn read_sysfs_cpu_info_in_dir(cpu_dir: &str, cpu_id: usize, property: &str) -> Result<String> {
+    let path = Path::new(cpu_dir)
+        .join(format!("cpu{cpu_id}"))
+        .join(property);
+
+    std::fs::read_to_string(path).map_err(|e| e.into())
+}
+
 /// Queries the property of a specified CPU sysfs node.
 fn parse_sysfs_cpu_info_vec(cpu_id: usize, property: &str) -> Result<Vec<u32>> {
-    let path = format!("/sys/devices/system/cpu/cpu{cpu_id}/{property}");
-    let res: Result<Vec<_>> = std::fs::read_to_string(path)?
+    parse_sysfs_cpu_info_vec_in_dir(CPU_DIR, cpu_id, property)
+}
+
+fn parse_sysfs_cpu_info_vec_in_dir(
+    cpu_dir: &str,
+    cpu_id: usize,
+    property: &str,
+) -> Result<Vec<u32>> {
+    read_sysfs_cpu_info_in_dir(cpu_dir, cpu_id, property)?
         .split_whitespace()
         .map(|x| x.parse().map_err(|_| Error::new(libc::EINVAL)))
-        .collect();
-    res
+        .collect()
 }
 
 /// Returns a list of supported frequencies in kHz for a given logical core.
@@ -655,9 +672,13 @@ pub fn logical_core_frequencies_khz(cpu_id: usize) -> Result<Vec<u32>> {
     parse_sysfs_cpu_info_vec(cpu_id, "cpufreq/scaling_available_frequencies")
 }
 
+/// Queries the property of a specified CPU sysfs node.
 fn parse_sysfs_cpu_info(cpu_id: usize, property: &str) -> Result<u32> {
-    let path = format!("/sys/devices/system/cpu/cpu{cpu_id}/{property}");
-    std::fs::read_to_string(path)?
+    parse_sysfs_cpu_info_in_dir(CPU_DIR, cpu_id, property)
+}
+
+fn parse_sysfs_cpu_info_in_dir(cpu_dir: &str, cpu_id: usize, property: &str) -> Result<u32> {
+    read_sysfs_cpu_info_in_dir(cpu_dir, cpu_id, property)?
         .trim()
         .parse()
         .map_err(|_| Error::new(libc::EINVAL))
@@ -701,6 +722,25 @@ pub fn logical_core_cluster_id(cpu_id: usize) -> Result<u32> {
 /// Returns the maximum frequency (in kHz) of a given logical core.
 pub fn logical_core_max_freq_khz(cpu_id: usize) -> Result<u32> {
     parse_sysfs_cpu_info(cpu_id, "cpufreq/cpuinfo_max_freq")
+}
+
+/// Returns a bool if the CPU is online, or an error if there was an issue reading the system
+/// properties.
+pub fn is_cpu_online(cpu_id: usize) -> Result<bool> {
+    let result = parse_sysfs_cpu_info(cpu_id, "online");
+    match result {
+        Err(e) => {
+            if e.errno() == libc::ENOENT {
+                // Some systems don't have a file for CPU 0 if the system considers CPU 0 to be
+                // always-online. Or if CONFIG_HOTPLUG_CPU=n, then the "online" property/file will
+                // never be created in drivers/base/cpu.c.
+                Ok(true)
+            } else {
+                Err(e)
+            }
+        }
+        Ok(online) => Ok(online == 1),
+    }
 }
 
 #[repr(C)]
@@ -757,11 +797,23 @@ pub fn sched_setattr(pid: Pid, attr: &mut sched_attr, flags: u32) -> Result<()> 
 
 #[cfg(test)]
 mod tests {
+    use std::fs::create_dir_all;
+    use std::fs::File;
     use std::io::Write;
     use std::os::fd::AsRawFd;
 
+    use tempfile::TempDir;
+
     use super::*;
     use crate::unix::add_fd_flags;
+
+    fn create_temp_file(path: &Path, content: &str) {
+        if let Some(parent) = path.parent() {
+            create_dir_all(parent).unwrap();
+        }
+        let mut file = File::create(path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+    }
 
     #[test]
     fn pipe_size_and_fill() {
@@ -772,5 +824,69 @@ mod tests {
         add_fd_flags(tx.as_raw_fd(), libc::O_NONBLOCK).expect("Failed to set tx non blocking");
         tx.write(&[0u8; 8])
             .expect_err("Write after fill didn't fail");
+    }
+
+    #[test]
+    fn test_parse_sysfs_cpu_info() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let cpu_dir = root.join("sys/devices/system/cpu");
+        let cpu = 0;
+        let property = "cpufreq/cpuinfo_max_freq";
+        create_temp_file(
+            &root.join("sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"),
+            "1000",
+        );
+
+        assert_eq!(
+            parse_sysfs_cpu_info_in_dir(cpu_dir.to_str().unwrap(), cpu, property).unwrap(),
+            1000
+        );
+    }
+
+    #[test]
+    fn test_parse_sysfs_cpu_info_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let cpu_dir = root.join("sys/devices/system/cpu");
+        let cpu = 0;
+        let property = "cpufreq/cpuinfo_max_freq";
+        // Not creating the sysinfo file should result in an error trying to read from it.
+
+        let err =
+            parse_sysfs_cpu_info_in_dir(cpu_dir.to_str().unwrap(), cpu, property).unwrap_err();
+        assert_eq!(err, Error::new(libc::ENOENT));
+    }
+
+    #[test]
+    fn test_parse_sysfs_cpu_info_vec() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let cpu_dir = root.join("sys/devices/system/cpu");
+        let cpu = 0;
+        let property = "cpufreq/scaling_available_frequencies";
+        create_temp_file(
+            &root.join("sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies"),
+            "1000 2000",
+        );
+
+        assert_eq!(
+            parse_sysfs_cpu_info_vec_in_dir(cpu_dir.to_str().unwrap(), cpu, property).unwrap(),
+            vec![1000, 2000]
+        );
+    }
+
+    #[test]
+    fn test_parse_sysfs_cpu_info_vec_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let cpu_dir = root.join("sys/devices/system/cpu");
+        let cpu = 0;
+        let property = "cpufreq/scaling_available_frequencies";
+        // Not creating the sysinfo file should result in an error trying to read from it.
+
+        let err =
+            parse_sysfs_cpu_info_vec_in_dir(cpu_dir.to_str().unwrap(), cpu, property).unwrap_err();
+        assert_eq!(err, Error::new(libc::ENOENT));
     }
 }

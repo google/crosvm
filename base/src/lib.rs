@@ -117,6 +117,7 @@ cfg_if::cfg_if! {
         pub use linux::logical_core_cluster_id;
         pub use linux::logical_core_frequencies_khz;
         pub use linux::logical_core_max_freq_khz;
+        pub use linux::is_cpu_online;
         pub use linux::sched_attr;
         pub use linux::sched_setattr;
         pub use linux::UnlinkUnixListener;
@@ -140,7 +141,9 @@ cfg_if::cfg_if! {
         pub use windows::ioctl::ioctl_with_ptr_sized;
         pub use windows::create_overlapped;
         pub use windows::device_io_control;
+        pub use windows::is_cpu_online;
         pub use windows::number_of_logical_cores;
+        pub use windows::number_of_online_cores;
         pub use windows::pagesize;
         pub use windows::read_overlapped_blocking;
 
@@ -169,6 +172,7 @@ cfg_if::cfg_if! {
         pub use unix::add_fd_flags;
         pub use unix::clear_fd_flags;
         pub use unix::number_of_logical_cores;
+        pub use unix::number_of_online_cores;
         pub use unix::pagesize;
         pub use unix::Pid;
     }
