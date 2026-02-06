@@ -65,7 +65,7 @@ pub enum TrbType {
 /// Completion code of trb types.
 #[bitfield]
 #[bits = 8]
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum TrbCompletionCode {
     Success = 1,
     TransactionError = 4,

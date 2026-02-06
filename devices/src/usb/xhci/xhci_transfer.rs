@@ -266,6 +266,17 @@ impl fmt::Debug for XhciTransfer {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum TransferAction {
+    HaltEndpoint,
+    SendEvent {
+        code: TrbCompletionCode,
+        gpa: u64,
+        residual: u32,
+        event_data: bool,
+    },
+}
+
 impl XhciTransfer {
     /// Get state of this transfer.
     pub fn state(&self) -> &Arc<Mutex<XhciTransferState>> {
@@ -331,6 +342,77 @@ impl XhciTransfer {
         self.stream_id
     }
 
+    fn process_td_results(
+        &self,
+        status: &TransferStatus,
+        bytes_transferred: u32,
+    ) -> Result<Vec<TransferAction>> {
+        let mut actions = Vec::new();
+        if *status == TransferStatus::Stalled {
+            warn!("xhci: endpoint is stalled. set state to Halted");
+            actions.push(TransferAction::HaltEndpoint);
+        }
+
+        let mut edtla: u32 = 0;
+        // As noted in xHCI spec 4.11.3.1
+        // Transfer Event TRB only occurs under the following conditions:
+        //   1. If the Interrupt On Completion flag is set.
+        //   2. When a short transfer occurs during the execution of a Transfer TRB and the
+        //      Interrupt-on-Short Packet flag is set.
+        //   3. If an error occurs during the execution of a Transfer TRB.
+        for atrb in &self.transfer_descriptor {
+            edtla += atrb.trb.transfer_length().map_err(Error::TransferLength)?;
+            if atrb.trb.interrupt_on_completion()
+                || (atrb.trb.interrupt_on_short_packet() && edtla > bytes_transferred)
+            {
+                // For details about event data trb and EDTLA, see spec 4.11.5.2.
+                if atrb.trb.get_trb_type().map_err(Error::TrbType)? == TrbType::EventData {
+                    let tlength = min(edtla, bytes_transferred);
+                    actions.push(TransferAction::SendEvent {
+                        code: TrbCompletionCode::Success,
+                        gpa: atrb
+                            .trb
+                            .cast::<EventDataTrb>()
+                            .map_err(Error::CastTrb)?
+                            .get_event_data(),
+                        residual: tlength,
+                        event_data: true,
+                    });
+                } else if *status == TransferStatus::Stalled {
+                    debug!("xhci: on transfer complete stalled");
+                    let residual_transfer_length = edtla - bytes_transferred;
+                    actions.push(TransferAction::SendEvent {
+                        code: TrbCompletionCode::StallError,
+                        gpa: atrb.gpa,
+                        residual: residual_transfer_length,
+                        event_data: true,
+                    });
+                } else {
+                    // For Short Transfer details, see xHCI spec 4.10.1.1.
+                    if edtla > bytes_transferred {
+                        debug!("xhci: on transfer complete short packet");
+                        let residual_transfer_length = edtla - bytes_transferred;
+                        actions.push(TransferAction::SendEvent {
+                            code: TrbCompletionCode::ShortPacket,
+                            gpa: atrb.gpa,
+                            residual: residual_transfer_length,
+                            event_data: true,
+                        });
+                    } else {
+                        debug!("xhci: on transfer complete success");
+                        actions.push(TransferAction::SendEvent {
+                            code: TrbCompletionCode::Success,
+                            gpa: atrb.gpa,
+                            residual: 0,
+                            event_data: true,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(actions)
+    }
+
     /// This functions should be invoked when transfer is completed (or failed).
     pub fn on_transfer_complete(
         &self,
@@ -358,18 +440,7 @@ impl XhciTransfer {
                     .signal()
                     .map_err(Error::WriteCompletionEvent);
             }
-            TransferStatus::Completed => {
-                self.transfer_completion_event
-                    .signal()
-                    .map_err(Error::WriteCompletionEvent)?;
-            }
-            TransferStatus::Stalled => {
-                warn!("xhci: endpoint is stalled. set state to Halted");
-                if let Some(device_slot) = self.device_slot.upgrade() {
-                    device_slot
-                        .halt_endpoint(self.endpoint_id)
-                        .map_err(|_| Error::HaltEndpoint(self.endpoint_id))?;
-                }
+            TransferStatus::Completed | TransferStatus::Stalled => {
                 self.transfer_completion_event
                     .signal()
                     .map_err(Error::WriteCompletionEvent)?;
@@ -384,78 +455,32 @@ impl XhciTransfer {
             }
         }
 
-        let mut edtla: u32 = 0;
-        // As noted in xHCI spec 4.11.3.1
-        // Transfer Event TRB only occurs under the following conditions:
-        //   1. If the Interrupt On Completion flag is set.
-        //   2. When a short transfer occurs during the execution of a Transfer TRB and the
-        //      Interrupt-on-Short Packet flag is set.
-        //   3. If an error occurs during the execution of a Transfer TRB.
-        for atrb in &self.transfer_descriptor {
-            edtla += atrb.trb.transfer_length().map_err(Error::TransferLength)?;
-            if atrb.trb.interrupt_on_completion()
-                || (atrb.trb.interrupt_on_short_packet() && edtla > bytes_transferred)
-            {
-                // For details about event data trb and EDTLA, see spec 4.11.5.2.
-                if atrb.trb.get_trb_type().map_err(Error::TrbType)? == TrbType::EventData {
-                    let tlength = min(edtla, bytes_transferred);
+        let actions = self.process_td_results(status, bytes_transferred)?;
+        for action in actions {
+            match action {
+                TransferAction::SendEvent {
+                    code,
+                    gpa,
+                    residual,
+                    event_data,
+                } => {
                     self.interrupter
                         .lock()
                         .send_transfer_event_trb(
-                            TrbCompletionCode::Success,
-                            atrb.trb
-                                .cast::<EventDataTrb>()
-                                .map_err(Error::CastTrb)?
-                                .get_event_data(),
-                            tlength,
-                            true,
+                            code,
+                            gpa,
+                            residual,
+                            event_data,
                             self.slot_id,
                             self.endpoint_id,
                         )
                         .map_err(Error::SendInterrupt)?;
-                } else if *status == TransferStatus::Stalled {
-                    debug!("xhci: on transfer complete stalled");
-                    let residual_transfer_length = edtla - bytes_transferred;
-                    self.interrupter
-                        .lock()
-                        .send_transfer_event_trb(
-                            TrbCompletionCode::StallError,
-                            atrb.gpa,
-                            residual_transfer_length,
-                            true,
-                            self.slot_id,
-                            self.endpoint_id,
-                        )
-                        .map_err(Error::SendInterrupt)?;
-                } else {
-                    // For Short Transfer details, see xHCI spec 4.10.1.1.
-                    if edtla > bytes_transferred {
-                        debug!("xhci: on transfer complete short packet");
-                        let residual_transfer_length = edtla - bytes_transferred;
-                        self.interrupter
-                            .lock()
-                            .send_transfer_event_trb(
-                                TrbCompletionCode::ShortPacket,
-                                atrb.gpa,
-                                residual_transfer_length,
-                                true,
-                                self.slot_id,
-                                self.endpoint_id,
-                            )
-                            .map_err(Error::SendInterrupt)?;
-                    } else {
-                        debug!("xhci: on transfer complete success");
-                        self.interrupter
-                            .lock()
-                            .send_transfer_event_trb(
-                                TrbCompletionCode::Success,
-                                atrb.gpa,
-                                0, // transfer length
-                                true,
-                                self.slot_id,
-                                self.endpoint_id,
-                            )
-                            .map_err(Error::SendInterrupt)?;
+                }
+                TransferAction::HaltEndpoint => {
+                    if let Some(device_slot) = self.device_slot.upgrade() {
+                        device_slot
+                            .halt_endpoint(self.endpoint_id)
+                            .map_err(|_| Error::HaltEndpoint(self.endpoint_id))?;
                     }
                 }
             }
