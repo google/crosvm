@@ -7,6 +7,7 @@ use std::fmt::Display;
 use std::mem::size_of;
 
 use base::debug;
+use base::error;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
@@ -43,10 +44,15 @@ type Result<T> = std::result::Result<T, Error>;
 pub struct RingBuffer {
     name: String,
     mem: GuestMemory,
+    // Used to keep track where the emulated ring should get the next TRB.
     dequeue_pointer: GuestAddress,
+    // Used to keep track where the hardware would get the next TRB.
+    hw_dequeue_pointer: GuestAddress,
     // Used to check if the ring is empty. Toggled when looping back to the begining
     // of the buffer.
     consumer_cycle_state: bool,
+    // Used to keep track of the cycle state where the hardware is currently at.
+    hw_consumer_cycle_state: bool,
 }
 
 impl Display for RingBuffer {
@@ -63,7 +69,9 @@ impl RingBuffer {
             name,
             mem,
             dequeue_pointer: GuestAddress(0),
+            hw_dequeue_pointer: GuestAddress(0),
             consumer_cycle_state: false,
+            hw_consumer_cycle_state: false,
         }
     }
 
@@ -123,6 +131,7 @@ impl RingBuffer {
         xhci_trace!("{}: set dequeue pointer {:x}", self.name.as_str(), addr.0);
 
         self.dequeue_pointer = addr;
+        self.hw_dequeue_pointer = addr;
     }
 
     /// Get consumer cycle state of the ring buffer.
@@ -134,6 +143,7 @@ impl RingBuffer {
     pub fn set_consumer_cycle_state(&mut self, state: bool) {
         xhci_trace!("{}: set consumer cycle state {}", self.name.as_str(), state);
         self.consumer_cycle_state = state;
+        self.hw_consumer_cycle_state = state;
     }
 
     // Read trb pointed by dequeue pointer. Does not proceed dequeue pointer.
@@ -157,6 +167,28 @@ impl RingBuffer {
                 gpa: self.dequeue_pointer.0,
             }))
         }
+    }
+
+    /// Update the internal cache for HW dequeue pointer. The 'trb' argument should not be a
+    /// LinkTRB.
+    pub fn complete(&mut self, trb: &AddressedTrb) {
+        // This addition should never fail, but if it did there's nothing we can do but keep the
+        // old value and hope that the next completion puts back the hw_dequeue_pointer to a sane
+        // value.
+        self.hw_dequeue_pointer = match GuestAddress(trb.gpa).checked_add(size_of::<Trb>() as u64) {
+            Some(addr) => addr,
+            None => {
+                error!("xhci: gpa of completed TRB is corrupted");
+                self.hw_dequeue_pointer
+            }
+        };
+        self.hw_consumer_cycle_state = trb.trb.get_cycle();
+    }
+
+    /// Synchronize the dequeue pointer and the consumer cycle state with the hardware values.
+    pub fn synchronize_with_hardware(&mut self) {
+        self.dequeue_pointer = self.hw_dequeue_pointer;
+        self.consumer_cycle_state = self.hw_consumer_cycle_state;
     }
 }
 

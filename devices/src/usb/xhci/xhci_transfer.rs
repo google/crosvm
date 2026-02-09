@@ -384,6 +384,7 @@ impl XhciTransfer {
                     event_data: true,
                 });
                 edtla = 0;
+                self.report_completion(atrb);
                 continue;
             }
 
@@ -441,8 +442,17 @@ impl XhciTransfer {
                     event_data: false,
                 });
             }
+
+            // The dequeue pointer still needs to be advanced after a Short Packet.
+            self.report_completion(atrb);
         }
         Ok(actions)
+    }
+
+    fn report_completion(&self, trb: &AddressedTrb) {
+        if let Some(device_slot) = self.device_slot.upgrade() {
+            device_slot.report_trb_completion(self.endpoint_id, self.stream_id, trb);
+        }
     }
 
     /// This functions should be invoked when transfer is completed (or failed).

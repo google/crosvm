@@ -25,6 +25,7 @@ use super::transfer_ring_controller::TransferRingControllers;
 use super::usb_hub;
 use super::usb_hub::UsbHub;
 use super::xhci_abi::AddressDeviceCommandTrb;
+use super::xhci_abi::AddressedTrb;
 use super::xhci_abi::ConfigureEndpointCommandTrb;
 use super::xhci_abi::DequeuePtr;
 use super::xhci_abi::DeviceContext;
@@ -1084,6 +1085,27 @@ impl DeviceSlot {
         endpoint_context.set_endpoint_state(EndpointState::Halted);
         self.set_device_context(device_context)?;
         Ok(())
+    }
+
+    pub fn report_trb_completion(
+        &self,
+        endpoint_id: u8,
+        stream_id: Option<u16>,
+        trb: &AddressedTrb,
+    ) {
+        let index = endpoint_id - 1;
+        let stream_id = stream_id.unwrap_or(0);
+        match self.get_trc(index as usize, stream_id) {
+            Some(trc) => {
+                trc.report_completed_trb(trb);
+            }
+            None => {
+                error!(
+                    "No transfer ring controller for endpoint {} stream {}",
+                    endpoint_id, stream_id
+                );
+            }
+        }
     }
 }
 

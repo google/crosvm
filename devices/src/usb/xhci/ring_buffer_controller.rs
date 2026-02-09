@@ -23,6 +23,7 @@ use vm_memory::GuestMemory;
 use super::ring_buffer::RingBuffer;
 use super::ring_buffer_stop_cb::RingBufferStopCallback;
 use super::xhci_abi::TransferDescriptor;
+use crate::usb::xhci::xhci_abi::AddressedTrb;
 use crate::utils;
 use crate::utils::EventHandler;
 use crate::utils::EventLoop;
@@ -133,6 +134,19 @@ where
         self.lock_ring_buffer().get_dequeue_pointer()
     }
 
+    /// Get dequeue pointer and consumer cycle state of the ring buffer when it is stopped.
+    // This function should only be called when stopping an endpoint, since it synchronizes the
+    // internal dequeue pointers and the consumer cycle states.
+    #[allow(dead_code)]
+    pub fn get_stopped_dequeue_state(&self) -> (GuestAddress, bool) {
+        let mut locked = self.lock_ring_buffer();
+        locked.synchronize_with_hardware();
+        (
+            locked.get_dequeue_pointer(),
+            locked.get_consumer_cycle_state(),
+        )
+    }
+
     /// Set dequeue pointer of the internal ring buffer.
     pub fn set_dequeue_pointer(&self, ptr: GuestAddress) {
         xhci_trace!("{}: set_dequeue_pointer({:x})", self.name, ptr.0);
@@ -178,6 +192,11 @@ where
         } else {
             *state = RingBufferState::Stopped;
         }
+    }
+
+    /// Report completion of TRB to the ring buffer.
+    pub fn report_completed_trb(&self, trb: &AddressedTrb) {
+        self.lock_ring_buffer().complete(trb);
     }
 }
 
@@ -270,6 +289,27 @@ mod tests {
         }
     }
 
+    struct TestLazyHandler {
+        sender: Sender<u64>,
+        processing: Mutex<Vec<u64>>,
+    }
+
+    impl TransferDescriptorHandler for TestLazyHandler {
+        fn handle_transfer_descriptor(
+            &self,
+            descriptor: TransferDescriptor,
+            complete_event: Event,
+        ) -> anyhow::Result<()> {
+            let mut locked = self.processing.lock();
+            for a in locked.iter() {
+                self.sender.send(*a).unwrap();
+            }
+            complete_event.signal().unwrap();
+            *locked = descriptor.iter().map(|atrb| atrb.gpa).collect();
+            Ok(())
+        }
+    }
+
     fn setup_mem() -> GuestMemory {
         let trb_size = size_of::<Trb>() as u64;
         let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
@@ -347,6 +387,115 @@ mod tests {
         assert_eq!(rx.recv().unwrap(), 4);
         assert_eq!(rx.recv().unwrap(), 5);
         assert_eq!(rx.recv().unwrap(), 6);
+        l.stop();
+        j.join().unwrap();
+    }
+
+    #[test]
+    fn synchronize_dequeue_pointer() {
+        let (tx, rx) = channel();
+        let mem = setup_mem();
+        let (l, j) = EventLoop::start("test".to_string(), None).unwrap();
+        let l = Arc::new(l);
+        let controller = RingBufferController::new_with_handler(
+            "".to_string(),
+            mem,
+            l.clone(),
+            TestHandler { sender: tx },
+        )
+        .unwrap();
+        controller.set_dequeue_pointer(GuestAddress(0x100));
+        controller.set_consumer_cycle_state(false);
+        controller.start();
+        for i in 1..=6 {
+            assert_eq!(rx.recv().unwrap(), i);
+        }
+
+        let mut trb = Trb::new();
+        trb.set_cycle(false);
+        let atrb = AddressedTrb { trb, gpa: 0x210 };
+        let null_callback = RingBufferStopCallback::new(move || {});
+        controller.stop(null_callback);
+        controller.report_completed_trb(&atrb);
+        let (dq, cycle) = controller.get_stopped_dequeue_state();
+        assert_eq!(dq.offset(), 0x220);
+        assert_eq!(cycle, false); // We haven't crossed the LinkTRB at 0x320 yet.
+        l.stop();
+        j.join().unwrap();
+    }
+
+    #[test]
+    fn synchronize_dequeue_pointer_across_link_trb() {
+        let (tx, rx) = channel();
+        let mem = setup_mem();
+        let (l, j) = EventLoop::start("test".to_string(), None).unwrap();
+        let l = Arc::new(l);
+        let controller = RingBufferController::new_with_handler(
+            "".to_string(),
+            mem,
+            l.clone(),
+            TestHandler { sender: tx },
+        )
+        .unwrap();
+        controller.set_dequeue_pointer(GuestAddress(0x100));
+        controller.set_consumer_cycle_state(false);
+        controller.start();
+
+        // Wait for the software to read all 6 TRBs.
+        // During this process, it reads the Link TRB at 0x320 which has Toggle Cycle = true.
+        // Therefore, the software's internal consumer_cycle_state becomes TRUE.
+        for i in 1..=6 {
+            assert_eq!(rx.recv().unwrap(), i);
+        }
+
+        // We report completion of TRB 5 at 0x300.
+        // The hardware pointer will advance to 0x310.
+        // It has NOT crossed the Link TRB at 0x320 yet, so the hardware state is still FALSE.
+        let mut trb = Trb::new();
+        trb.set_cycle(false);
+        let atrb = AddressedTrb { trb, gpa: 0x300 };
+        let null_callback = RingBufferStopCallback::new(move || {});
+        controller.stop(null_callback);
+        controller.report_completed_trb(&atrb);
+        let (dq, cycle) = controller.get_stopped_dequeue_state();
+        assert_eq!(dq.offset(), 0x310);
+        assert_eq!(cycle, false);
+        l.stop();
+        j.join().unwrap();
+    }
+
+    #[test]
+    fn synchronize_dequeue_pointer_for_lazy_handler() {
+        let (tx, rx) = channel();
+        let mem = setup_mem();
+        let (l, j) = EventLoop::start("test".to_string(), None).unwrap();
+        let l = Arc::new(l);
+        let controller = RingBufferController::new_with_handler(
+            "".to_string(),
+            mem,
+            l.clone(),
+            TestLazyHandler {
+                sender: tx,
+                processing: Mutex::new(Vec::new()),
+            },
+        )
+        .unwrap();
+        controller.set_dequeue_pointer(GuestAddress(0x100));
+        controller.set_consumer_cycle_state(false);
+        controller.start();
+        assert_eq!(rx.recv().unwrap(), 0x100);
+        assert_eq!(rx.recv().unwrap(), 0x110);
+        assert_eq!(rx.recv().unwrap(), 0x200);
+        assert_eq!(rx.recv().unwrap(), 0x210);
+        assert!(rx.try_recv().is_err());
+
+        let null_callback = RingBufferStopCallback::new(move || {});
+        controller.stop(null_callback);
+        // Since we didn't call report_completed_trb(), the hw dequeue pointer should still point
+        // to the very first TRB.
+        let (dq, cycle) = controller.get_stopped_dequeue_state();
+        assert_eq!(dq.offset(), 0x100);
+        assert_eq!(cycle, false);
         l.stop();
         j.join().unwrap();
     }
