@@ -272,7 +272,7 @@ enum TransferAction {
     SendEvent {
         code: TrbCompletionCode,
         gpa: u64,
-        residual: u32,
+        residual_or_edtla: u32,
         event_data: bool,
     },
 }
@@ -354,6 +354,11 @@ impl XhciTransfer {
         }
 
         let mut edtla: u32 = 0;
+        let mut remaining_transferred = bytes_transferred;
+        let mut retiring_on_short: bool = false;
+        let mut residual_on_short: u32 = 0;
+        let last_atrb_gpa = self.transfer_descriptor.last_atrb().gpa;
+
         // As noted in xHCI spec 4.11.3.1
         // Transfer Event TRB only occurs under the following conditions:
         //   1. If the Interrupt On Completion flag is set.
@@ -361,53 +366,80 @@ impl XhciTransfer {
         //      Interrupt-on-Short Packet flag is set.
         //   3. If an error occurs during the execution of a Transfer TRB.
         for atrb in &self.transfer_descriptor {
-            edtla += atrb.trb.transfer_length().map_err(Error::TransferLength)?;
-            if atrb.trb.interrupt_on_completion()
-                || (atrb.trb.interrupt_on_short_packet() && edtla > bytes_transferred)
-            {
-                // For details about event data trb and EDTLA, see spec 4.11.5.2.
-                if atrb.trb.get_trb_type().map_err(Error::TrbType)? == TrbType::EventData {
-                    let tlength = min(edtla, bytes_transferred);
-                    actions.push(TransferAction::SendEvent {
-                        code: TrbCompletionCode::Success,
-                        gpa: atrb
-                            .trb
-                            .cast::<EventDataTrb>()
-                            .map_err(Error::CastTrb)?
-                            .get_event_data(),
-                        residual: tlength,
-                        event_data: true,
-                    });
-                } else if *status == TransferStatus::Stalled {
-                    debug!("xhci: on transfer complete stalled");
-                    let residual_transfer_length = edtla - bytes_transferred;
-                    actions.push(TransferAction::SendEvent {
-                        code: TrbCompletionCode::StallError,
-                        gpa: atrb.gpa,
-                        residual: residual_transfer_length,
-                        event_data: true,
-                    });
+            // For details about event data trb and EDTLA, see spec 4.11.5.2.
+            if atrb.trb.get_trb_type().map_err(Error::TrbType)? == TrbType::EventData {
+                let code = if retiring_on_short {
+                    TrbCompletionCode::ShortPacket
                 } else {
-                    // For Short Transfer details, see xHCI spec 4.10.1.1.
-                    if edtla > bytes_transferred {
-                        debug!("xhci: on transfer complete short packet");
-                        let residual_transfer_length = edtla - bytes_transferred;
-                        actions.push(TransferAction::SendEvent {
-                            code: TrbCompletionCode::ShortPacket,
-                            gpa: atrb.gpa,
-                            residual: residual_transfer_length,
-                            event_data: true,
-                        });
-                    } else {
-                        debug!("xhci: on transfer complete success");
-                        actions.push(TransferAction::SendEvent {
-                            code: TrbCompletionCode::Success,
-                            gpa: atrb.gpa,
-                            residual: 0,
-                            event_data: true,
-                        });
-                    }
+                    TrbCompletionCode::Success
+                };
+                actions.push(TransferAction::SendEvent {
+                    code,
+                    gpa: atrb
+                        .trb
+                        .cast::<EventDataTrb>()
+                        .map_err(Error::CastTrb)?
+                        .get_event_data(),
+                    residual_or_edtla: edtla,
+                    event_data: true,
+                });
+                edtla = 0;
+                continue;
+            }
+
+            let length = atrb.trb.transfer_length().map_err(Error::TransferLength)?;
+            let transferred = min(length, remaining_transferred);
+            remaining_transferred -= transferred;
+
+            let residual = length - transferred;
+            edtla += transferred;
+
+            // Report StallError for the TRB with residual data or the last TRB of the TD.
+            // The latter condition covers a stall on the Status Stage. The TRB that caused the
+            // stall is considered as not completed.
+            if *status == TransferStatus::Stalled && (residual > 0 || atrb.gpa == last_atrb_gpa) {
+                debug!("xhci: on transfer complete stalled");
+                actions.push(TransferAction::SendEvent {
+                    code: TrbCompletionCode::StallError,
+                    gpa: atrb.gpa,
+                    residual_or_edtla: residual,
+                    event_data: false,
+                });
+                break;
+            }
+
+            // If Short Packet is detected, the rest of the TRBs in the same TD are not executed.
+            // However, events are still generated for the EventData TRBs (handled above) or other
+            // TRBs with IOC (handled below).
+            if retiring_on_short {
+                if atrb.trb.interrupt_on_completion() {
+                    actions.push(TransferAction::SendEvent {
+                        code: TrbCompletionCode::ShortPacket,
+                        gpa: atrb.gpa,
+                        residual_or_edtla: residual_on_short,
+                        event_data: false,
+                    });
                 }
+            } else if residual > 0 {
+                retiring_on_short = true;
+                residual_on_short = residual;
+                if atrb.trb.interrupt_on_completion() || atrb.trb.interrupt_on_short_packet() {
+                    debug!("xhci: on transfer complete short packet");
+                    actions.push(TransferAction::SendEvent {
+                        code: TrbCompletionCode::ShortPacket,
+                        gpa: atrb.gpa,
+                        residual_or_edtla: residual,
+                        event_data: false,
+                    });
+                }
+            } else if atrb.trb.interrupt_on_completion() {
+                debug!("xhci: on transfer complete success");
+                actions.push(TransferAction::SendEvent {
+                    code: TrbCompletionCode::Success,
+                    gpa: atrb.gpa,
+                    residual_or_edtla: 0,
+                    event_data: false,
+                });
             }
         }
         Ok(actions)
@@ -461,7 +493,7 @@ impl XhciTransfer {
                 TransferAction::SendEvent {
                     code,
                     gpa,
-                    residual,
+                    residual_or_edtla,
                     event_data,
                 } => {
                     self.interrupter
@@ -469,7 +501,7 @@ impl XhciTransfer {
                         .send_transfer_event_trb(
                             code,
                             gpa,
-                            residual,
+                            residual_or_edtla,
                             event_data,
                             self.slot_id,
                             self.endpoint_id,
@@ -548,4 +580,481 @@ fn trb_is_valid(atrb: &AddressedTrb) -> bool {
         }
     };
     can_be_in_transfer_ring && (atrb.trb.interrupter_target() < MAX_INTERRUPTER)
+}
+
+#[cfg(test)]
+mod tests {
+    use base::pagesize;
+    use vm_memory::GuestAddress;
+
+    use super::*;
+    use crate::usb::xhci::xhci_abi::NormalTrb;
+    use crate::usb::xhci::xhci_abi::StatusStageTrb;
+    use crate::usb::xhci::xhci_abi::Trb;
+    use crate::usb::xhci::xhci_backend_device::BackendType;
+    use crate::usb::xhci::XhciRegs;
+
+    fn create_test_transfer(trbs: Vec<Trb>) -> XhciTransfer {
+        let mem = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
+        let mut gpa = 0x100;
+        let mut atrbs = Vec::new();
+        for trb in trbs {
+            mem.write_obj_at_addr(trb, GuestAddress(gpa)).unwrap();
+            atrbs.push(AddressedTrb { trb, gpa });
+            gpa += 16;
+        }
+
+        let td = TransferDescriptor::new(atrbs).unwrap();
+        let manager = XhciTransferManager::new(Weak::new());
+
+        let test_reg32 = register!(
+            name: "test",
+            ty: u32,
+            offset: 0x0,
+            reset_value: 0,
+            guest_writeable_mask: 0x0,
+            guest_write_1_to_clear_mask: 0,
+        );
+        let test_reg64 = register!(
+            name: "test",
+            ty: u64,
+            offset: 0x0,
+            reset_value: 0,
+            guest_writeable_mask: 0x0,
+            guest_write_1_to_clear_mask: 0,
+        );
+        let xhci_regs = XhciRegs {
+            usbcmd: test_reg32.clone(),
+            usbsts: test_reg32.clone(),
+            dnctrl: test_reg32.clone(),
+            crcr: test_reg64.clone(),
+            dcbaap: test_reg64.clone(),
+            config: test_reg64.clone(),
+            portsc: vec![test_reg32.clone(); 16],
+            doorbells: Vec::new(),
+            iman: test_reg32.clone(),
+            imod: test_reg32.clone(),
+            erstsz: test_reg32.clone(),
+            erstba: test_reg64.clone(),
+            erdp: test_reg64.clone(),
+        };
+
+        XhciTransfer {
+            manager,
+            state: Arc::new(Mutex::new(XhciTransferState::Created)),
+            mem,
+            port: Arc::new(UsbPort::new(
+                BackendType::Usb2,
+                1,
+                test_reg32.clone(),
+                test_reg32.clone(),
+                Arc::new(Mutex::new(Interrupter::new(
+                    GuestMemory::new(&[]).unwrap(),
+                    Event::new().unwrap(),
+                    &xhci_regs,
+                ))),
+            )),
+            interrupter: Arc::new(Mutex::new(Interrupter::new(
+                GuestMemory::new(&[]).unwrap(),
+                Event::new().unwrap(),
+                &xhci_regs,
+            ))),
+            transfer_completion_event: Event::new().unwrap(),
+            slot_id: 1,
+            endpoint_id: 2,
+            transfer_dir: TransferDirection::Out,
+            transfer_descriptor: td,
+            device_slot: Weak::new(),
+            stream_id: None,
+        }
+    }
+
+    #[test]
+    fn test_bulk_success() {
+        let mut trb = Trb::new();
+        let normal_trb = trb.cast_mut::<NormalTrb>().unwrap();
+        normal_trb.set_trb_type(TrbType::Normal);
+        normal_trb.set_trb_transfer_length(100);
+        normal_trb.set_interrupt_on_completion(1);
+        let transfer = create_test_transfer(vec![trb]);
+
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 100)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![TransferAction::SendEvent {
+                code: TrbCompletionCode::Success,
+                gpa: 0x100,
+                residual_or_edtla: 0,
+                event_data: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_bulk_short_with_isp() {
+        // xHCI 4.10.1.1 Short Transfers states that an event should be generated if ISP or IOC is
+        // set to 1.
+        let mut trb = Trb::new();
+        let normal_trb = trb.cast_mut::<NormalTrb>().unwrap();
+        normal_trb.set_trb_type(TrbType::Normal);
+        normal_trb.set_trb_transfer_length(100);
+        normal_trb.set_interrupt_on_short_packet(1);
+        let transfer = create_test_transfer(vec![trb]);
+
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 40)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![TransferAction::SendEvent {
+                code: TrbCompletionCode::ShortPacket,
+                gpa: 0x100,
+                residual_or_edtla: 60,
+                event_data: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_bulk_short_with_ioc() {
+        // xHCI 4.10.1.1 Short Transfers states that an event should be generated if ISP or IOC is
+        // set to 1.
+        let mut trb = Trb::new();
+        let normal_trb = trb.cast_mut::<NormalTrb>().unwrap();
+        normal_trb.set_trb_type(TrbType::Normal);
+        normal_trb.set_trb_transfer_length(100);
+        normal_trb.set_interrupt_on_completion(1);
+        let transfer = create_test_transfer(vec![trb]);
+
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 40)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![TransferAction::SendEvent {
+                code: TrbCompletionCode::ShortPacket,
+                gpa: 0x100,
+                residual_or_edtla: 60,
+                event_data: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_bulk_without_evendata_retiring_after_short() {
+        // xHCI 4.9.1 Transfer Descriptors states that the TD should retire after detecting a short
+        // packet condition, but xHCI 4.10.1.1 Short Transfers states it should still generate an
+        // event for a TRB with IOC.
+        let mut trb1 = Trb::new();
+        let normal_trb1 = trb1.cast_mut::<NormalTrb>().unwrap();
+        normal_trb1.set_trb_type(TrbType::Normal);
+        normal_trb1.set_trb_transfer_length(100);
+        normal_trb1.set_interrupt_on_short_packet(1);
+
+        let mut trb2 = Trb::new();
+        let normal_trb2 = trb2.cast_mut::<NormalTrb>().unwrap();
+        normal_trb2.set_trb_type(TrbType::Normal);
+        normal_trb2.set_trb_transfer_length(100);
+        normal_trb2.set_interrupt_on_completion(1);
+
+        let mut trb3 = Trb::new();
+        let normal_trb3 = trb3.cast_mut::<NormalTrb>().unwrap();
+        normal_trb3.set_trb_type(TrbType::Normal);
+        normal_trb3.set_trb_transfer_length(100);
+        normal_trb3.set_interrupt_on_completion(1);
+
+        let transfer = create_test_transfer(vec![trb1, trb2, trb3]);
+
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 40)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x100,
+                    residual_or_edtla: 60,
+                    event_data: false,
+                },
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x110,
+                    residual_or_edtla: 60,
+                    event_data: false,
+                },
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x120,
+                    residual_or_edtla: 60,
+                    event_data: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bulk_with_evendata_retiring_after_short() {
+        // xHCI 4.9.1 Transfer Descriptors states that the TD should retire after detecting a short
+        // packet condition, but xHCI 4.10.1.1 Short Transfers states it should still generate an
+        // event for EventData TRB. This test assumes that we have PAE=1 in HCCPARAMS1 that forces
+        // all the EventData TRBs to generate an event even after the Short Packet.
+        let mut trb1 = Trb::new();
+        let normal_trb1 = trb1.cast_mut::<NormalTrb>().unwrap();
+        normal_trb1.set_trb_type(TrbType::Normal);
+        normal_trb1.set_trb_transfer_length(100);
+        normal_trb1.set_interrupt_on_short_packet(1);
+
+        let mut trb2 = Trb::new();
+        let event_trb = trb2.cast_mut::<EventDataTrb>().unwrap();
+        event_trb.set_trb_type(TrbType::EventData);
+        event_trb.set_event_data(0x12345678abcdef0);
+        event_trb.set_interrupt_on_completion(1);
+
+        let mut trb3 = Trb::new();
+        let event_trb = trb3.cast_mut::<EventDataTrb>().unwrap();
+        event_trb.set_trb_type(TrbType::EventData);
+        event_trb.set_event_data(0x12345678abcdef1);
+        event_trb.set_interrupt_on_completion(1);
+
+        let transfer = create_test_transfer(vec![trb1, trb2, trb3]);
+
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 40)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x100,
+                    residual_or_edtla: 60,
+                    event_data: false,
+                },
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x12345678abcdef0,
+                    residual_or_edtla: 40, // EDTLA
+                    event_data: true,
+                },
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x12345678abcdef1,
+                    residual_or_edtla: 0, // EDTLA
+                    event_data: true,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bulk_stall_partial() {
+        // xHCI 4.10.2 Errors state that an error during a transfer shall always generate an event,
+        // irrespective of whether ISP or IOC is set to 1. Also, 4.10.2.1 Stall Error states that
+        // the endpoint state should transition to Halted.
+        let mut trb = Trb::new();
+        let normal_trb = trb.cast_mut::<NormalTrb>().unwrap();
+        normal_trb.set_trb_type(TrbType::Normal);
+        normal_trb.set_trb_transfer_length(100);
+        let transfer = create_test_transfer(vec![trb]);
+
+        // Stall at 40 bytes.
+        let actions = transfer
+            .process_td_results(&TransferStatus::Stalled, 40)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                TransferAction::HaltEndpoint,
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::StallError,
+                    gpa: 0x100,
+                    residual_or_edtla: 60,
+                    event_data: false,
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_control_stall_no_data_stage() {
+        let mut trb = Trb::new();
+        let status_trb = trb.cast_mut::<StatusStageTrb>().unwrap();
+        status_trb.set_trb_type(TrbType::StatusStage);
+        status_trb.set_interrupt_on_completion(1);
+
+        let transfer = create_test_transfer(vec![trb]);
+
+        // Stall at Status Stage (length 0). bytes_transferred = 0.
+        let actions = transfer
+            .process_td_results(&TransferStatus::Stalled, 0)
+            .unwrap();
+
+        assert_eq!(
+            actions,
+            vec![
+                TransferAction::HaltEndpoint,
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::StallError,
+                    gpa: 0x100,
+                    residual_or_edtla: 0,
+                    event_data: false,
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bulk_stall_at_trb_start() {
+        // xHCI 6.4.2.1 Transfer Event TRB states that if an error occurs during a transfer TRB,
+        // the event TRB shall point to the offending TRB.
+        let mut trb1 = Trb::new();
+        let normal_trb1 = trb1.cast_mut::<NormalTrb>().unwrap();
+        normal_trb1.set_trb_type(TrbType::Normal);
+        normal_trb1.set_trb_transfer_length(100);
+
+        let mut trb2 = Trb::new();
+        let normal_trb2 = trb2.cast_mut::<NormalTrb>().unwrap();
+        normal_trb2.set_trb_type(TrbType::Normal);
+        normal_trb2.set_trb_transfer_length(100);
+
+        let transfer = create_test_transfer(vec![trb1, trb2]);
+
+        // Stall after 100 bytes (immediately when the second TRB is started).
+        let actions = transfer
+            .process_td_results(&TransferStatus::Stalled, 100)
+            .unwrap();
+
+        assert_eq!(
+            actions,
+            vec![
+                TransferAction::HaltEndpoint,
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::StallError,
+                    gpa: 0x110, // Second TRB GPA
+                    residual_or_edtla: 100,
+                    event_data: false,
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_event_data_single() {
+        // xHCI 4.11.5.2 Event Data TRB states that the event should report EDTLA and set Event
+        // Data (ED) field to 1.
+        let mut trb1 = Trb::new();
+        let normal_trb = trb1.cast_mut::<NormalTrb>().unwrap();
+        normal_trb.set_trb_type(TrbType::Normal);
+        normal_trb.set_trb_transfer_length(100);
+
+        let mut trb2 = Trb::new();
+        let event_trb = trb2.cast_mut::<EventDataTrb>().unwrap();
+        event_trb.set_trb_type(TrbType::EventData);
+        event_trb.set_event_data(0x12345678abcdef0);
+        event_trb.set_interrupt_on_completion(1);
+
+        let transfer = create_test_transfer(vec![trb1, trb2]);
+
+        // Successful transfer.
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 100)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![TransferAction::SendEvent {
+                code: TrbCompletionCode::Success,
+                gpa: 0x12345678abcdef0,
+                residual_or_edtla: 100,
+                event_data: true,
+            }]
+        );
+
+        // Short packet.
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 40)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![TransferAction::SendEvent {
+                code: TrbCompletionCode::ShortPacket,
+                gpa: 0x12345678abcdef0,
+                residual_or_edtla: 40,
+                event_data: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_event_data_multiple() {
+        // xHCI 4.11.5.2 Event Data TRB states that EDTLA should be cleared to 0 when an EventData
+        // TRB is encountered.
+        let mut trb1 = Trb::new();
+        let normal_trb = trb1.cast_mut::<NormalTrb>().unwrap();
+        normal_trb.set_trb_type(TrbType::Normal);
+        normal_trb.set_trb_transfer_length(100);
+        normal_trb.set_interrupt_on_short_packet(1);
+
+        let mut trb2 = Trb::new();
+        let event_trb = trb2.cast_mut::<EventDataTrb>().unwrap();
+        event_trb.set_trb_type(TrbType::EventData);
+        event_trb.set_event_data(0x12345678abcdef0);
+        event_trb.set_interrupt_on_completion(1);
+
+        let transfer = create_test_transfer(vec![trb1, trb2, trb1, trb2]);
+
+        // Successful transfer.
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 200)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::Success,
+                    gpa: 0x12345678abcdef0,
+                    residual_or_edtla: 100, // EDTLA
+                    event_data: true,
+                },
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::Success,
+                    gpa: 0x12345678abcdef0,
+                    residual_or_edtla: 100, // EDTLA
+                    event_data: true,
+                },
+            ]
+        );
+
+        // Short packet. xHCI 5.3.6 Capability Parameters 1 (HCCPARAMS1) states that if Parse All
+        // Event Data (PAE) field is 1, then it should parse all the EventData TRBs while advancing
+        // to the next TD after a Short Packet. See also 4.10.1.1 Short Transfers.
+        let actions = transfer
+            .process_td_results(&TransferStatus::Completed, 40)
+            .unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x100,
+                    residual_or_edtla: 60, // residual
+                    event_data: false,
+                },
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x12345678abcdef0,
+                    residual_or_edtla: 40, // EDTLA
+                    event_data: true,
+                },
+                TransferAction::SendEvent {
+                    code: TrbCompletionCode::ShortPacket,
+                    gpa: 0x12345678abcdef0,
+                    residual_or_edtla: 0, // EDTLA (from last Event)
+                    event_data: true,
+                },
+            ]
+        );
+    }
 }

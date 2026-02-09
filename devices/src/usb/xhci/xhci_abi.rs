@@ -915,6 +915,11 @@ impl TransferDescriptor {
     pub fn first_atrb(&self) -> &AddressedTrb {
         self.first().expect("TransferDescriptor must be non-empty")
     }
+
+    /// Return the last TRB.
+    pub fn last_atrb(&self) -> &AddressedTrb {
+        self.last().expect("TransferDescriptor must be non-empty")
+    }
 }
 
 impl Deref for TransferDescriptor {
