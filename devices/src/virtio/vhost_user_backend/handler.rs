@@ -1317,6 +1317,7 @@ mod tests {
         handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
         handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
         // VhostUserFrontend::virtio_restore()
+        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
         handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
         handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
 

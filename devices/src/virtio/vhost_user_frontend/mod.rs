@@ -644,7 +644,11 @@ impl VirtioDevice for VhostUserFrontend {
         self.backend_client
             .check_device_state()
             .context("failed to transfer device state")?;
-        Ok(AnySnapshot::to_any(snapshot_bytes).map_err(Error::SliceToSerdeValue)?)
+        Ok(AnySnapshot::to_any(VhostUserDeviceState {
+            acked_features: self.acked_features,
+            backend_state: snapshot_bytes,
+        })
+        .map_err(Error::SliceToSerdeValue)?)
     }
 
     fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
@@ -660,7 +664,14 @@ impl VirtioDevice for VhostUserFrontend {
             bail!("restore requires VHOST_USER_PROTOCOL_F_DEVICE_STATE");
         }
 
-        let data_bytes: Vec<u8> = AnySnapshot::from_any(data).map_err(Error::SerdeValueToSlice)?;
+        let device_state: VhostUserDeviceState =
+            AnySnapshot::from_any(data).map_err(Error::SerdeValueToSlice)?;
+        let missing_features = !self.avail_features & device_state.acked_features;
+        if missing_features != 0 {
+            bail!("The destination backend doesn't support all features acknowledged by the source, missing: {}", missing_features);
+        }
+        // Set the features in the destination to match the source before restoring its state.
+        self.ack_features(device_state.acked_features);
         // Send the backend an FD to read the device state from. If it gives us an FD back,
         // then we need to write to that instead.
         let (r, w) = new_pipe_pair()?;
@@ -680,9 +691,9 @@ impl VirtioDevice for VhostUserFrontend {
             let backend_w = backend_w;
             let mut w = w;
             if let Some(mut backend_w) = backend_w {
-                backend_w.write_all(data_bytes.as_slice())
+                backend_w.write_all(device_state.backend_state.as_slice())
             } else {
-                w.write_all(data_bytes.as_slice())
+                w.write_all(device_state.backend_state.as_slice())
             }
             .context("failed to write device state")?;
         }
@@ -692,6 +703,12 @@ impl VirtioDevice for VhostUserFrontend {
             .context("failed to transfer device state")?;
         Ok(())
     }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct VhostUserDeviceState {
+    acked_features: u64,
+    backend_state: Vec<u8>,
 }
 
 #[cfg(unix)]
