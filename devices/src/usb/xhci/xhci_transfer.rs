@@ -56,6 +56,8 @@ pub enum Error {
     CreateBuffer(BufferError),
     #[error("cannot detach from port: {0}")]
     DetachPort(HubError),
+    #[error("failed to get max payload length for ep: {0}")]
+    GetMaxPayload(u8),
     #[error("failed to halt the endpoint: {0}")]
     HaltEndpoint(u8),
     #[error("failed to read guest memory: {0}")]
@@ -381,6 +383,16 @@ impl XhciTransfer {
     /// get stream id.
     pub fn get_stream_id(&self) -> Option<u16> {
         self.stream_id
+    }
+
+    /// get max payload length for Isochronous transfer.
+    pub fn get_max_payload(&self) -> Result<u32> {
+        let Some(device_slot) = self.device_slot.upgrade() else {
+            return Err(Error::GetMaxPayload(self.endpoint_id));
+        };
+        device_slot
+            .get_max_esit_payload(self.endpoint_id)
+            .map_err(|_| Error::GetMaxPayload(self.endpoint_id))
     }
 
     fn process_td_results(
