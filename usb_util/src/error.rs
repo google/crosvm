@@ -26,6 +26,8 @@ pub enum Error {
     InvalidBuffer,
     #[error("invalid transfer buffer length: {0}")]
     InvalidBufferLength(num::TryFromIntError),
+    #[error("isochronous transfer requires non-zero buffer and packet size")]
+    InvalidIsochronousParameters,
     #[error("USB ioctl 0x{0:x} failed: {1}")]
     IoctlFailed(IoctlNr, base::Error),
     #[error("USB mmap failed: {0}")]
