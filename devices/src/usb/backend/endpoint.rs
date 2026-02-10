@@ -190,8 +190,8 @@ impl UsbEndpoint {
                     buffer.len()
                 );
                 let callback = move |t: BackendTransferType| {
-                    update_transfer_state(&xhci_transfer, t.status())?;
-                    let state = xhci_transfer.state().lock();
+                    let mut state = xhci_transfer.state().lock();
+                    update_transfer_state(&mut state, t.status())?;
                     match *state {
                         XhciTransferState::Cancelled => {
                             debug!("Xhci transfer has been cancelled");
@@ -238,8 +238,8 @@ impl UsbEndpoint {
                 );
                 let _addr = self.ep_addr();
                 let callback = move |t: BackendTransferType| {
-                    update_transfer_state(&xhci_transfer, t.status())?;
-                    let state = xhci_transfer.state().lock();
+                    let mut state = xhci_transfer.state().lock();
+                    update_transfer_state(&mut state, t.status())?;
                     match *state {
                         XhciTransferState::Cancelled => {
                             debug!("Xhci transfer has been cancelled");

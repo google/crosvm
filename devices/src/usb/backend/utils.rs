@@ -12,7 +12,6 @@ use usb_util::TransferStatus;
 use crate::usb::backend::device::BackendDeviceType;
 use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
-use crate::usb::xhci::xhci_transfer::XhciTransfer;
 use crate::usb::xhci::xhci_transfer::XhciTransferState;
 use crate::utils::EventHandler;
 
@@ -80,12 +79,7 @@ impl EventHandler for UsbUtilEventHandler {
 }
 
 /// Helper function to update xhci_transfer state.
-pub fn update_transfer_state(
-    xhci_transfer: &Arc<XhciTransfer>,
-    status: TransferStatus,
-) -> Result<()> {
-    let mut state = xhci_transfer.state().lock();
-
+pub fn update_transfer_state(state: &mut XhciTransferState, status: TransferStatus) -> Result<()> {
     if status == TransferStatus::Cancelled {
         *state = XhciTransferState::Cancelled;
         return Ok(());

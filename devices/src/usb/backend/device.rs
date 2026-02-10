@@ -485,8 +485,8 @@ impl BackendDeviceType {
         let tmp_transfer = xhci_transfer.clone();
         let callback = move |t: BackendTransferType| {
             usb_trace!("setup token control transfer callback");
-            update_transfer_state(&xhci_transfer, t.status())?;
-            let state = xhci_transfer.state().lock();
+            let mut state = xhci_transfer.state().lock();
+            update_transfer_state(&mut state, t.status())?;
             match *state {
                 XhciTransferState::Cancelled => {
                     drop(state);
