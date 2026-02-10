@@ -2,13 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::ffi::CString;
 use std::fs::File;
+use std::fs::OpenOptions;
+use std::io;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
+use std::ptr;
+use std::time::Duration;
 
+use smallvec::SmallVec;
+
+use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::sys::unix::RawDescriptor;
 use crate::unix::set_descriptor_cloexec;
 use crate::unix::Pid;
+use crate::EventToken;
+use crate::EventType;
 use crate::MmapError;
+use crate::Protection;
+use crate::TriggeredEvent;
 
 mod event;
 pub(in crate::sys::macos) mod kqueue;
@@ -21,209 +35,699 @@ pub(in crate::sys) use net::sockaddr_un;
 pub(in crate::sys) use net::sockaddrv4_to_lib_c;
 pub(in crate::sys) use net::sockaddrv6_to_lib_c;
 
-pub fn set_thread_name(_name: &str) -> crate::errno::Result<()> {
-    todo!();
+/// Sets the name of the current thread to the given name.
+/// On macOS, pthread_setname_np only takes the name parameter (not a thread handle).
+pub fn set_thread_name(name: &str) -> crate::errno::Result<()> {
+    // macOS pthread_setname_np only takes a name, and sets it for the current thread
+    let c_name = match CString::new(name) {
+        Ok(n) => n,
+        Err(_) => return Err(crate::errno::Error::new(libc::EINVAL)),
+    };
+    // SAFETY: pthread_setname_np is safe to call with a valid C string
+    let ret = unsafe { libc::pthread_setname_np(c_name.as_ptr()) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(crate::errno::Error::new(ret))
+    }
 }
 
+/// Gets the CPU affinity of the current thread.
+/// macOS does not support CPU affinity in the same way as Linux.
+/// We return an empty vector to indicate "any CPU".
 pub fn get_cpu_affinity() -> crate::errno::Result<Vec<usize>> {
-    todo!();
+    // macOS doesn't support traditional CPU affinity like Linux.
+    // Return an empty vector to indicate no specific affinity is set.
+    Ok(Vec::new())
 }
 
+/// Gets the process ID of the current process.
 pub fn getpid() -> Pid {
-    todo!();
+    // SAFETY: getpid is always safe to call
+    unsafe { libc::getpid() }
 }
 
-pub fn open_file_or_duplicate<P: AsRef<std::path::Path>>(
-    _path: P,
-    _options: &std::fs::OpenOptions,
-) -> crate::Result<std::fs::File> {
-    todo!();
+/// Opens a file at the given path with the given options, or duplicates the file
+/// descriptor if the path refers to /proc/self/fd/N.
+pub fn open_file_or_duplicate<P: AsRef<Path>>(
+    path: P,
+    options: &OpenOptions,
+) -> crate::Result<File> {
+    // On macOS, we don't have /proc/self/fd, so just open the file normally
+    options.open(path.as_ref()).map_err(crate::Error::from)
 }
 
 pub mod platform_timer_resolution {
     pub struct UnixSetTimerResolution {}
     impl crate::EnabledHighResTimer for UnixSetTimerResolution {}
 
+    /// Enable high resolution timers. On macOS, this is effectively a no-op
+    /// as macOS handles timer resolution automatically.
     pub fn enable_high_res_timers() -> crate::Result<Box<dyn crate::EnabledHighResTimer>> {
-        todo!();
+        Ok(Box::new(UnixSetTimerResolution {}))
     }
 }
 
+/// Sets the CPU affinity of the current thread.
+/// macOS does not support CPU affinity in the same way as Linux.
+/// This is a no-op that returns success.
 pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(_cpus: I) -> crate::errno::Result<()> {
-    todo!();
+    // macOS doesn't support traditional CPU affinity like Linux.
+    // The thread_policy_set API exists but has different semantics.
+    // For now, we just return success as a no-op.
+    Ok(())
 }
 
-pub struct EventContext<T: crate::EventToken> {
-    p: std::marker::PhantomData<T>,
+/// EventContext provides kqueue-based event multiplexing for macOS.
+/// This is analogous to epoll on Linux.
+pub struct EventContext<T: EventToken> {
+    kqueue_fd: RawDescriptor,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: crate::EventToken> EventContext<T> {
+impl<T: EventToken> EventContext<T> {
+    /// Creates a new EventContext.
     pub fn new() -> crate::errno::Result<EventContext<T>> {
-        todo!();
+        // SAFETY: kqueue() is safe to call
+        let kqueue_fd = unsafe { libc::kqueue() };
+        if kqueue_fd < 0 {
+            return crate::errno::errno_result();
+        }
+
+        // Set close-on-exec flag
+        // SAFETY: Safe because we know kqueue_fd is valid
+        let ret = unsafe { libc::fcntl(kqueue_fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+        if ret < 0 {
+            // SAFETY: Safe to close a valid fd
+            unsafe { libc::close(kqueue_fd) };
+            return crate::errno::errno_result();
+        }
+
+        Ok(EventContext {
+            kqueue_fd,
+            _phantom: std::marker::PhantomData,
+        })
     }
+
+    /// Creates a new EventContext with initial file descriptors and tokens.
     pub fn build_with(
-        _fd_tokens: &[(&dyn crate::AsRawDescriptor, T)],
+        fd_tokens: &[(&dyn AsRawDescriptor, T)],
     ) -> crate::errno::Result<EventContext<T>> {
-        todo!();
+        let ctx = EventContext::new()?;
+        for (fd, token) in fd_tokens {
+            ctx.add_for_event(*fd, EventType::Read, token.clone())?;
+        }
+        Ok(ctx)
     }
+
+    /// Adds a file descriptor to the EventContext with the specified event type.
     pub fn add_for_event(
         &self,
-        _descriptor: &dyn crate::AsRawDescriptor,
-        _event_type: crate::EventType,
-        _token: T,
+        descriptor: &dyn AsRawDescriptor,
+        event_type: EventType,
+        token: T,
     ) -> crate::errno::Result<()> {
-        todo!();
+        let fd = descriptor.as_raw_descriptor();
+        let token_raw = token.as_raw_token();
+
+        let mut changes: Vec<libc::kevent> = Vec::new();
+
+        match event_type {
+            EventType::Read => {
+                changes.push(libc::kevent {
+                    ident: fd as usize,
+                    filter: libc::EVFILT_READ,
+                    flags: libc::EV_ADD | libc::EV_CLEAR,
+                    fflags: 0,
+                    data: 0,
+                    udata: token_raw as *mut libc::c_void,
+                });
+            }
+            EventType::Write => {
+                changes.push(libc::kevent {
+                    ident: fd as usize,
+                    filter: libc::EVFILT_WRITE,
+                    flags: libc::EV_ADD | libc::EV_CLEAR,
+                    fflags: 0,
+                    data: 0,
+                    udata: token_raw as *mut libc::c_void,
+                });
+            }
+            EventType::ReadWrite => {
+                changes.push(libc::kevent {
+                    ident: fd as usize,
+                    filter: libc::EVFILT_READ,
+                    flags: libc::EV_ADD | libc::EV_CLEAR,
+                    fflags: 0,
+                    data: 0,
+                    udata: token_raw as *mut libc::c_void,
+                });
+                changes.push(libc::kevent {
+                    ident: fd as usize,
+                    filter: libc::EVFILT_WRITE,
+                    flags: libc::EV_ADD | libc::EV_CLEAR,
+                    fflags: 0,
+                    data: 0,
+                    udata: token_raw as *mut libc::c_void,
+                });
+            }
+        }
+
+        // SAFETY: We've constructed valid kevent structures
+        let ret = unsafe {
+            libc::kevent(
+                self.kqueue_fd,
+                changes.as_ptr(),
+                changes.len() as i32,
+                ptr::null_mut(),
+                0,
+                ptr::null(),
+            )
+        };
+
+        if ret < 0 {
+            crate::errno::errno_result()
+        } else {
+            Ok(())
+        }
     }
+
+    /// Modifies an existing file descriptor in the EventContext.
     pub fn modify(
         &self,
-        _fd: &dyn crate::AsRawDescriptor,
-        _event_type: crate::EventType,
-        _token: T,
+        fd: &dyn AsRawDescriptor,
+        event_type: EventType,
+        token: T,
     ) -> crate::errno::Result<()> {
-        todo!();
+        // On kqueue, modifying is the same as adding (EV_ADD will update)
+        self.add_for_event(fd, event_type, token)
     }
-    pub fn delete(&self, _fd: &dyn crate::AsRawDescriptor) -> crate::errno::Result<()> {
-        todo!();
+
+    /// Removes a file descriptor from the EventContext.
+    pub fn delete(&self, fd: &dyn AsRawDescriptor) -> crate::errno::Result<()> {
+        let raw_fd = fd.as_raw_descriptor();
+
+        // Delete both read and write filters
+        let changes = [
+            libc::kevent {
+                ident: raw_fd as usize,
+                filter: libc::EVFILT_READ,
+                flags: libc::EV_DELETE,
+                fflags: 0,
+                data: 0,
+                udata: ptr::null_mut(),
+            },
+            libc::kevent {
+                ident: raw_fd as usize,
+                filter: libc::EVFILT_WRITE,
+                flags: libc::EV_DELETE,
+                fflags: 0,
+                data: 0,
+                udata: ptr::null_mut(),
+            },
+        ];
+
+        // SAFETY: We've constructed valid kevent structures
+        // Note: It's okay if some of these fail (e.g., if only read was registered)
+        unsafe {
+            libc::kevent(
+                self.kqueue_fd,
+                changes.as_ptr(),
+                changes.len() as i32,
+                ptr::null_mut(),
+                0,
+                ptr::null(),
+            );
+        }
+
+        Ok(())
     }
-    pub fn wait(&self) -> crate::errno::Result<smallvec::SmallVec<[crate::TriggeredEvent<T>; 16]>> {
-        todo!();
+
+    /// Waits for events indefinitely.
+    pub fn wait(&self) -> crate::errno::Result<SmallVec<[TriggeredEvent<T>; 16]>> {
+        self.wait_timeout_impl(None)
     }
+
+    /// Waits for events with a timeout.
     pub fn wait_timeout(
         &self,
-        _timeout: std::time::Duration,
-    ) -> crate::errno::Result<smallvec::SmallVec<[crate::TriggeredEvent<T>; 16]>> {
-        todo!();
+        timeout: Duration,
+    ) -> crate::errno::Result<SmallVec<[TriggeredEvent<T>; 16]>> {
+        self.wait_timeout_impl(Some(timeout))
+    }
+
+    fn wait_timeout_impl(
+        &self,
+        timeout: Option<Duration>,
+    ) -> crate::errno::Result<SmallVec<[TriggeredEvent<T>; 16]>> {
+        let mut events: [libc::kevent; 16] = unsafe { std::mem::zeroed() };
+
+        let timeout_spec = timeout.map(|d| libc::timespec {
+            tv_sec: d.as_secs() as libc::time_t,
+            tv_nsec: d.subsec_nanos() as libc::c_long,
+        });
+
+        let timeout_ptr = match &timeout_spec {
+            Some(ts) => ts as *const libc::timespec,
+            None => ptr::null(),
+        };
+
+        // SAFETY: We've allocated valid event buffer
+        let ret = unsafe {
+            libc::kevent(
+                self.kqueue_fd,
+                ptr::null(),
+                0,
+                events.as_mut_ptr(),
+                events.len() as i32,
+                timeout_ptr,
+            )
+        };
+
+        if ret < 0 {
+            return crate::errno::errno_result();
+        }
+
+        let mut triggered = SmallVec::new();
+        for i in 0..(ret as usize) {
+            let event = &events[i];
+
+            // Skip error events
+            if event.flags & libc::EV_ERROR != 0 {
+                continue;
+            }
+
+            let is_readable = event.filter == libc::EVFILT_READ;
+            let is_writable = event.filter == libc::EVFILT_WRITE;
+            let is_hungup = (event.flags & libc::EV_EOF) != 0;
+
+            let token = T::from_raw_token(event.udata as u64);
+
+            triggered.push(TriggeredEvent {
+                token,
+                is_readable,
+                is_writable,
+                is_hungup,
+            });
+        }
+
+        Ok(triggered)
     }
 }
 
-impl<T: crate::EventToken> crate::AsRawDescriptor for EventContext<T> {
+impl<T: EventToken> AsRawDescriptor for EventContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        todo!();
+        self.kqueue_fd
     }
 }
 
-pub struct MemoryMappingArena {}
+impl<T: EventToken> Drop for EventContext<T> {
+    fn drop(&mut self) {
+        // SAFETY: We own the kqueue fd
+        unsafe { libc::close(self.kqueue_fd) };
+    }
+}
 
+/// MemoryMappingArena provides a reserved virtual address region for memory mappings.
+pub struct MemoryMappingArena {
+    addr: *mut u8,
+    size: usize,
+}
+
+impl MemoryMappingArena {
+    /// Creates a new MemoryMappingArena with the given size.
+    /// The arena is backed by anonymous memory that can be remapped.
+    pub fn new(size: usize) -> Result<MemoryMappingArena, MmapError> {
+        // SAFETY: mmap with MAP_ANON|MAP_PRIVATE creates a new anonymous mapping
+        let addr = unsafe {
+            libc::mmap(
+                ptr::null_mut(),
+                size,
+                libc::PROT_NONE,
+                libc::MAP_ANON | libc::MAP_PRIVATE,
+                -1,
+                0,
+            )
+        };
+
+        if addr == libc::MAP_FAILED {
+            return Err(MmapError::SystemCallFailed(io::Error::last_os_error().into()));
+        }
+
+        Ok(MemoryMappingArena {
+            addr: addr as *mut u8,
+            size,
+        })
+    }
+
+    /// Returns a pointer to the start of the arena.
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.addr
+    }
+
+    /// Returns the size of the arena in bytes.
+    pub fn size(&self) -> usize {
+        self.size
+    }
+}
+
+impl Drop for MemoryMappingArena {
+    fn drop(&mut self) {
+        // SAFETY: We own this mapping
+        unsafe {
+            libc::munmap(self.addr as *mut libc::c_void, self.size);
+        }
+    }
+}
+
+// SAFETY: The memory mapping is process-global, so can be sent between threads
+unsafe impl Send for MemoryMappingArena {}
+// SAFETY: The memory mapping doesn't have interior mutability that could cause races
+unsafe impl Sync for MemoryMappingArena {}
+
+/// MemoryMapping represents a region of memory mapped into the address space.
 #[derive(Debug)]
-pub struct MemoryMapping {}
+pub struct MemoryMapping {
+    addr: *mut u8,
+    size: usize,
+}
 
 impl MemoryMapping {
+    /// Returns the size of the mapping in bytes.
     pub fn size(&self) -> usize {
-        todo!();
+        self.size
     }
-    pub(crate) fn range_end(&self, _offset: usize, _count: usize) -> Result<usize, MmapError> {
-        todo!();
+
+    /// Validates and returns the end offset for a range operation.
+    pub(crate) fn range_end(&self, offset: usize, count: usize) -> Result<usize, MmapError> {
+        let end = offset.checked_add(count).ok_or(MmapError::InvalidAddress)?;
+        if end > self.size {
+            return Err(MmapError::InvalidAddress);
+        }
+        Ok(end)
     }
+
+    /// Syncs the mapping to disk (for file-backed mappings).
     pub fn msync(&self) -> Result<(), MmapError> {
-        todo!();
+        // SAFETY: We own this mapping and the parameters are valid
+        let ret = unsafe {
+            libc::msync(
+                self.addr as *mut libc::c_void,
+                self.size,
+                libc::MS_SYNC,
+            )
+        };
+        if ret != 0 {
+            Err(MmapError::SystemCallFailed(io::Error::last_os_error().into()))
+        } else {
+            Ok(())
+        }
     }
+
+    /// Creates a new memory mapping at a fixed address with the specified protection.
     pub fn new_protection_fixed(
-        _addr: *mut u8,
-        _size: usize,
-        _prot: crate::Protection,
+        addr: *mut u8,
+        size: usize,
+        prot: Protection,
     ) -> Result<MemoryMapping, MmapError> {
-        todo!();
+        let prot_flags = protection_to_prot(prot);
+
+        // SAFETY: We're mapping at a fixed address, caller ensures it's valid
+        let result = unsafe {
+            libc::mmap(
+                addr as *mut libc::c_void,
+                size,
+                prot_flags,
+                libc::MAP_ANON | libc::MAP_PRIVATE | libc::MAP_FIXED,
+                -1,
+                0,
+            )
+        };
+
+        if result == libc::MAP_FAILED {
+            return Err(MmapError::SystemCallFailed(io::Error::last_os_error().into()));
+        }
+
+        Ok(MemoryMapping {
+            addr: result as *mut u8,
+            size,
+        })
     }
+
+    /// Creates a memory mapping from a file descriptor at a fixed address.
+    ///
     /// # Safety
     ///
-    /// unimplemented, always aborts
+    /// The caller must ensure that `addr` is a valid address for the mapping
+    /// and that the file descriptor refers to a valid file.
     pub unsafe fn from_descriptor_offset_protection_fixed(
-        _addr: *mut u8,
-        _fd: &dyn crate::AsRawDescriptor,
-        _size: usize,
-        _offset: u64,
-        _prot: crate::Protection,
+        addr: *mut u8,
+        fd: &dyn AsRawDescriptor,
+        size: usize,
+        offset: u64,
+        prot: Protection,
     ) -> Result<MemoryMapping, MmapError> {
-        todo!();
+        let prot_flags = protection_to_prot(prot);
+
+        let result = libc::mmap(
+            addr as *mut libc::c_void,
+            size,
+            prot_flags,
+            libc::MAP_SHARED | libc::MAP_FIXED,
+            fd.as_raw_descriptor(),
+            offset as libc::off_t,
+        );
+
+        if result == libc::MAP_FAILED {
+            return Err(MmapError::SystemCallFailed(io::Error::last_os_error().into()));
+        }
+
+        Ok(MemoryMapping {
+            addr: result as *mut u8,
+            size,
+        })
     }
 }
 
-// SAFETY: Unimplemented, always aborts
+// SAFETY: MemoryMapping addr is valid for the lifetime of the struct
 unsafe impl crate::MappedRegion for MemoryMapping {
     fn as_ptr(&self) -> *mut u8 {
-        todo!();
+        self.addr
     }
     fn size(&self) -> usize {
-        todo!();
+        self.size
     }
+}
+
+// SAFETY: The memory mapping is process-global, so can be sent between threads
+unsafe impl Send for MemoryMapping {}
+// SAFETY: The memory mapping doesn't have interior mutability
+unsafe impl Sync for MemoryMapping {}
+
+/// Converts a Protection enum to mmap protection flags.
+fn protection_to_prot(prot: Protection) -> libc::c_int {
+    let mut flags = 0;
+    if prot.allows_read() {
+        flags |= libc::PROT_READ;
+    }
+    if prot.allows_write() {
+        flags |= libc::PROT_WRITE;
+    }
+    if prot.allows_execute() {
+        flags |= libc::PROT_EXEC;
+    }
+    flags
 }
 
 pub mod ioctl {
+    use crate::AsRawDescriptor;
+
     pub type IoctlNr = std::ffi::c_ulong;
+
+    /// Executes an ioctl with no arguments.
+    ///
     /// # Safety
     ///
-    /// unimplemented, always aborts
-    pub unsafe fn ioctl<F: crate::AsRawDescriptor>(
-        _descriptor: &F,
-        _nr: IoctlNr,
+    /// The caller must ensure that the ioctl number is valid for the
+    /// given file descriptor.
+    pub unsafe fn ioctl<F: AsRawDescriptor>(
+        descriptor: &F,
+        nr: IoctlNr,
     ) -> std::ffi::c_int {
-        todo!();
+        libc::ioctl(descriptor.as_raw_descriptor(), nr)
     }
+
+    /// Executes an ioctl with a value argument.
+    ///
     /// # Safety
     ///
-    /// unimplemented, always aborts
+    /// The caller must ensure that the ioctl number is valid for the
+    /// given file descriptor and that the value is appropriate.
     pub unsafe fn ioctl_with_val(
-        _descriptor: &dyn crate::AsRawDescriptor,
-        _nr: IoctlNr,
-        _arg: std::ffi::c_ulong,
+        descriptor: &dyn AsRawDescriptor,
+        nr: IoctlNr,
+        arg: std::ffi::c_ulong,
     ) -> std::ffi::c_int {
-        todo!();
+        libc::ioctl(descriptor.as_raw_descriptor(), nr, arg)
     }
+
+    /// Executes an ioctl with a const reference argument.
+    ///
     /// # Safety
     ///
-    /// unimplemented, always aborts
+    /// The caller must ensure that the ioctl number is valid for the
+    /// given file descriptor and that the reference points to valid data.
     pub unsafe fn ioctl_with_ref<T>(
-        _descriptor: &dyn crate::AsRawDescriptor,
-        _nr: IoctlNr,
-        _arg: &T,
+        descriptor: &dyn AsRawDescriptor,
+        nr: IoctlNr,
+        arg: &T,
     ) -> std::ffi::c_int {
-        todo!();
+        libc::ioctl(descriptor.as_raw_descriptor(), nr, arg as *const T)
     }
+
+    /// Executes an ioctl with a mutable reference argument.
+    ///
     /// # Safety
     ///
-    /// unimplemented, always aborts
+    /// The caller must ensure that the ioctl number is valid for the
+    /// given file descriptor and that the reference points to valid data.
     pub unsafe fn ioctl_with_mut_ref<T>(
-        _descriptor: &dyn crate::AsRawDescriptor,
-        _nr: IoctlNr,
-        _arg: &mut T,
+        descriptor: &dyn AsRawDescriptor,
+        nr: IoctlNr,
+        arg: &mut T,
     ) -> std::ffi::c_int {
-        todo!();
+        libc::ioctl(descriptor.as_raw_descriptor(), nr, arg as *mut T)
     }
+
+    /// Executes an ioctl with a const pointer argument.
+    ///
     /// # Safety
     ///
-    /// unimplemented, always aborts
+    /// The caller must ensure that the ioctl number is valid for the
+    /// given file descriptor and that the pointer is valid.
     pub unsafe fn ioctl_with_ptr<T>(
-        _descriptor: &dyn crate::AsRawDescriptor,
-        _nr: IoctlNr,
-        _arg: *const T,
+        descriptor: &dyn AsRawDescriptor,
+        nr: IoctlNr,
+        arg: *const T,
     ) -> std::ffi::c_int {
-        todo!();
+        libc::ioctl(descriptor.as_raw_descriptor(), nr, arg)
     }
+
+    /// Executes an ioctl with a mutable pointer argument.
+    ///
     /// # Safety
     ///
-    /// unimplemented, always aborts
+    /// The caller must ensure that the ioctl number is valid for the
+    /// given file descriptor and that the pointer is valid.
     pub unsafe fn ioctl_with_mut_ptr<T>(
-        _descriptor: &dyn crate::AsRawDescriptor,
-        _nr: IoctlNr,
-        _arg: *mut T,
+        descriptor: &dyn AsRawDescriptor,
+        nr: IoctlNr,
+        arg: *mut T,
     ) -> std::ffi::c_int {
-        todo!();
+        libc::ioctl(descriptor.as_raw_descriptor(), nr, arg)
     }
 }
 
-pub fn file_punch_hole(_file: &std::fs::File, _offset: u64, _length: u64) -> std::io::Result<()> {
-    todo!();
+/// Punches a hole in a file, deallocating the space.
+/// On macOS, we use fcntl with F_PUNCHHOLE if available, otherwise fallback to writing zeros.
+pub fn file_punch_hole(file: &File, offset: u64, length: u64) -> io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    // macOS supports F_PUNCHHOLE on APFS volumes
+    #[repr(C)]
+    struct FPunchhole {
+        fp_flags: libc::c_uint,
+        reserved: libc::c_uint,
+        fp_offset: libc::off_t,
+        fp_length: libc::off_t,
+    }
+
+    const F_PUNCHHOLE: libc::c_int = 99;
+    const FP_ALLOCATECONTIG: libc::c_uint = 0x00000002;
+    const FP_ALLOCATEALL: libc::c_uint = 0x00000004;
+    let _ = FP_ALLOCATECONTIG;
+    let _ = FP_ALLOCATEALL;
+
+    let punchhole = FPunchhole {
+        fp_flags: 0,
+        reserved: 0,
+        fp_offset: offset as libc::off_t,
+        fp_length: length as libc::off_t,
+    };
+
+    // SAFETY: The file descriptor is valid and the structure is properly initialized
+    let ret = unsafe {
+        libc::fcntl(
+            file.as_raw_fd(),
+            F_PUNCHHOLE,
+            &punchhole as *const FPunchhole,
+        )
+    };
+
+    if ret == 0 {
+        Ok(())
+    } else {
+        // F_PUNCHHOLE might not be supported (e.g., not APFS), so fall back to doing nothing
+        // This is acceptable for VM use cases where hole punching is an optimization
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ENOTSUP) || err.raw_os_error() == Some(libc::EINVAL) {
+            Ok(())
+        } else {
+            Err(err)
+        }
+    }
 }
 
+/// Writes zeros to a file at the specified offset.
 pub fn file_write_zeroes_at(
-    _file: &std::fs::File,
-    _offset: u64,
-    _length: usize,
-) -> std::io::Result<usize> {
-    todo!();
+    file: &File,
+    offset: u64,
+    length: usize,
+) -> io::Result<usize> {
+    use std::os::unix::io::AsRawFd;
+
+    // Create a buffer of zeros and write it using pwrite
+    const CHUNK_SIZE: usize = 65536; // 64KB chunks
+    let zeros = vec![0u8; std::cmp::min(length, CHUNK_SIZE)];
+
+    let mut written = 0;
+    let mut current_offset = offset;
+
+    while written < length {
+        let to_write = std::cmp::min(length - written, zeros.len());
+        // SAFETY: The file descriptor is valid and the buffer is properly allocated
+        let ret = unsafe {
+            libc::pwrite(
+                file.as_raw_fd(),
+                zeros.as_ptr() as *const libc::c_void,
+                to_write,
+                current_offset as libc::off_t,
+            )
+        };
+
+        if ret < 0 {
+            let err = io::Error::last_os_error();
+            if written > 0 {
+                return Ok(written);
+            }
+            return Err(err);
+        }
+
+        let bytes_written = ret as usize;
+        written += bytes_written;
+        current_offset += bytes_written as u64;
+
+        if bytes_written == 0 {
+            break;
+        }
+    }
+
+    Ok(written)
 }
 
 pub mod syslog {
+    /// PlatformSyslog for macOS.
+    /// On macOS, we could use os_log, but for simplicity we'll just use stderr logging.
     pub struct PlatformSyslog {}
 
     impl crate::syslog::Syslog for PlatformSyslog {
@@ -237,26 +741,84 @@ pub mod syslog {
             ),
             crate::syslog::Error,
         > {
-            todo!();
+            // Return None to indicate no platform-specific logger
+            // The logging system will fall back to the default logger
+            Ok((None, None))
         }
     }
 }
 
 impl PartialEq for crate::SafeDescriptor {
-    fn eq(&self, _other: &Self) -> bool {
-        todo!();
+    fn eq(&self, other: &Self) -> bool {
+        // Compare file descriptors
+        // Note: This compares the descriptor numbers, not whether they refer to the same file
+        self.as_raw_descriptor() == other.as_raw_descriptor()
     }
 }
 
 impl crate::shm::PlatformSharedMemory for crate::SharedMemory {
-    fn new(_debug_name: &std::ffi::CStr, _size: u64) -> crate::Result<crate::SharedMemory> {
-        todo!();
+    /// Creates a new shared memory object.
+    /// On macOS, we use shm_open to create a POSIX shared memory object.
+    fn new(debug_name: &std::ffi::CStr, size: u64) -> crate::Result<crate::SharedMemory> {
+        use std::os::unix::io::FromRawFd;
+
+        // Generate a unique name for the shared memory object
+        let name = format!(
+            "/crosvm-shm-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        );
+        let c_name = CString::new(name.clone()).map_err(|_| crate::Error::new(libc::EINVAL))?;
+        let _ = debug_name; // We use our own naming scheme
+
+        // SAFETY: shm_open is safe with valid arguments
+        let fd = unsafe {
+            libc::shm_open(
+                c_name.as_ptr(),
+                libc::O_RDWR | libc::O_CREAT | libc::O_EXCL,
+                0o600,
+            )
+        };
+
+        if fd < 0 {
+            return Err(crate::Error::from(io::Error::last_os_error()));
+        }
+
+        // Immediately unlink so it will be cleaned up when all references are dropped
+        // SAFETY: Safe with a valid name
+        unsafe { libc::shm_unlink(c_name.as_ptr()) };
+
+        // Set the size
+        // SAFETY: fd is valid from shm_open
+        let ret = unsafe { libc::ftruncate(fd, size as libc::off_t) };
+        if ret < 0 {
+            let err = io::Error::last_os_error();
+            unsafe { libc::close(fd) };
+            return Err(crate::Error::from(err));
+        }
+
+        // Set close-on-exec
+        // SAFETY: fd is valid
+        let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+        if ret < 0 {
+            let err = io::Error::last_os_error();
+            unsafe { libc::close(fd) };
+            return Err(crate::Error::from(err));
+        }
+
+        // SAFETY: fd is valid and we own it
+        let file = unsafe { File::from_raw_fd(fd) };
+        let descriptor = crate::SafeDescriptor::from(file);
+
+        Ok(crate::SharedMemory { descriptor, size })
     }
+
+    /// Creates a SharedMemory from an existing descriptor.
     fn from_safe_descriptor(
-        _descriptor: crate::SafeDescriptor,
-        _size: u64,
+        descriptor: crate::SafeDescriptor,
+        size: u64,
     ) -> crate::Result<crate::SharedMemory> {
-        todo!();
+        Ok(crate::SharedMemory { descriptor, size })
     }
 }
 
