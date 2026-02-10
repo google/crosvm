@@ -52,7 +52,7 @@ pub trait TransferDescriptorHandler {
     fn handle_transfer_descriptor(
         &self,
         descriptor: TransferDescriptor,
-        complete_event: Event,
+        trigger_event: Event,
     ) -> anyhow::Result<()>;
 
     /// Cancel transfers. This is used to stop the ring activity as soon as possible when we
@@ -240,13 +240,13 @@ mod tests {
         fn handle_transfer_descriptor(
             &self,
             descriptor: TransferDescriptor,
-            complete_event: Event,
+            trigger_event: Event,
         ) -> anyhow::Result<()> {
             for atrb in &descriptor {
                 assert_eq!(atrb.trb.get_trb_type().unwrap(), TrbType::Normal);
                 self.sender.send(atrb.trb.get_parameter() as i32).unwrap();
             }
-            complete_event.signal().unwrap();
+            trigger_event.signal().unwrap();
             Ok(())
         }
     }
@@ -260,13 +260,13 @@ mod tests {
         fn handle_transfer_descriptor(
             &self,
             descriptor: TransferDescriptor,
-            complete_event: Event,
+            trigger_event: Event,
         ) -> anyhow::Result<()> {
             let mut locked = self.processing.lock();
             for a in locked.iter() {
                 self.sender.send(*a).unwrap();
             }
-            complete_event.signal().unwrap();
+            trigger_event.signal().unwrap();
             *locked = descriptor.iter().map(|atrb| atrb.gpa).collect();
             Ok(())
         }

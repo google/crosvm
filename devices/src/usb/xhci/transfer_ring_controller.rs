@@ -47,7 +47,7 @@ impl TransferDescriptorHandler for TransferRingTrbHandler {
     fn handle_transfer_descriptor(
         &self,
         descriptor: TransferDescriptor,
-        completion_event: Event,
+        trigger_event: Event,
     ) -> anyhow::Result<()> {
         let xhci_transfer = self.transfer_manager.create_transfer(
             self.mem.clone(),
@@ -56,7 +56,7 @@ impl TransferDescriptorHandler for TransferRingTrbHandler {
             self.slot_id,
             self.endpoint_id,
             descriptor,
-            completion_event,
+            trigger_event,
             self.stream_id,
         );
         xhci_transfer

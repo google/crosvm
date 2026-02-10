@@ -200,7 +200,7 @@ impl XhciTransferManager {
         slot_id: u8,
         endpoint_id: u8,
         transfer_descriptor: TransferDescriptor,
-        completion_event: Event,
+        trigger_event: Event,
         stream_id: Option<u16>,
     ) -> XhciTransfer {
         let transfer_dir = {
@@ -218,11 +218,11 @@ impl XhciTransferManager {
             mem,
             port,
             interrupter,
-            transfer_completion_event: completion_event,
             slot_id,
             endpoint_id,
             transfer_dir,
             transfer_descriptor,
+            trigger_event,
             device_slot: self.device_slot.clone(),
             stream_id,
         };
@@ -286,7 +286,7 @@ pub struct XhciTransfer {
     endpoint_id: u8,
     transfer_dir: TransferDirection,
     transfer_descriptor: TransferDescriptor,
-    transfer_completion_event: Event,
+    trigger_event: Event,
     device_slot: Weak<DeviceSlot>,
     stream_id: Option<u16>,
 }
@@ -389,6 +389,8 @@ impl XhciTransfer {
         bytes_transferred: u32,
     ) -> Result<Vec<TransferAction>> {
         let mut actions = Vec::new();
+        // This can be processed first, because xHCI specification does not guarantee the order
+        // between the context update and the transfer completion event.
         if *status == TransferStatus::Stalled {
             warn!("xhci: endpoint is stalled. set state to Halted");
             actions.push(TransferAction::HaltEndpoint);
@@ -506,16 +508,10 @@ impl XhciTransfer {
             TransferStatus::NoDevice => {
                 info!("xhci: device disconnected, detaching from port");
                 // Actual port detachment is handled by the UsbUtilEventHandler.
-                return self
-                    .transfer_completion_event
-                    .signal()
-                    .map_err(Error::WriteCompletionEvent);
+                return self.send_late_trigger();
             }
             TransferStatus::Cancelled => {
-                return self
-                    .transfer_completion_event
-                    .signal()
-                    .map_err(Error::WriteCompletionEvent);
+                return self.send_late_trigger();
             }
             TransferStatus::Completed => {}
             TransferStatus::Stalled => {
@@ -567,9 +563,7 @@ impl XhciTransfer {
         // it to the end so that its error, if it ever occurs, won't cause the above transfer
         // events to be omitted.
         if !halted {
-            self.transfer_completion_event
-                .signal()
-                .map_err(Error::WriteCompletionEvent)
+            self.send_late_trigger()
         } else {
             Ok(())
         }
@@ -578,26 +572,28 @@ impl XhciTransfer {
     /// Send this transfer to backend if it's a valid transfer.
     pub fn send_to_backend_if_valid(self) -> Result<()> {
         if self.validate_transfer()? {
-            // Backend should invoke on transfer complete when transfer is completed.
+            // Backend should call on_transfer_complete() when the transfer is completed to generate
+            // events. The ring controller is also triggered there for bulk & interrupt transfers.
+            // For an isochronous transfer, the ring controller is triggered here without waiting
+            // for the completion.
             let port = self.port.clone();
             let mut backend = port.backend_device();
             match &mut *backend {
-                Some(backend) => backend
-                    .lock()
-                    .submit_xhci_transfer(self)
-                    .map_err(|_| Error::SubmitTransfer)?,
+                Some(backend) => {
+                    self.send_early_trigger()?;
+                    backend
+                        .lock()
+                        .submit_xhci_transfer(self)
+                        .map_err(|_| Error::SubmitTransfer)?
+                }
                 None => {
                     error!("backend is already disconnected");
-                    self.transfer_completion_event
-                        .signal()
-                        .map_err(Error::WriteCompletionEvent)?;
+                    self.send_trigger()?;
                 }
             }
         } else {
             error!("invalid td on transfer ring");
-            self.transfer_completion_event
-                .signal()
-                .map_err(Error::WriteCompletionEvent)?;
+            self.send_trigger()?;
         }
         Ok(())
     }
@@ -623,6 +619,32 @@ impl XhciTransfer {
             }
         }
         Ok(valid)
+    }
+
+    // ISOC transfer posts many small descriptors at once. We give an early signal to the ring
+    // controller so that we can keep up with the timing requirements.
+    fn needs_early_trigger(&self) -> bool {
+        matches!(self.get_transfer_type(), Ok(XhciTransferType::Isochronous))
+    }
+
+    fn send_early_trigger(&self) -> Result<()> {
+        if self.needs_early_trigger() {
+            self.send_trigger()?;
+        }
+        Ok(())
+    }
+
+    fn send_late_trigger(&self) -> Result<()> {
+        if !self.needs_early_trigger() {
+            self.send_trigger()?;
+        }
+        Ok(())
+    }
+
+    fn send_trigger(&self) -> Result<()> {
+        self.trigger_event
+            .signal()
+            .map_err(Error::WriteCompletionEvent)
     }
 }
 
@@ -714,7 +736,7 @@ mod tests {
                 Event::new().unwrap(),
                 &xhci_regs,
             ))),
-            transfer_completion_event: Event::new().unwrap(),
+            trigger_event: Event::new().unwrap(),
             slot_id: 1,
             endpoint_id: 2,
             transfer_dir: TransferDirection::Out,
