@@ -36,11 +36,13 @@ def RunSteps(api):
         api.gsutil(
             ["rsync", "-r", "-d", "./docs/target/html", BOOK_URL],
             name="Upload book",
+            multithreaded=True,
         )
         # TODO(b/239255064): Generate the redirect HTML so we can use cleanly mirror here too.
         api.gsutil(
-             ["rsync", "-r", "./docs/target/doc", DOCS_URL],
+            ["rsync", "-r", "./docs/target/doc", DOCS_URL],
             name="Upload docs",
+            multithreaded=True,
         )
 
 
