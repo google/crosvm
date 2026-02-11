@@ -10,7 +10,7 @@ DEPS = [
     "recipe_engine/buildbucket",
     "recipe_engine/context",
     "recipe_engine/step",
-    "depot_tools/gcloud",
+    "depot_tools/gsutil",
 ]
 
 BOOK_URL = "gs://crosvm-dot-dev/book"
@@ -33,20 +33,20 @@ def RunSteps(api):
             ["./tools/cargo-doc", "--target-dir", "docs/target"],
         )
 
-        api.gcloud(
-            ["storage", "rsync", "--recursive", "--delete-unmatched-destination-objects", "./docs/target/html", BOOK_URL],
+        api.gsutil(
+            ["rsync", "-r", "-d", "./docs/target/html", BOOK_URL],
             name="Upload book",
         )
         # TODO(b/239255064): Generate the redirect HTML so we can use cleanly mirror here too.
-        api.gcloud(
-            ["storage", "rsync", "--recursive", "./docs/target/doc", DOCS_URL],
+        api.gsutil(
+             ["rsync", "-r", "./docs/target/doc", DOCS_URL],
             name="Upload docs",
         )
 
 
 def GenTests(api):
     filter_steps = Filter(
-        "Build mdbook", "Run cargo docs", "gcloud Upload book", "gcloud Upload docs"
+        "Build mdbook", "Run cargo docs", "gsutil Upload book", "gsutil Upload docs"
     )
     yield (
         api.test(
