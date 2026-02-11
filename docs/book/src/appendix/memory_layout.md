@@ -75,7 +75,7 @@ These apply for all boot modes.
 | [`AARCH64_GIC_ITS_BASE`]          | `4000_0000`     | `4002_0000`     | 128 KiB        | vGIC ITS (if enabled)                                         |
 | [`AARCH64_PROTECTED_VM_FW_START`] | `7fc0_0000`     | `8000_0000`     | 4 MiB          | pVM firmware (if running a protected VM)                      |
 | [`AARCH64_PHYS_MEM_START`]        | `8000_0000`     |                 | --mem size     | RAM (starts at IPA = 2 GiB)                                   |
-| [`plat_mmio_base`]                | after RAM       | +0x800000       | 8 MiB          | Platform device MMIO region                                   |
+| [`plat_mmio_base`]                | after RAM       | +0x40000000     | 1 GiB          | Platform device MMIO region                                   |
 | [`high_mmio_base`]                | after plat_mmio | max phys addr   |                | High MMIO allocation area                                     |
 
 ### RAM Layout
