@@ -398,17 +398,7 @@ impl VirtioDevice for VhostUserFrontend {
     }
 
     fn ack_features(&mut self, features: u64) {
-        let features = (features & self.avail_features) | self.acked_features;
-        if let Err(e) = self
-            .backend_client
-            .set_features(features)
-            .map_err(Error::SetFeatures)
-        {
-            error!("failed to enable features 0x{:x}: {}", features, e);
-            return;
-        }
-        self.acked_features = features;
-        self.sent_set_features = true;
+        self.acked_features |= features & self.avail_features;
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
@@ -458,9 +448,11 @@ impl VirtioDevice for VhostUserFrontend {
         interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
-        // Ensure at least one `VHOST_USER_SET_FEATURES` is sent before activation.
         if !self.sent_set_features {
-            self.ack_features(self.acked_features);
+            self.backend_client
+                .set_features(self.acked_features)
+                .map_err(Error::SetFeatures)?;
+            self.sent_set_features = true;
         }
 
         self.set_mem_table(&mem)?;
@@ -596,6 +588,8 @@ impl VirtioDevice for VhostUserFrontend {
             self.vm_evt_wrtube = vm_evt_wrtube;
         }
 
+        self.sent_set_features = false;
+
         Ok(Some(queues))
     }
 
@@ -654,7 +648,10 @@ impl VirtioDevice for VhostUserFrontend {
     fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
         // Ensure features are negotiated before restoring.
         if !self.sent_set_features {
-            self.ack_features(self.acked_features);
+            self.backend_client
+                .set_features(self.acked_features)
+                .map_err(Error::SetFeatures)?;
+            self.sent_set_features = true;
         }
 
         if !self
