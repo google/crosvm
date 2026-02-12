@@ -68,6 +68,7 @@ use super::protocol::GpuResponse::*;
 use super::protocol::GpuResponsePlaneInfo;
 use super::protocol::VirtioGpuResult;
 use super::protocol::VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE;
+use super::protocol::VIRTIO_GPU_BLOB_FLAG_USE_MAPPABLE;
 use super::protocol::VIRTIO_GPU_BLOB_MEM_HOST3D;
 use super::VirtioScanoutBlobData;
 use crate::virtio::gpu::edid::DisplayInfo;
@@ -104,6 +105,7 @@ struct VirtioGpuResource {
     scanout_data: Option<VirtioScanoutBlobData>,
     display_import: Option<u32>,
     rutabaga_external_mapping: bool,
+    guest_cpu_mappable: bool,
 
     // Only saved for snapshotting, so that we can re-attach backing iovecs with the correct new
     // host addresses.
@@ -120,12 +122,19 @@ struct VirtioGpuResourceSnapshot {
     backing_iovecs: Option<Vec<(GuestAddress, usize)>>,
     shmem_offset: Option<u64>,
     scanout_data: Option<VirtioScanoutBlobData>,
+    guest_cpu_mappable: bool,
 }
 
 impl VirtioGpuResource {
     /// Creates a new VirtioGpuResource with the given metadata.  Width and height are used by the
     /// display, while size is useful for hypervisor mapping.
-    pub fn new(resource_id: u32, width: u32, height: u32, size: u64) -> VirtioGpuResource {
+    pub fn new(
+        resource_id: u32,
+        width: u32,
+        height: u32,
+        size: u64,
+        guest_cpu_mappable: bool,
+    ) -> VirtioGpuResource {
         VirtioGpuResource {
             resource_id,
             width,
@@ -135,6 +144,7 @@ impl VirtioGpuResource {
             scanout_data: None,
             display_import: None,
             rutabaga_external_mapping: false,
+            guest_cpu_mappable,
             backing_iovecs: None,
         }
     }
@@ -151,11 +161,18 @@ impl VirtioGpuResource {
             backing_iovecs: self.backing_iovecs.clone(),
             shmem_offset: self.shmem_offset,
             scanout_data: self.scanout_data,
+            guest_cpu_mappable: self.guest_cpu_mappable,
         }
     }
 
     fn restore(s: VirtioGpuResourceSnapshot) -> Self {
-        let mut resource = VirtioGpuResource::new(s.resource_id, s.width, s.height, s.size);
+        let mut resource = VirtioGpuResource::new(
+            s.resource_id,
+            s.width,
+            s.height,
+            s.size,
+            s.guest_cpu_mappable,
+        );
         resource.backing_iovecs = s.backing_iovecs;
         resource.scanout_data = s.scanout_data;
         resource
@@ -881,10 +898,13 @@ impl VirtioGpu {
             Err(_) => return ResourceResponse::Invalid,
         };
 
-        let guest_cpu_mappable = match self.rutabaga.guest_cpu_mappable(resource_id) {
-            Ok(query) => query,
-            Err(_) => return ResourceResponse::Invalid,
-        };
+        // Use tracked `guest_cpu_mappable` from `VirtioGpuResource` because `rutabaga` has
+        // deprecated and unimplemented the `guest_cpu_mappable` method.
+        let guest_cpu_mappable = self
+            .resources
+            .get(&resource_id)
+            .map(|r| r.guest_cpu_mappable)
+            .unwrap_or(false);
 
         ResourceResponse::Resource(ResourceInfo::Buffer(BufferInfo {
             handle,
@@ -987,6 +1007,7 @@ impl VirtioGpu {
             resource_create_3d.width,
             resource_create_3d.height,
             0,
+            false,
         );
 
         // Rely on rutabaga to check for duplicate resource ids.
@@ -1112,7 +1133,15 @@ impl VirtioGpu {
             }),
         )?;
 
-        let resource = VirtioGpuResource::new(resource_id, 0, 0, resource_create_blob.size);
+        let guest_cpu_mappable =
+            (resource_create_blob.blob_flags & VIRTIO_GPU_BLOB_FLAG_USE_MAPPABLE) != 0;
+        let resource = VirtioGpuResource::new(
+            resource_id,
+            0,
+            0,
+            resource_create_blob.size,
+            guest_cpu_mappable,
+        );
 
         // Rely on rutabaga to check for duplicate resource ids.
         self.resources.insert(resource_id, resource);

@@ -1944,9 +1944,9 @@ dependencies = [
 
 [[package]]
 name = "mesa3d_util"
-version = "0.1.75"
+version = "0.1.76-alpha.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c76e90ba0bde4c5eb7c1b23d9b0b87333ce3e3db9a3f5fd44b2caae3c99358"
+checksum = "659fee097888a000ce2412571495943fe505cd3552d751009286ae635957a284"
 dependencies = [
  "cfg-if",
  "libc",
@@ -2702,9 +2702,9 @@ dependencies = [
 
 [[package]]
 name = "rutabaga_gfx"
-version = "0.1.76-chromeos"
+version = "0.1.76-alpha.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a806736e3d23fb7c430b67f8a3162233d98a9a34790a3f533278bcc140041af"
+checksum = "988c93caed844e77bcb3c3988d89d249408aa772702b543c980d49b6665fb5fd"
 dependencies = [
  "cfg-if",
  "libc",
