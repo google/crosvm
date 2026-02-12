@@ -30,3 +30,5 @@ crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com #{LAST_RESORT_SUGGES
 # Changes to Cargo.lock will require additional reviews by the crosvm council.
 per-file Cargo.lock = set noparent
 per-file Cargo.lock = file:OWNERS_COUNCIL
+# OWNERS_COUNCIL file itself requires additional reviews by the crosvm council.
+per-file OWNERS_COUNCIL = file:OWNERS_COUNCIL
