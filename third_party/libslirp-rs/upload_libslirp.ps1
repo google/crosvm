@@ -99,7 +99,7 @@ try {
   Write-Host Uploading build binaries
   foreach ($build_type in 'release', 'debug') {
     foreach ($prebuilt in 'libslirp-0.dll', 'libslirp.lib') {
-      gsutil cp -n -a public-read $LIBSLIRP_PATH\$build_type\$prebuilt $GS_BASE_URL/$build_type/$version/$prebuilt
+      gcloud storage cp --no-clobber --predefined-acl=publicRead $LIBSLIRP_PATH\$build_type\$prebuilt $GS_BASE_URL/$build_type/$version/$prebuilt
     }
   }
 }
