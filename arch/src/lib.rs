@@ -60,7 +60,7 @@ pub use fdt::DtbOverlay;
 use gdbstub::arch::Arch;
 use hypervisor::MemCacheType;
 use hypervisor::Vm;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 use jail::FakeMinijailStub as Minijail;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
@@ -80,6 +80,8 @@ use sync::Condvar;
 use sync::Mutex;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::linux::PlatformBusResources;
+#[cfg(target_os = "macos")]
+pub use sys::macos::PlatformBusResources;
 use thiserror::Error;
 use uuid::Uuid;
 use vm_control::BatControl;
@@ -874,7 +876,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
         Arc::new(Mutex::new(device))
     };
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     let arced_dev = {
         device.on_sandboxed();
         Arc::new(Mutex::new(device))
@@ -1165,7 +1167,7 @@ pub fn generate_pci_root(
     for (dev_idx, dev_value) in devices {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         let (mut device, jail) = dev_value;
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         let (mut device, _) = dev_value;
         let address = device_addrs[dev_idx];
 
@@ -1214,7 +1216,7 @@ pub fn generate_pci_root(
             device.on_sandboxed();
             Arc::new(Mutex::new(device))
         };
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         let arced_dev = {
             device.on_sandboxed();
             Arc::new(Mutex::new(device))

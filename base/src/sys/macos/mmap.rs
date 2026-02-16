@@ -11,7 +11,6 @@ use libc::PROT_READ;
 use libc::PROT_WRITE;
 
 use crate::errno::Error as ErrnoError;
-use crate::pagesize;
 use crate::AsRawDescriptor;
 use crate::MappedRegion;
 use crate::MemoryMapping as CrateMemoryMapping;
@@ -152,54 +151,84 @@ impl MemoryMapping {
         prot: c_int,
         fd: Option<(RawDescriptor, u64)>,
     ) -> Result<MemoryMapping> {
-        let mut flags = libc::MAP_SHARED;
-        if fd.is_none() {
-            flags |= libc::MAP_ANONYMOUS;
-        }
-
         let (raw_fd, offset) = fd.unwrap_or((-1, 0));
+        let has_fd = fd.is_some();
 
-        let effective_size = if let Some(alignment) = align {
-            size + alignment as usize
-        } else {
-            size
-        };
+        if let Some(alignment) = align.filter(|&a| a > 0) {
+            let alignment = alignment as usize;
 
-        let addr = libc::mmap(
-            addr.map_or(null_mut(), |a| a as *mut libc::c_void),
-            effective_size,
-            prot,
-            flags,
-            raw_fd,
-            offset as libc::off_t,
-        );
+            // Step 1: Reserve address space with anonymous mapping (size + alignment)
+            let reserve = libc::mmap(
+                addr.map_or(null_mut(), |a| a as *mut libc::c_void),
+                size + alignment,
+                libc::PROT_NONE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            );
+            if reserve == libc::MAP_FAILED {
+                return Err(Error::SystemCallFailed(ErrnoError::last()));
+            }
 
-        if addr == libc::MAP_FAILED {
-            return Err(Error::SystemCallFailed(ErrnoError::last()));
-        }
+            // Step 2: Compute aligned address within reserved region
+            let aligned = (reserve as usize + alignment - 1) & !(alignment - 1);
 
-        let mut final_addr = addr as *mut u8;
+            // Step 3: Map actual content at aligned address with MAP_FIXED
+            let mut flags = libc::MAP_SHARED | libc::MAP_FIXED;
+            if !has_fd {
+                flags |= libc::MAP_ANONYMOUS;
+            }
+            let mapped = libc::mmap(
+                aligned as *mut libc::c_void,
+                size,
+                prot,
+                flags,
+                raw_fd,
+                offset as libc::off_t,
+            );
+            if mapped == libc::MAP_FAILED {
+                libc::munmap(reserve, size + alignment);
+                return Err(Error::SystemCallFailed(ErrnoError::last()));
+            }
 
-        if let Some(alignment) = align {
-            let aligned = (final_addr as usize + alignment as usize - 1) & !(alignment as usize - 1);
-            let prefix_size = aligned - final_addr as usize;
+            // Step 4: Unmap unused prefix/suffix of the reserved region
+            let prefix_size = aligned - reserve as usize;
             if prefix_size > 0 {
-                libc::munmap(final_addr as *mut libc::c_void, prefix_size);
+                libc::munmap(reserve, prefix_size);
             }
-            let suffix_size = alignment as usize - prefix_size;
+            let suffix_size = alignment - prefix_size;
             if suffix_size > 0 {
-                libc::munmap(
-                    (aligned + size) as *mut libc::c_void,
-                    suffix_size,
-                );
+                libc::munmap((aligned + size) as *mut libc::c_void, suffix_size);
             }
-            final_addr = aligned as *mut u8;
-        }
 
-        Ok(MemoryMapping {
-            addr: final_addr,
-            size,
-        })
+            Ok(MemoryMapping {
+                addr: aligned as *mut u8,
+                size,
+            })
+        } else {
+            // No alignment required - simple mmap
+            let mut flags = libc::MAP_SHARED;
+            if !has_fd {
+                flags |= libc::MAP_ANONYMOUS;
+            }
+
+            let mapped = libc::mmap(
+                addr.map_or(null_mut(), |a| a as *mut libc::c_void),
+                size,
+                prot,
+                flags,
+                raw_fd,
+                offset as libc::off_t,
+            );
+            if mapped == libc::MAP_FAILED {
+                return Err(Error::SystemCallFailed(ErrnoError::last()));
+            }
+
+            Ok(MemoryMapping {
+                addr: mapped as *mut u8,
+                size,
+            })
+        }
     }
 
     pub fn size(&self) -> usize {

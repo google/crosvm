@@ -126,7 +126,7 @@ pub fn download_prebuilt(library: &str, version: u32, filename: &str) -> Result<
         dest_path.link, dest_path.file
     );
     let _ = std::fs::remove_file(&dest_path.link);
-    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
     std::os::unix::fs::symlink(&dest_path.file, &dest_path.link)?;
     #[cfg(windows)]
     let _ = std::fs::copy(&dest_path.file, &dest_path.link)?;

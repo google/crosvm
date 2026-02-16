@@ -25,9 +25,11 @@ pub mod gpu;
 use base::debug;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::linux::MemoryMappingBuilderUnix;
+#[cfg(target_os = "macos")]
+use base::macos::MemoryMappingBuilderUnix;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::sys::call_with_extended_max_files;
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 use base::MemoryMappingArena;
 #[cfg(windows)]
 use base::MemoryMappingBuilderWindows;

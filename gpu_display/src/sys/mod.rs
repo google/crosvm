@@ -7,6 +7,10 @@ cfg_if::cfg_if! {
         pub(crate) mod linux;
         pub use linux::UnixGpuDisplayExt as SysGpuDisplayExt;
         pub(crate) use linux::UnixDisplayT as SysDisplayT;
+    } else if #[cfg(target_os = "macos")] {
+        pub(crate) mod macos;
+        pub use macos::MacosGpuDisplayExt as SysGpuDisplayExt;
+        pub(crate) use macos::MacosDisplayT as SysDisplayT;
     } else if #[cfg(windows)] {
         pub(crate) mod windows;
         pub use windows::WinGpuDisplayExt as SysGpuDisplayExt;

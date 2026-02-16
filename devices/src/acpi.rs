@@ -256,6 +256,7 @@ fn run_worker(
         (&kill_evt, Token::Kill),
     ])
     .map_err(ACPIPMError::CreateWaitContext)?;
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     if let Some(acpi_event_sock) = &acpi_event_sock {
         wait_ctx
             .add(acpi_event_sock, Token::AcpiEvent)
@@ -267,6 +268,7 @@ fn run_worker(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::AcpiEvent => {
+                    #[cfg(any(target_os = "android", target_os = "linux"))]
                     crate::sys::acpi_event_run(
                         &sci_evt,
                         &acpi_event_sock,

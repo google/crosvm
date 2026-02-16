@@ -7,6 +7,10 @@ cfg_if::cfg_if! {
         pub(crate) mod linux;
         use linux as platform;
         pub(crate) use linux::*;
+    } else if #[cfg(target_os = "macos")] {
+        pub(crate) mod macos;
+        use macos as platform;
+        pub(crate) use macos::*;
     } else if #[cfg(windows)] {
         mod windows;
         use windows as platform;

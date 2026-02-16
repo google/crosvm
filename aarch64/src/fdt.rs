@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::collections::HashSet;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -26,6 +27,7 @@ use cros_fdt::Result;
 // This is a Battery related constant
 use devices::bat::GOLDFISHBAT_MMIO_LEN;
 use devices::pl030::PL030_AMBA_ID;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::IommuDevType;
 use devices::PciAddress;
 use devices::PciInterruptPin;
@@ -654,7 +656,7 @@ pub fn create_fdt(
     virt_cpufreq_v2: bool,
 ) -> Result<()> {
     let mut fdt = Fdt::new(&[]);
-    let mut phandles_key_cache = Vec::new();
+    let mut phandles_key_cache: Vec<String> = Vec::new();
     let mut phandles = BTreeMap::new();
     let mut reserved_memory_regions = reserved_memory_regions_from_guest_mem(guest_mem);
 
@@ -733,30 +735,34 @@ pub fn create_fdt(
         }
     }
 
-    let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    {
+        let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;
 
-    let cache_offset_pviommu = phandles_key_cache.len();
-    // Hack to extend the lifetime of the Strings as keys of phandles (i.e. &str).
-    phandles_key_cache.extend(pviommu_ids.iter().map(|id| format!("pviommu{id}")));
+        let cache_offset_pviommu = phandles_key_cache.len();
+        // Hack to extend the lifetime of the Strings as keys of phandles (i.e. &str).
+        phandles_key_cache.extend(pviommu_ids.iter().map(|id| format!("pviommu{id}")));
 
-    let cache_offset_pdomains = phandles_key_cache.len();
-    let power_domain_count = platform_dev_resources
-        .iter()
-        .filter(|&d| d.requires_power_domain)
-        .count();
-    phandles_key_cache.extend((0..power_domain_count).map(|i| format!("dev_pd{i}")));
+        let cache_offset_pdomains = phandles_key_cache.len();
+        let power_domain_count = platform_dev_resources
+            .iter()
+            .filter(|&d| d.requires_power_domain)
+            .count();
+        phandles_key_cache.extend((0..power_domain_count).map(|i| format!("dev_pd{i}")));
 
-    let pviommu_phandle_keys = &phandles_key_cache[cache_offset_pviommu..cache_offset_pdomains];
-    let pdomains_phandle_keys = &phandles_key_cache[cache_offset_pdomains..];
+        let pviommu_phandle_keys =
+            &phandles_key_cache[cache_offset_pviommu..cache_offset_pdomains];
+        let pdomains_phandle_keys = &phandles_key_cache[cache_offset_pdomains..];
 
-    for (index, (id, key)) in pviommu_ids.iter().zip(pviommu_phandle_keys).enumerate() {
-        let phandle = create_pkvm_pviommu_node(&mut fdt, index, *id)?;
-        phandles.insert(key, phandle);
-    }
+        for (index, (id, key)) in pviommu_ids.iter().zip(pviommu_phandle_keys).enumerate() {
+            let phandle = create_pkvm_pviommu_node(&mut fdt, index, *id)?;
+            phandles.insert(key, phandle);
+        }
 
-    for (index, key) in pdomains_phandle_keys.iter().enumerate() {
-        let phandle = create_pkvm_power_domain_node(&mut fdt, index)?;
-        phandles.insert(key, phandle);
+        for (index, key) in pdomains_phandle_keys.iter().enumerate() {
+            let phandle = create_pkvm_power_domain_node(&mut fdt, index)?;
+            phandles.insert(key, phandle);
+        }
     }
 
     // Done writing base FDT, now apply DT overlays

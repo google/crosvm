@@ -58,6 +58,10 @@ pub enum Error {
     #[cfg(all(feature = "slirp", windows))]
     #[error("slirp related error")]
     Slirp(slirp::SlirpError),
+    /// vmnet.framework error.
+    #[cfg(target_os = "macos")]
+    #[error("vmnet error: {0}")]
+    Vmnet(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -72,6 +76,8 @@ impl Error {
             Error::IoctlError(e) => *e,
             #[cfg(all(feature = "slirp", windows))]
             Error::Slirp(e) => e.sys_error(),
+            #[cfg(target_os = "macos")]
+            Error::Vmnet(_) => SysError::new(5), // EIO
         }
     }
 }

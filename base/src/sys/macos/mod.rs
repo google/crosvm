@@ -6,7 +6,6 @@ use std::ffi::CString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::ptr;
 use std::time::Duration;
@@ -26,9 +25,12 @@ use crate::TriggeredEvent;
 
 mod event;
 pub(in crate::sys::macos) mod kqueue;
+mod mmap;
 mod net;
+mod notifiers;
 mod timer;
 
+pub use mmap::*;
 pub(crate) use event::PlatformEvent;
 pub(in crate::sys) use libc::sendmsg;
 pub(in crate::sys) use net::sockaddr_un;
@@ -100,9 +102,9 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(_cpus: I) -> crate::errno
 
 /// EventContext provides kqueue-based event multiplexing for macOS.
 /// This is analogous to epoll on Linux.
-pub struct EventContext<T: EventToken> {
+pub struct EventContext<T> {
     kqueue_fd: RawDescriptor,
-    _phantom: std::marker::PhantomData<T>,
+    _phantom: std::marker::PhantomData<[T]>,
 }
 
 impl<T: EventToken> EventContext<T> {
@@ -134,10 +136,25 @@ impl<T: EventToken> EventContext<T> {
         fd_tokens: &[(&dyn AsRawDescriptor, T)],
     ) -> crate::errno::Result<EventContext<T>> {
         let ctx = EventContext::new()?;
-        for (fd, token) in fd_tokens {
-            ctx.add_for_event(*fd, EventType::Read, token.clone())?;
-        }
+        ctx.add_many(fd_tokens)?;
         Ok(ctx)
+    }
+
+    /// Adds multiple fd/token pairs to this context.
+    pub fn add_many(&self, fd_tokens: &[(&dyn AsRawDescriptor, T)]) -> crate::errno::Result<()> {
+        for (fd, token) in fd_tokens {
+            self.add(*fd, T::from_raw_token(token.as_raw_token()))?;
+        }
+        Ok(())
+    }
+
+    /// Adds a file descriptor to this context, watching for readable events.
+    pub fn add(
+        &self,
+        descriptor: &dyn AsRawDescriptor,
+        token: T,
+    ) -> crate::errno::Result<()> {
+        self.add_for_event(descriptor, EventType::Read, token)
     }
 
     /// Adds a file descriptor to the EventContext with the specified event type.
@@ -153,6 +170,10 @@ impl<T: EventToken> EventContext<T> {
         let mut changes: Vec<libc::kevent> = Vec::new();
 
         match event_type {
+            EventType::None => {
+                // Remove existing events for this fd
+                return self.delete(descriptor);
+            }
             EventType::Read => {
                 changes.push(libc::kevent {
                     ident: fd as usize,
@@ -335,13 +356,13 @@ impl<T: EventToken> EventContext<T> {
     }
 }
 
-impl<T: EventToken> AsRawDescriptor for EventContext<T> {
+impl<T> AsRawDescriptor for EventContext<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.kqueue_fd
     }
 }
 
-impl<T: EventToken> Drop for EventContext<T> {
+impl<T> Drop for EventContext<T> {
     fn drop(&mut self) {
         // SAFETY: We own the kqueue fd
         unsafe { libc::close(self.kqueue_fd) };
@@ -389,6 +410,82 @@ impl MemoryMappingArena {
     pub fn size(&self) -> usize {
         self.size
     }
+
+    /// Maps `size` bytes starting at `fd_offset` bytes from within the given `fd`
+    /// at `offset` bytes from the start of the arena with `prot` protections.
+    pub fn add_fd_offset_protection(
+        &mut self,
+        offset: usize,
+        size: usize,
+        fd: &dyn AsRawDescriptor,
+        fd_offset: u64,
+        prot: Protection,
+    ) -> crate::errno::Result<()> {
+        let prot_flags: libc::c_int = prot.into();
+        // SAFETY: We're remapping within our owned arena range
+        let addr = unsafe {
+            libc::mmap(
+                (self.addr as usize + offset) as *mut libc::c_void,
+                size,
+                prot_flags,
+                libc::MAP_SHARED | libc::MAP_FIXED,
+                fd.as_raw_descriptor(),
+                fd_offset as libc::off_t,
+            )
+        };
+        if addr == libc::MAP_FAILED {
+            return crate::errno::errno_result();
+        }
+        Ok(())
+    }
+
+    /// Removes a mapping at `offset` of `size` bytes, replacing with PROT_NONE anonymous mapping.
+    pub fn remove(&mut self, offset: usize, size: usize) -> crate::errno::Result<()> {
+        // SAFETY: We're remapping within our owned arena range
+        let addr = unsafe {
+            libc::mmap(
+                (self.addr as usize + offset) as *mut libc::c_void,
+                size,
+                libc::PROT_NONE,
+                libc::MAP_ANON | libc::MAP_PRIVATE | libc::MAP_FIXED,
+                -1,
+                0,
+            )
+        };
+        if addr == libc::MAP_FAILED {
+            return crate::errno::errno_result();
+        }
+        Ok(())
+    }
+}
+
+// SAFETY: The pointer and size point to a memory range owned by this MemoryMappingArena that
+// won't be unmapped until it's Dropped.
+unsafe impl crate::MappedRegion for MemoryMappingArena {
+    fn as_ptr(&self) -> *mut u8 {
+        self.addr
+    }
+
+    fn size(&self) -> usize {
+        self.size
+    }
+
+    fn add_fd_mapping(
+        &mut self,
+        offset: usize,
+        size: usize,
+        fd: &dyn AsRawDescriptor,
+        fd_offset: u64,
+        prot: Protection,
+    ) -> Result<(), crate::MmapError> {
+        self.add_fd_offset_protection(offset, size, fd, fd_offset, prot)
+            .map_err(|e| MmapError::SystemCallFailed(e))
+    }
+
+    fn remove_mapping(&mut self, offset: usize, size: usize) -> Result<(), crate::MmapError> {
+        self.remove(offset, size)
+            .map_err(|e| MmapError::SystemCallFailed(e))
+    }
 }
 
 impl Drop for MemoryMappingArena {
@@ -404,140 +501,6 @@ impl Drop for MemoryMappingArena {
 unsafe impl Send for MemoryMappingArena {}
 // SAFETY: The memory mapping doesn't have interior mutability that could cause races
 unsafe impl Sync for MemoryMappingArena {}
-
-/// MemoryMapping represents a region of memory mapped into the address space.
-#[derive(Debug)]
-pub struct MemoryMapping {
-    addr: *mut u8,
-    size: usize,
-}
-
-impl MemoryMapping {
-    /// Returns the size of the mapping in bytes.
-    pub fn size(&self) -> usize {
-        self.size
-    }
-
-    /// Validates and returns the end offset for a range operation.
-    pub(crate) fn range_end(&self, offset: usize, count: usize) -> Result<usize, MmapError> {
-        let end = offset.checked_add(count).ok_or(MmapError::InvalidAddress)?;
-        if end > self.size {
-            return Err(MmapError::InvalidAddress);
-        }
-        Ok(end)
-    }
-
-    /// Syncs the mapping to disk (for file-backed mappings).
-    pub fn msync(&self) -> Result<(), MmapError> {
-        // SAFETY: We own this mapping and the parameters are valid
-        let ret = unsafe {
-            libc::msync(
-                self.addr as *mut libc::c_void,
-                self.size,
-                libc::MS_SYNC,
-            )
-        };
-        if ret != 0 {
-            Err(MmapError::SystemCallFailed(io::Error::last_os_error().into()))
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Creates a new memory mapping at a fixed address with the specified protection.
-    pub fn new_protection_fixed(
-        addr: *mut u8,
-        size: usize,
-        prot: Protection,
-    ) -> Result<MemoryMapping, MmapError> {
-        let prot_flags = protection_to_prot(prot);
-
-        // SAFETY: We're mapping at a fixed address, caller ensures it's valid
-        let result = unsafe {
-            libc::mmap(
-                addr as *mut libc::c_void,
-                size,
-                prot_flags,
-                libc::MAP_ANON | libc::MAP_PRIVATE | libc::MAP_FIXED,
-                -1,
-                0,
-            )
-        };
-
-        if result == libc::MAP_FAILED {
-            return Err(MmapError::SystemCallFailed(io::Error::last_os_error().into()));
-        }
-
-        Ok(MemoryMapping {
-            addr: result as *mut u8,
-            size,
-        })
-    }
-
-    /// Creates a memory mapping from a file descriptor at a fixed address.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that `addr` is a valid address for the mapping
-    /// and that the file descriptor refers to a valid file.
-    pub unsafe fn from_descriptor_offset_protection_fixed(
-        addr: *mut u8,
-        fd: &dyn AsRawDescriptor,
-        size: usize,
-        offset: u64,
-        prot: Protection,
-    ) -> Result<MemoryMapping, MmapError> {
-        let prot_flags = protection_to_prot(prot);
-
-        let result = libc::mmap(
-            addr as *mut libc::c_void,
-            size,
-            prot_flags,
-            libc::MAP_SHARED | libc::MAP_FIXED,
-            fd.as_raw_descriptor(),
-            offset as libc::off_t,
-        );
-
-        if result == libc::MAP_FAILED {
-            return Err(MmapError::SystemCallFailed(io::Error::last_os_error().into()));
-        }
-
-        Ok(MemoryMapping {
-            addr: result as *mut u8,
-            size,
-        })
-    }
-}
-
-// SAFETY: MemoryMapping addr is valid for the lifetime of the struct
-unsafe impl crate::MappedRegion for MemoryMapping {
-    fn as_ptr(&self) -> *mut u8 {
-        self.addr
-    }
-    fn size(&self) -> usize {
-        self.size
-    }
-}
-
-// SAFETY: The memory mapping is process-global, so can be sent between threads
-unsafe impl Send for MemoryMapping {}
-// SAFETY: The memory mapping doesn't have interior mutability
-unsafe impl Sync for MemoryMapping {}
-
-/// Converts a Protection enum to mmap protection flags.
-fn protection_to_prot(prot: Protection) -> libc::c_int {
-    let mut flags = 0;
-    if prot.allows_read() {
-        flags |= libc::PROT_READ;
-    }
-    if prot.allows_write() {
-        flags |= libc::PROT_WRITE;
-    }
-    if prot.allows_execute() {
-        flags |= libc::PROT_EXEC;
-    }
-    flags
-}
 
 pub mod ioctl {
     use crate::AsRawDescriptor;
@@ -739,7 +702,7 @@ pub mod syslog {
                 Option<Box<dyn crate::syslog::Log + Send>>,
                 Option<crate::RawDescriptor>,
             ),
-            crate::syslog::Error,
+            &'static crate::syslog::Error,
         > {
             // Return None to indicate no platform-specific logger
             // The logging system will fall back to the default logger
@@ -762,11 +725,15 @@ impl crate::shm::PlatformSharedMemory for crate::SharedMemory {
     fn new(debug_name: &std::ffi::CStr, size: u64) -> crate::Result<crate::SharedMemory> {
         use std::os::unix::io::FromRawFd;
 
-        // Generate a unique name for the shared memory object
+        // Generate a unique name for the shared memory object.
+        // macOS shm_open names are limited to 31 chars (PSHMNAMLEN),
+        // so we use a compact format: /cvm-{pid}-{counter}
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static SHM_COUNTER: AtomicU32 = AtomicU32::new(0);
         let name = format!(
-            "/crosvm-shm-{}-{}",
+            "/cvm-{}-{}",
             std::process::id(),
-            uuid::Uuid::new_v4()
+            SHM_COUNTER.fetch_add(1, Ordering::Relaxed)
         );
         let c_name = CString::new(name.clone()).map_err(|_| crate::Error::new(libc::EINVAL))?;
         let _ = debug_name; // We use our own naming scheme
@@ -822,11 +789,182 @@ impl crate::shm::PlatformSharedMemory for crate::SharedMemory {
     }
 }
 
+/// Returns the maximum frequency (in kHz) of a given logical core.
+/// On macOS, we use sysctl to get the CPU max frequency.
+pub fn logical_core_max_freq_khz(_cpu_id: usize) -> crate::errno::Result<u32> {
+    // macOS doesn't expose per-core max frequency via sysctl in the same way.
+    // Use hw.cpufrequency_max as an approximation (returns Hz, convert to kHz).
+    let mut freq: u64 = 0;
+    let mut size = std::mem::size_of::<u64>();
+    let name = std::ffi::CString::new("hw.cpufrequency_max").unwrap();
+    // SAFETY: sysctlbyname is safe with valid arguments
+    let ret = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            &mut freq as *mut u64 as *mut libc::c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if ret < 0 {
+        // Fallback: return a reasonable default
+        Ok(2400000) // 2.4 GHz in kHz
+    } else {
+        Ok((freq / 1000) as u32)
+    }
+}
+
+/// Returns a list of supported frequencies in kHz for a given logical core.
+/// On macOS, we return just the max frequency since per-core frequency lists aren't available.
+pub fn logical_core_frequencies_khz(cpu_id: usize) -> crate::errno::Result<Vec<u32>> {
+    Ok(vec![logical_core_max_freq_khz(cpu_id)?])
+}
+
+/// Returns the capacity (measure of performance) of a given logical core.
+/// On macOS, we return 1024 for all cores (full capacity).
+pub fn logical_core_capacity(_cpu_id: usize) -> crate::errno::Result<u32> {
+    Ok(1024)
+}
+
+/// Returns the cluster ID of a given logical core.
+/// On macOS, we treat all cores as being in a single cluster.
+pub fn logical_core_cluster_id(_cpu_id: usize) -> crate::errno::Result<u32> {
+    Ok(0)
+}
+
+/// Returns whether the given CPU is online.
+/// On macOS, all CPUs are always online (no hotplug).
+pub fn is_cpu_online(_cpu_id: usize) -> crate::errno::Result<bool> {
+    Ok(true)
+}
+
 pub(crate) use libc::off_t;
 pub(crate) use libc::pread;
 pub(crate) use libc::preadv;
 pub(crate) use libc::pwrite;
 pub(crate) use libc::pwritev;
+
+/// This module provides the `lib` aliases used by file trait macros.
+/// On macOS, off_t is already 64-bit so no `*64` variants are needed.
+pub mod lib {
+    pub use libc::off_t;
+    pub use libc::pread;
+    pub use libc::preadv;
+    pub use libc::pwrite;
+    pub use libc::pwritev;
+}
+
+use std::os::unix::io::AsRawFd;
+
+use crate::FileAllocate;
+
+impl FileAllocate for File {
+    fn allocate(&self, offset: u64, len: u64) -> io::Result<()> {
+        // On macOS, use fcntl with F_PREALLOCATE to allocate disk space.
+        #[repr(C)]
+        struct FStore {
+            fst_flags: u32,
+            fst_posmode: i32,
+            fst_offset: libc::off_t,
+            fst_length: libc::off_t,
+            fst_bytesalloc: libc::off_t,
+        }
+
+        const F_PREALLOCATE: libc::c_int = 42;
+        const F_ALLOCATECONTIG: u32 = 0x00000002;
+        const F_ALLOCATEALL: u32 = 0x00000004;
+        const F_PEOFPOSMODE: i32 = 3; // allocate from the physical end of file
+        const F_VOLPOSMODE: i32 = 4; // allocate from the volume offset
+
+        let _ = F_ALLOCATECONTIG;
+        let _ = F_PEOFPOSMODE;
+
+        let mut fstore = FStore {
+            fst_flags: F_ALLOCATEALL,
+            fst_posmode: F_VOLPOSMODE,
+            fst_offset: offset as libc::off_t,
+            fst_length: len as libc::off_t,
+            fst_bytesalloc: 0,
+        };
+
+        // SAFETY: The file descriptor is valid and the fstore structure is properly initialized.
+        let ret = unsafe {
+            libc::fcntl(
+                self.as_raw_fd(),
+                F_PREALLOCATE,
+                &mut fstore as *mut FStore,
+            )
+        };
+
+        if ret < 0 {
+            // F_PREALLOCATE can fail on some file systems; fall back to ftruncate
+            // to extend the file if needed.
+            let current_len = self.metadata()?.len();
+            let required_len = offset + len;
+            if required_len > current_len {
+                // SAFETY: ftruncate is safe with a valid fd
+                let ret =
+                    unsafe { libc::ftruncate(self.as_raw_fd(), required_len as libc::off_t) };
+                if ret < 0 {
+                    return Err(io::Error::last_os_error());
+                }
+            }
+            return Ok(());
+        }
+
+        // After F_PREALLOCATE, we also need to extend the file size if needed,
+        // because F_PREALLOCATE only reserves space but doesn't change the file size.
+        let current_len = self.metadata()?.len();
+        let required_len = offset + len;
+        if required_len > current_len {
+            // SAFETY: ftruncate is safe with a valid fd
+            let ret = unsafe { libc::ftruncate(self.as_raw_fd(), required_len as libc::off_t) };
+            if ret < 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// File locking operations.
+#[derive(Copy, Clone, Debug)]
+pub enum FlockOperation {
+    /// Acquire a shared (read) lock.
+    LockShared,
+    /// Acquire an exclusive (write) lock.
+    LockExclusive,
+    /// Release the lock.
+    Unlock,
+}
+
+/// Apply a file lock operation using flock(2).
+/// macOS supports POSIX flock natively.
+pub fn flock<F: crate::AsRawDescriptor>(
+    file: &F,
+    op: FlockOperation,
+    nonblocking: bool,
+) -> crate::errno::Result<()> {
+    let mut operation = match op {
+        FlockOperation::LockShared => libc::LOCK_SH,
+        FlockOperation::LockExclusive => libc::LOCK_EX,
+        FlockOperation::Unlock => libc::LOCK_UN,
+    };
+
+    if nonblocking {
+        operation |= libc::LOCK_NB;
+    }
+
+    // SAFETY: The descriptor is valid and flock is safe to call.
+    let ret = unsafe { libc::flock(file.as_raw_descriptor(), operation) };
+    if ret < 0 {
+        crate::errno::errno_result()
+    } else {
+        Ok(())
+    }
+}
 
 /// Spawns a pipe pair where the first pipe is the read end and the second pipe is the write end.
 ///

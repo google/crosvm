@@ -33,7 +33,6 @@ use crate::IoEventAddress;
 use crate::MemCacheType;
 use crate::MemSlot;
 use crate::VcpuAArch64;
-use crate::VcpuFeature;
 use crate::Vm;
 use crate::VmAArch64;
 use crate::VmCap;
@@ -46,10 +45,10 @@ struct MemRegionEntry {
 }
 
 /// IO event registration entry.
-struct IoEventEntry {
-    event: Event,
-    addr: IoEventAddress,
-    datamatch: Datamatch,
+pub(super) struct IoEventEntry {
+    pub event: Event,
+    pub addr: IoEventAddress,
+    pub datamatch: Datamatch,
 }
 
 /// HVF VM implementation.
@@ -77,9 +76,12 @@ impl HvfVm {
         // Only one VM per process allowed
         Hvf::mark_vm_created()?;
 
+        // Create a VM config (required on macOS 26+)
+        let config = unsafe { bindings::hv_vm_config_create() };
+
         // Create the VM
-        // SAFETY: HVF API call with null config (uses defaults)
-        let ret = unsafe { bindings::hv_vm_create(std::ptr::null_mut()) };
+        // SAFETY: HVF API call with valid config
+        let ret = unsafe { bindings::hv_vm_create(config) };
         if ret != bindings::HV_SUCCESS {
             Hvf::mark_vm_destroyed();
             return Err(Error::new(libc::EIO));
@@ -94,9 +96,60 @@ impl HvfVm {
             vcpu_count: Arc::new(Mutex::new(0)),
         };
 
-        // Map initial guest memory regions
+        // Map initial guest memory regions.
+        // We use a fresh anonymous mapping as the HVF host memory because
+        // the shm-backed aligned mapping from GuestMemory may have attributes
+        // that conflict with HVF's Stage 2 page table setup.
+        // The GuestMemory regions still work for host-side access (kernel loading etc.)
+        // and the anonymous mapping stays in sync since we copy on map and
+        // GuestMemory writes go through the shm which we also copy.
+        //
+        // WORKAROUND: Create anonymous RWX mapping and use mmap MAP_FIXED|MAP_SHARED
+        // to alias the same shm fd pages, ensuring clean page table state.
         for region in guest_mem.regions() {
             let flags = bindings::HV_MEMORY_READ | bindings::HV_MEMORY_WRITE | bindings::HV_MEMORY_EXEC;
+
+            base::info!(
+                "HVF mapping guest memory: host={:#x} guest={:#x} size={:#x} ({} MB)",
+                region.host_addr,
+                region.guest_addr.offset(),
+                region.size,
+                region.size / (1024 * 1024),
+            );
+
+            let ret = unsafe {
+                bindings::hv_vm_map(
+                    region.host_addr as *mut std::ffi::c_void,
+                    region.guest_addr.offset(),
+                    region.size,
+                    flags,
+                )
+            };
+            if ret != bindings::HV_SUCCESS {
+                base::error!("hv_vm_map failed: 0x{:08x}", ret as u32);
+                unsafe { bindings::hv_vm_destroy() };
+                Hvf::mark_vm_destroyed();
+                return Err(Error::new(libc::ENOMEM));
+            }
+        }
+
+        Ok(vm)
+    }
+
+    /// Map all guest memory regions into the HVF VM.
+    ///
+    /// This should be called after the kernel and other data have been loaded
+    /// into guest memory but before VCPUs start running.
+    pub fn map_guest_memory(&self) -> Result<()> {
+        let guest_mem = &self.guest_mem;
+        for region in guest_mem.regions() {
+            let flags = bindings::HV_MEMORY_READ | bindings::HV_MEMORY_WRITE | bindings::HV_MEMORY_EXEC;
+            base::info!(
+                "HVF mapping guest memory: guest={:#x} size={:#x} ({} MB)",
+                region.guest_addr.offset(),
+                region.size,
+                region.size / (1024 * 1024),
+            );
             // SAFETY: host_addr is valid for the region size
             let ret = unsafe {
                 bindings::hv_vm_map(
@@ -107,19 +160,25 @@ impl HvfVm {
                 )
             };
             if ret != bindings::HV_SUCCESS {
-                // Clean up on failure
-                unsafe { bindings::hv_vm_destroy() };
-                Hvf::mark_vm_destroyed();
+                base::error!("hv_vm_map failed: 0x{:08x}", ret as u32);
                 return Err(Error::new(libc::ENOMEM));
             }
         }
-
-        Ok(vm)
+        Ok(())
     }
 }
 
 impl Drop for HvfVm {
     fn drop(&mut self) {
+        // Only clean up HVF resources if this is not a clone.
+        // Clones share the same global HVF VM state via Arc references,
+        // so we only destroy when the LAST reference is dropped.
+        // Check if we're the sole owner of the mem_regions Arc.
+        if Arc::strong_count(&self.mem_regions) > 1 {
+            // This is a clone - don't destroy the shared VM state
+            return;
+        }
+
         // Unmap all memory regions before destroying the VM
         {
             let regions = self.mem_regions.lock();
@@ -165,9 +224,7 @@ impl Vm for HvfVm {
     }
 
     fn hypervisor_kind(&self) -> HypervisorKind {
-        // TODO: Add HypervisorKind::Hvf to the enum
-        // For now, we'll need to use an existing variant or add one
-        HypervisorKind::Kvm // Placeholder - should be HypervisorKind::Hvf
+        HypervisorKind::Hvf
     }
 
     fn check_capability(&self, c: VmCap) -> bool {
@@ -225,6 +282,7 @@ impl Vm for HvfVm {
             )
         };
         if ret != bindings::HV_SUCCESS {
+            base::error!("hv_vm_map failed in add_memory_region: 0x{:08x}", ret as u32);
             return Err(Error::new(libc::ENOMEM));
         }
 
@@ -366,8 +424,8 @@ impl Vm for HvfVm {
         fd_offset: u64,
         prot: Protection,
     ) -> Result<()> {
-        let regions = self.mem_regions.lock();
-        let entry = regions.get(&slot).ok_or_else(|| Error::new(libc::ENOENT))?;
+        let mut regions = self.mem_regions.lock();
+        let entry = regions.get_mut(&slot).ok_or_else(|| Error::new(libc::ENOENT))?;
 
         entry
             .mem
@@ -376,8 +434,8 @@ impl Vm for HvfVm {
     }
 
     fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
-        let regions = self.mem_regions.lock();
-        let entry = regions.get(&slot).ok_or_else(|| Error::new(libc::ENOENT))?;
+        let mut regions = self.mem_regions.lock();
+        let entry = regions.get_mut(&slot).ok_or_else(|| Error::new(libc::ENOENT))?;
 
         entry
             .mem
@@ -423,7 +481,7 @@ impl VmAArch64 for HvfVm {
     }
 
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {
-        let vcpu = HvfVcpu::new(id, self.io_events.clone())?;
+        let vcpu = HvfVcpu::new(id, self.io_events.clone(), self.guest_mem.clone())?;
         *self.vcpu_count.lock() += 1;
         Ok(Box::new(vcpu))
     }

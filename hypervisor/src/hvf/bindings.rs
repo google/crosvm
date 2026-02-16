@@ -166,6 +166,9 @@ pub struct hv_simd_fp_uchar16_t {
 
 #[link(name = "Hypervisor", kind = "framework")]
 extern "C" {
+    // VM config
+    pub fn hv_vm_config_create() -> hv_vm_config_t;
+
     // VM lifecycle
     pub fn hv_vm_create(config: hv_vm_config_t) -> hv_return_t;
     pub fn hv_vm_destroy() -> hv_return_t;

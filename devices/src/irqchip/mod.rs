@@ -44,6 +44,17 @@ cfg_if::cfg_if! {
     }
 }
 
+// Provide GIC constants for non-Linux platforms (e.g., macOS with HVF).
+#[cfg(all(target_arch = "aarch64", not(any(target_os = "android", target_os = "linux"))))]
+pub const AARCH64_GIC_NR_IRQS: u32 = 64;
+#[cfg(all(target_arch = "aarch64", not(any(target_os = "android", target_os = "linux"))))]
+pub const AARCH64_GIC_NR_SPIS: u32 = 32;
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod hvf;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub use self::hvf::HvfIrqChip;
+
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "x86_64")] {
         mod x86_64;
