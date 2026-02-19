@@ -57,7 +57,7 @@ clean:
 # Upload images to cloud storage. Do not overwrite existing images, uprev
 # `image_version` instead.
 upload: $(LOCAL_IMAGE)
-	gsutil cp -n $(LOCAL_IMAGE) $(GS_URL)
+	gcloud storage cp --no-clobber $(LOCAL_IMAGE) $(GS_URL)
 
 # Download debian bullseye as base image for the testvm.
 $(TARGET)/debian.qcow2:
