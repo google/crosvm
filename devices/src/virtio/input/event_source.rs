@@ -15,7 +15,9 @@ use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
 use zerocopy::IntoBytes;
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use super::evdev::grab_evdev;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use super::evdev::ungrab_evdev;
 use super::InputError;
 use super::Result;
@@ -193,10 +195,12 @@ where
 }
 
 /// Encapsulates an event device node as an event source
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub struct EvdevEventSource<T> {
     evt_source_impl: EventSourceImpl<T>,
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 impl<T> EvdevEventSource<T>
 where
     T: Read + Write + AsRawDescriptor,
@@ -208,12 +212,14 @@ where
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 impl<T: AsRawDescriptor> AsRawDescriptor for EvdevEventSource<T> {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.evt_source_impl.as_raw_descriptor()
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 impl<T> EventSource for EvdevEventSource<T>
 where
     T: Read + Write + AsRawDescriptor,

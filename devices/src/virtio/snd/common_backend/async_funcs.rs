@@ -392,7 +392,7 @@ async fn pcm_worker_loop(
             );
             #[cfg(windows)]
             let buffer_writer = &mut buffer_writer_lock;
-            #[cfg(any(target_os = "android", target_os = "linux"))]
+            #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
             let (stream, buffer_writer) = (
                 &mut sys_direction_output.async_playback_buffer_stream,
                 &mut sys_direction_output.buffer_writer,

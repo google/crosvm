@@ -4,6 +4,7 @@
 
 #[allow(dead_code)]
 mod defaults;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod evdev;
 mod event_source;
 
@@ -43,6 +44,7 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use self::event_source::EvdevEventSource;
 use self::event_source::EventSource;
 use self::event_source::SocketEventSource;
@@ -309,6 +311,7 @@ impl VirtioInputConfig {
         }
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn from_evdev<T: AsRawDescriptor>(source: &T) -> Result<VirtioInputConfig> {
         Ok(VirtioInputConfig::new(
             evdev::device_ids(source)?,
@@ -708,6 +711,7 @@ where
 }
 
 /// Creates a new virtio input device from an event device node
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn new_evdev<T>(source: T, virtio_features: u64) -> Result<Input<EvdevEventSource<T>>>
 where
     T: Read + Write + AsRawDescriptor + Send + 'static,

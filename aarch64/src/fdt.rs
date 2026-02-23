@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::collections::HashSet;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -26,6 +27,7 @@ use cros_fdt::Result;
 // This is a Battery related constant
 use devices::bat::GOLDFISHBAT_MMIO_LEN;
 use devices::pl030::PL030_AMBA_ID;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::IommuDevType;
 use devices::PciAddress;
 use devices::PciInterruptPin;
@@ -146,14 +148,28 @@ fn create_cpu_nodes(
     Ok(())
 }
 
-fn create_gic_node(fdt: &mut Fdt, is_gicv3: bool, has_vgic_its: bool, num_cpus: u64) -> Result<()> {
-    let mut gic_reg_prop = [AARCH64_GIC_DIST_BASE, AARCH64_GIC_DIST_SIZE, 0, 0];
+fn create_gic_node(
+    fdt: &mut Fdt,
+    is_gicv3: bool,
+    has_vgic_its: bool,
+    num_cpus: u64,
+    gic_properties: Option<[u64; 4]>,
+) -> Result<()> {
+    let mut gic_reg_prop = if let Some(props) = gic_properties {
+        // Use the actual GIC addresses from the irq chip (e.g., HVF on macOS).
+        // props = [dist_base, dist_size, redist_base, total_redist_size]
+        props
+    } else {
+        [AARCH64_GIC_DIST_BASE, AARCH64_GIC_DIST_SIZE, 0, 0]
+    };
 
     let intc_node = fdt.root_mut().subnode_mut("intc")?;
     if is_gicv3 {
         intc_node.set_prop("compatible", "arm,gic-v3")?;
-        gic_reg_prop[2] = AARCH64_GIC_DIST_BASE - (AARCH64_GIC_REDIST_SIZE * num_cpus);
-        gic_reg_prop[3] = AARCH64_GIC_REDIST_SIZE * num_cpus;
+        if gic_properties.is_none() {
+            gic_reg_prop[2] = AARCH64_GIC_DIST_BASE - (AARCH64_GIC_REDIST_SIZE * num_cpus);
+            gic_reg_prop[3] = AARCH64_GIC_REDIST_SIZE * num_cpus;
+        }
     } else {
         intc_node.set_prop("compatible", "arm,cortex-a15-gic")?;
         gic_reg_prop[2] = AARCH64_GIC_CPUI_BASE;
@@ -641,6 +657,7 @@ pub fn create_fdt(
     android_fstab: Option<File>,
     is_gicv3: bool,
     has_vgic_its: bool,
+    gic_properties: Option<[u64; 4]>,
     use_pmu: bool,
     psci_version: PsciVersion,
     swiotlb: Option<(Option<GuestAddress>, u64)>,
@@ -654,7 +671,7 @@ pub fn create_fdt(
     virt_cpufreq_v2: bool,
 ) -> Result<()> {
     let mut fdt = Fdt::new(&[]);
-    let mut phandles_key_cache = Vec::new();
+    let mut phandles_key_cache: Vec<String> = Vec::new();
     let mut phandles = BTreeMap::new();
     let mut reserved_memory_regions = reserved_memory_regions_from_guest_mem(guest_mem);
 
@@ -703,7 +720,7 @@ pub fn create_fdt(
         dynamic_power_coefficient,
         cpu_frequencies.clone(),
     )?;
-    create_gic_node(&mut fdt, is_gicv3, has_vgic_its, num_cpus as u64)?;
+    create_gic_node(&mut fdt, is_gicv3, has_vgic_its, num_cpus as u64, gic_properties)?;
     create_timer_node(&mut fdt, num_cpus)?;
     if use_pmu {
         create_pmu_node(&mut fdt, num_cpus)?;
@@ -733,30 +750,34 @@ pub fn create_fdt(
         }
     }
 
-    let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    {
+        let pviommu_ids = get_pkvm_pviommu_ids(&platform_dev_resources)?;
 
-    let cache_offset_pviommu = phandles_key_cache.len();
-    // Hack to extend the lifetime of the Strings as keys of phandles (i.e. &str).
-    phandles_key_cache.extend(pviommu_ids.iter().map(|id| format!("pviommu{id}")));
+        let cache_offset_pviommu = phandles_key_cache.len();
+        // Hack to extend the lifetime of the Strings as keys of phandles (i.e. &str).
+        phandles_key_cache.extend(pviommu_ids.iter().map(|id| format!("pviommu{id}")));
 
-    let cache_offset_pdomains = phandles_key_cache.len();
-    let power_domain_count = platform_dev_resources
-        .iter()
-        .filter(|&d| d.requires_power_domain)
-        .count();
-    phandles_key_cache.extend((0..power_domain_count).map(|i| format!("dev_pd{i}")));
+        let cache_offset_pdomains = phandles_key_cache.len();
+        let power_domain_count = platform_dev_resources
+            .iter()
+            .filter(|&d| d.requires_power_domain)
+            .count();
+        phandles_key_cache.extend((0..power_domain_count).map(|i| format!("dev_pd{i}")));
 
-    let pviommu_phandle_keys = &phandles_key_cache[cache_offset_pviommu..cache_offset_pdomains];
-    let pdomains_phandle_keys = &phandles_key_cache[cache_offset_pdomains..];
+        let pviommu_phandle_keys =
+            &phandles_key_cache[cache_offset_pviommu..cache_offset_pdomains];
+        let pdomains_phandle_keys = &phandles_key_cache[cache_offset_pdomains..];
 
-    for (index, (id, key)) in pviommu_ids.iter().zip(pviommu_phandle_keys).enumerate() {
-        let phandle = create_pkvm_pviommu_node(&mut fdt, index, *id)?;
-        phandles.insert(key, phandle);
-    }
+        for (index, (id, key)) in pviommu_ids.iter().zip(pviommu_phandle_keys).enumerate() {
+            let phandle = create_pkvm_pviommu_node(&mut fdt, index, *id)?;
+            phandles.insert(key, phandle);
+        }
 
-    for (index, key) in pdomains_phandle_keys.iter().enumerate() {
-        let phandle = create_pkvm_power_domain_node(&mut fdt, index)?;
-        phandles.insert(key, phandle);
+        for (index, key) in pdomains_phandle_keys.iter().enumerate() {
+            let phandle = create_pkvm_power_domain_node(&mut fdt, index)?;
+            phandles.insert(key, phandle);
+        }
     }
 
     // Done writing base FDT, now apply DT overlays

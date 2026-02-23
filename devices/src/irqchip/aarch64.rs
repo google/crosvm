@@ -44,6 +44,13 @@ pub trait IrqChipAArch64: IrqChip {
     /// Once all the VCPUs have been enabled, finalize the irq chip.
     fn finalize(&self) -> Result<()>;
 
+    /// Returns GIC device properties [dist_base, dist_size, redist_base, redist_size]
+    /// if the implementation uses non-standard GIC addresses (e.g., HVF on macOS).
+    /// Returns None to use the default constants from aarch64/src/lib.rs.
+    fn gic_properties(&self) -> Option<[u64; 4]> {
+        None
+    }
+
     // Snapshot irqchip.
     fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<AnySnapshot> {
         Err(anyhow!("Snapshot not yet implemented for AArch64"))
