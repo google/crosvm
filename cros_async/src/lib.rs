@@ -91,7 +91,7 @@ pub use executor::Executor;
 pub use executor::ExecutorKind;
 pub(crate) use executor::ExecutorTrait;
 pub use executor::TaskHandle;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub use futures::executor::block_on;
 use futures::stream::FuturesUnordered;
 pub use io_ext::AsyncError;
@@ -122,6 +122,10 @@ pub enum Error {
     HandleExecutor(sys::windows::handle_executor::Error),
     #[error("IO error: {0}")]
     Io(std::io::Error),
+    /// Error from the kqueue source (macOS).
+    #[cfg(target_os = "macos")]
+    #[error("An error with a kqueue source: {0}")]
+    KqueueSource(sys::macos::KqueueSourceError),
     /// Error from the polled(FD) source, which includes error from the FD executor.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[error("An error with a poll source: {0}")]

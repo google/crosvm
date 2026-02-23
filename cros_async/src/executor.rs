@@ -9,9 +9,9 @@ use std::sync::OnceLock;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use base::warn;
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 use base::AsRawDescriptors;
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 use base::RawDescriptor;
 use serde::Deserialize;
 use serde_keyvalue::argh::FromArgValue;
@@ -22,6 +22,8 @@ use crate::common_executor;
 use crate::common_executor::RawExecutor;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::sys::linux;
+#[cfg(target_os = "macos")]
+use crate::sys::macos;
 #[cfg(windows)]
 use crate::sys::windows;
 use crate::sys::ExecutorKindSys;
@@ -58,6 +60,8 @@ impl Default for ExecutorKind {
     fn default() -> Self {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         let default_fn = || ExecutorKindSys::Fd.into();
+        #[cfg(target_os = "macos")]
+        let default_fn = || ExecutorKindSys::Kqueue.into();
         #[cfg(windows)]
         let default_fn = || ExecutorKindSys::Handle.into();
         *DEFAULT_EXECUTOR_KIND.get_or_init(default_fn)
@@ -90,6 +94,8 @@ impl FromArgValue for ExecutorKind {
                 ("epoll", None) => ExecutorKindSys::Fd.into(),
                 #[cfg(any(target_os = "android", target_os = "linux"))]
                 ("uring", None) => ExecutorKindSys::Uring.into(),
+                #[cfg(target_os = "macos")]
+                ("kqueue", None) => ExecutorKindSys::Kqueue.into(),
                 #[cfg(windows)]
                 ("handle", None) => ExecutorKindSys::Handle.into(),
                 #[cfg(windows)]
@@ -158,6 +164,8 @@ pub enum TaskHandle<R> {
     Fd(common_executor::RawTaskHandle<linux::EpollReactor, R>),
     #[cfg(any(target_os = "android", target_os = "linux"))]
     Uring(common_executor::RawTaskHandle<linux::UringReactor, R>),
+    #[cfg(target_os = "macos")]
+    Kqueue(common_executor::RawTaskHandle<macos::KqueueReactor, R>),
     #[cfg(windows)]
     Handle(common_executor::RawTaskHandle<windows::HandleReactor, R>),
     #[cfg(feature = "tokio")]
@@ -171,6 +179,8 @@ impl<R: Send + 'static> TaskHandle<R> {
             TaskHandle::Fd(f) => f.detach(),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             TaskHandle::Uring(u) => u.detach(),
+            #[cfg(target_os = "macos")]
+            TaskHandle::Kqueue(k) => k.detach(),
             #[cfg(windows)]
             TaskHandle::Handle(h) => h.detach(),
             #[cfg(feature = "tokio")]
@@ -186,6 +196,8 @@ impl<R: Send + 'static> TaskHandle<R> {
             TaskHandle::Fd(f) => f.cancel().await,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             TaskHandle::Uring(u) => u.cancel().await,
+            #[cfg(target_os = "macos")]
+            TaskHandle::Kqueue(k) => k.cancel().await,
             #[cfg(windows)]
             TaskHandle::Handle(h) => h.cancel().await,
             #[cfg(feature = "tokio")]
@@ -203,6 +215,8 @@ impl<R: 'static> Future for TaskHandle<R> {
             TaskHandle::Fd(f) => Pin::new(f).poll(cx),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             TaskHandle::Uring(u) => Pin::new(u).poll(cx),
+            #[cfg(target_os = "macos")]
+            TaskHandle::Kqueue(k) => Pin::new(k).poll(cx),
             #[cfg(windows)]
             TaskHandle::Handle(h) => Pin::new(h).poll(cx),
             #[cfg(feature = "tokio")]
@@ -334,6 +348,8 @@ pub enum Executor {
     Fd(Arc<RawExecutor<linux::EpollReactor>>),
     #[cfg(any(target_os = "android", target_os = "linux"))]
     Uring(Arc<RawExecutor<linux::UringReactor>>),
+    #[cfg(target_os = "macos")]
+    Kqueue(Arc<RawExecutor<macos::KqueueReactor>>),
     #[cfg(windows)]
     Handle(Arc<RawExecutor<windows::HandleReactor>>),
     #[cfg(windows)]
@@ -356,6 +372,10 @@ impl Executor {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             ExecutorKind::SysVariants(ExecutorKindSys::Uring) => {
                 Executor::Uring(RawExecutor::new()?)
+            }
+            #[cfg(target_os = "macos")]
+            ExecutorKind::SysVariants(ExecutorKindSys::Kqueue) => {
+                Executor::Kqueue(RawExecutor::new()?)
             }
             #[cfg(windows)]
             ExecutorKind::SysVariants(ExecutorKindSys::Handle) => {
@@ -406,6 +426,8 @@ impl Executor {
             Executor::Fd(ex) => ex.async_from(f),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             Executor::Uring(ex) => ex.async_from(f),
+            #[cfg(target_os = "macos")]
+            Executor::Kqueue(ex) => ex.async_from(f),
             #[cfg(windows)]
             Executor::Handle(ex) => ex.async_from(f),
             #[cfg(windows)]
@@ -469,6 +491,8 @@ impl Executor {
             Executor::Fd(ex) => ex.spawn(f),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             Executor::Uring(ex) => ex.spawn(f),
+            #[cfg(target_os = "macos")]
+            Executor::Kqueue(ex) => ex.spawn(f),
             #[cfg(windows)]
             Executor::Handle(ex) => ex.spawn(f),
             #[cfg(windows)]
@@ -515,6 +539,8 @@ impl Executor {
             Executor::Fd(ex) => ex.spawn_local(f),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             Executor::Uring(ex) => ex.spawn_local(f),
+            #[cfg(target_os = "macos")]
+            Executor::Kqueue(ex) => ex.spawn_local(f),
             #[cfg(windows)]
             Executor::Handle(ex) => ex.spawn_local(f),
             #[cfg(windows)]
@@ -563,6 +589,8 @@ impl Executor {
             Executor::Fd(ex) => ex.spawn_blocking(f),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             Executor::Uring(ex) => ex.spawn_blocking(f),
+            #[cfg(target_os = "macos")]
+            Executor::Kqueue(ex) => ex.spawn_blocking(f),
             #[cfg(windows)]
             Executor::Handle(ex) => ex.spawn_blocking(f),
             #[cfg(windows)]
@@ -642,6 +670,8 @@ impl Executor {
             Executor::Fd(ex) => ex.run_until(f),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             Executor::Uring(ex) => ex.run_until(f),
+            #[cfg(target_os = "macos")]
+            Executor::Kqueue(ex) => ex.run_until(f),
             #[cfg(windows)]
             Executor::Handle(ex) => ex.run_until(f),
             #[cfg(windows)]
@@ -658,6 +688,17 @@ impl AsRawDescriptors for Executor {
         match self {
             Executor::Fd(ex) => ex.as_raw_descriptors(),
             Executor::Uring(ex) => ex.as_raw_descriptors(),
+            #[cfg(feature = "tokio")]
+            Executor::Tokio(ex) => ex.as_raw_descriptors(),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl AsRawDescriptors for Executor {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        match self {
+            Executor::Kqueue(ex) => ex.as_raw_descriptors(),
             #[cfg(feature = "tokio")]
             Executor::Tokio(ex) => ex.as_raw_descriptors(),
         }

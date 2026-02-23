@@ -10,6 +10,8 @@ use base::AsRawDescriptor;
 use crate::sys::linux::PollSource;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use crate::sys::linux::UringSource;
+#[cfg(target_os = "macos")]
+use crate::sys::macos::KqueueSource;
 #[cfg(feature = "tokio")]
 use crate::sys::platform::tokio_source::TokioSource;
 #[cfg(windows)]
@@ -27,6 +29,8 @@ pub enum IoSource<F: base::AsRawDescriptor> {
     Uring(UringSource<F>),
     #[cfg(any(target_os = "android", target_os = "linux"))]
     Epoll(PollSource<F>),
+    #[cfg(target_os = "macos")]
+    Kqueue(KqueueSource<F>),
     #[cfg(windows)]
     Handle(HandleSource<F>),
     #[cfg(windows)]
@@ -47,6 +51,8 @@ macro_rules! await_on_inner {
             IoSource::Uring(x) => UringSource::$method(x, $($args),*).await,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             IoSource::Epoll(x) => PollSource::$method(x, $($args),*).await,
+            #[cfg(target_os = "macos")]
+            IoSource::Kqueue(x) => KqueueSource::$method(x, $($args),*).await,
             #[cfg(windows)]
             IoSource::Handle(x) => HandleSource::$method(x, $($args),*).await,
             #[cfg(windows)]
@@ -67,6 +73,8 @@ macro_rules! on_inner {
             IoSource::Uring(x) => UringSource::$method(x, $($args),*),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             IoSource::Epoll(x) => PollSource::$method(x, $($args),*),
+            #[cfg(target_os = "macos")]
+            IoSource::Kqueue(x) => KqueueSource::$method(x, $($args),*),
             #[cfg(windows)]
             IoSource::Handle(x) => HandleSource::$method(x, $($args),*),
             #[cfg(windows)]
@@ -193,6 +201,10 @@ mod tests {
             kinds.push(ExecutorKindSys::Uring.into());
         }
         kinds
+    }
+    #[cfg(target_os = "macos")]
+    fn all_kinds() -> Vec<ExecutorKind> {
+        vec![ExecutorKindSys::Kqueue.into()]
     }
     #[cfg(windows)]
     fn all_kinds() -> Vec<ExecutorKind> {
