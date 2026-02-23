@@ -11,6 +11,14 @@ cfg_if::cfg_if! {
         pub use platform::gpu::UnixDisplayMode as DisplayMode;
         #[cfg(feature = "gpu")]
         pub use platform::gpu::UnixMouseMode as MouseMode;
+    } else if #[cfg(target_os = "macos")] {
+        pub mod macos;
+        use macos as platform;
+        pub use platform::{VmMemoryMappingRequest, VmMemoryMappingResponse, FsMappingRequest};
+        #[cfg(feature = "gpu")]
+        pub use platform::DisplayMode;
+        #[cfg(feature = "gpu")]
+        pub use platform::MouseMode;
     } else if #[cfg(windows)] {
         pub mod windows;
         pub use windows as platform;
