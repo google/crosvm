@@ -14,7 +14,7 @@ ______________________________________________________________________
 Originally developed for ChromeOS to run Linux ([Crostini](https://chromeos.dev/en/linux)) and
 Android guests (ARCVM). It is now used across multiple products and platforms such as
 [TerminalApp](https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Virtualization/android/TerminalApp/)
-on Android, [Cuttlefish](https://github.com/google/android-cuttlefish) and Windows.
+on Android, [Cuttlefish](https://github.com/google/android-cuttlefish), Windows and macOS.
 
 crosvm focuses on security through strong isolation and a modern, memory-safe implementation. It
 leverages hardware-assisted virtualization to provide a robust execution environment for untrusted
@@ -42,6 +42,7 @@ code.
 
 - **Linux/Android**: KVM, Gunyah (Qualcomm), GenieZone (MediaTek), Halla (Exynos).
 - **Windows**: WHPX (Windows Hypervisor Platform), HAXM (Intel).
+- **macOS**: HVF (Apple's Hypervisor.framework).
 
 ### Virtio Device Support
 

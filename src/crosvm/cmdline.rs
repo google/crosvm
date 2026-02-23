@@ -50,9 +50,9 @@ use devices::virtio::GpuDisplayParameters;
 use devices::virtio::GpuMouseMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
-#[cfg(all(unix, feature = "net"))]
+#[cfg(feature = "net")]
 use devices::virtio::NetParameters;
-#[cfg(all(unix, feature = "net"))]
+#[cfg(feature = "net")]
 use devices::virtio::NetParametersMode;
 use devices::FwCfgParameters;
 use devices::PflashParameters;
@@ -72,7 +72,7 @@ use vm_memory::FileBackedMappingParameters;
 use super::config::PmemOption;
 #[cfg(feature = "gpu")]
 use super::gpu_config::fixup_gpu_options;
-#[cfg(all(unix, feature = "gpu"))]
+#[cfg(all(any(target_os = "android", target_os = "linux"), feature = "gpu"))]
 use super::sys::GpuRenderServerParameters;
 use crate::crosvm::config::from_key_values;
 use crate::crosvm::config::parse_bus_id_addr;
@@ -1262,7 +1262,7 @@ pub struct RunCommand {
     ///        Deprecated - use `dpi` instead.
     pub gpu: Vec<FixedGpuParameters>,
 
-    #[cfg(all(unix, feature = "gpu"))]
+    #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "gpu"))]
     #[argh(option, arg_name = "PATH")]
     /// move all vGPU threads to this Cgroup (default: nothing moves)
     pub gpu_cgroup_path: Option<PathBuf>,
@@ -1275,7 +1275,7 @@ pub struct RunCommand {
     /// for possible key values of GpuDisplayParameters.
     pub gpu_display: Vec<GpuDisplayParameters>,
 
-    #[cfg(all(unix, feature = "gpu"))]
+    #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "gpu"))]
     #[argh(option)]
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a render server for the virtio-gpu device
@@ -1288,7 +1288,7 @@ pub struct RunCommand {
     ///         file for dynamically loading RO caches.
     pub gpu_render_server: Option<GpuRenderServerParameters>,
 
-    #[cfg(all(unix, feature = "gpu"))]
+    #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "gpu"))]
     #[argh(option, arg_name = "PATH")]
     /// move all vGPU server threads to this Cgroup (default: nothing moves)
     pub gpu_server_cgroup_path: Option<PathBuf>,
@@ -1303,7 +1303,7 @@ pub struct RunCommand {
     /// connections.
     pub host_guid: Option<String>,
 
-    #[cfg(all(unix, feature = "net"))]
+    #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "net"))]
     #[argh(option, arg_name = "IP")]
     /// (DEPRECATED): Use --net.
     /// IP address to assign to host tap interface
@@ -1388,7 +1388,7 @@ pub struct RunCommand {
     /// and stderr/stdout will be uncaptured
     pub logs_directory: Option<String>,
 
-    #[cfg(all(unix, feature = "net"))]
+    #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "net"))]
     #[argh(option, arg_name = "MAC", long = "mac")]
     /// (DEPRECATED): Use --net.
     /// MAC address for VM
@@ -1436,7 +1436,7 @@ pub struct RunCommand {
     /// is no-op on Windows and MacOS at the moment.
     pub name: Option<String>,
 
-    #[cfg(all(unix, feature = "net"))]
+    #[cfg(feature = "net")]
     #[argh(
         option,
         arg_name = "(tap-name=TAP_NAME,mac=MAC_ADDRESS|tap-fd=TAP_FD,mac=MAC_ADDRESS|host-ip=IP,netmask=NETMASK,mac=MAC_ADDRESS),vhost-net=VHOST_NET,vq-pairs=N,pci-address=ADDR"
@@ -1486,13 +1486,13 @@ pub struct RunCommand {
     /// netmask and mac must be specified.
     pub net: Vec<NetParameters>,
 
-    #[cfg(all(unix, feature = "net"))]
+    #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "net"))]
     #[argh(option, arg_name = "N")]
     /// (DEPRECATED): Use --net.
     /// virtio net virtual queue pairs. (default: 1)
     pub net_vq_pairs: Option<u16>,
 
-    #[cfg(all(unix, feature = "net"))]
+    #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "net"))]
     #[argh(option, arg_name = "NETMASK")]
     /// (DEPRECATED): Use --net.
     /// netmask for VM subnet
@@ -2664,6 +2664,8 @@ impl TryFrom<RunCommand> for super::config::Config {
                     (None, Some(fd)) => Some(PathBuf::from(format!("/proc/self/fd/{fd}"))),
                     (None, None) => None,
                 },
+                #[cfg(not(any(target_os = "android", target_os = "linux")))]
+                None::<PathBuf>,
             );
 
             cfg.vsock = Some(legacy_vsock_config);
@@ -2873,12 +2875,15 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
         }
 
-        #[cfg(all(unix, feature = "net"))]
+        #[cfg(feature = "net")]
+        {
+            cfg.net = cmd.net;
+        }
+
+        #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "net"))]
         {
             use devices::virtio::VhostNetParameters;
             use devices::virtio::VHOST_NET_DEFAULT_PATH;
-
-            cfg.net = cmd.net;
 
             if let Some(vhost_net_device) = &cmd.vhost_net_device {
                 let vhost_net_path = vhost_net_device.to_string_lossy();
@@ -2972,7 +2977,10 @@ impl TryFrom<RunCommand> for super::config::Config {
                     mrg_rxbuf: false,
                 });
             }
+        }
 
+        #[cfg(feature = "net")]
+        {
             // The number of vq pairs on a network device shall never exceed the number of vcpu
             // cores. Fix that up if needed.
             for net in &mut cfg.net {
@@ -2994,7 +3002,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
             cfg.coiommu_param = cmd.coiommu;
 
-            #[cfg(feature = "gpu")]
+            #[cfg(all(any(target_os = "android", target_os = "linux"), feature = "gpu"))]
             {
                 cfg.gpu_render_server_parameters = cmd.gpu_render_server;
             }
