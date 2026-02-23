@@ -112,8 +112,10 @@ fn update_device_nodes(
         let mut iommus_val = Vec::new();
         for (t, id, vsids) in &resources.iommus {
             let phandle = get_iommu_phandle(*t, *id, phandles)?;
-            iommus_val.push(phandle);
-            iommus_val.extend_from_slice(vsids);
+            for vsid in vsids {
+                iommus_val.push(phandle);
+                iommus_val.push(*vsid);
+            }
         }
         node.set_prop("iommus", iommus_val)?;
     }
