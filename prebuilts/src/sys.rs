@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 cfg_if::cfg_if! {
-    if #[cfg(any(target_os = "android", target_os = "linux"))] {
+    if #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))] {
         pub(crate) mod linux;
         pub(crate) use linux::*;
     } else if #[cfg(windows)] {
