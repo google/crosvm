@@ -16,6 +16,8 @@ pub mod gunyah;
 pub mod halla;
 #[cfg(all(windows, feature = "haxm"))]
 pub mod haxm;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub mod hvf;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub mod kvm;
 #[cfg(target_arch = "riscv64")]
@@ -100,6 +102,7 @@ pub enum HypervisorKind {
     Geniezone,
     Gunyah,
     Halla,
+    Hvf,
     Kvm,
     Haxm,
     Whpx,
