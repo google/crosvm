@@ -8,12 +8,11 @@
 use std::ptr::null_mut;
 
 use libc::c_int;
-use libc::PROT_READ;
-use libc::PROT_WRITE;
 use log::warn;
 
 use super::Error as ErrnoError;
 use crate::pagesize;
+use crate::sys::unix::mmap::validate_includes_range;
 use crate::AsRawDescriptor;
 use crate::Descriptor;
 use crate::MappedRegion;
@@ -24,83 +23,6 @@ use crate::MmapResult as Result;
 use crate::Protection;
 use crate::RawDescriptor;
 use crate::SafeDescriptor;
-
-impl From<Protection> for c_int {
-    #[inline(always)]
-    fn from(p: Protection) -> Self {
-        let mut value = 0;
-        if p.read {
-            value |= PROT_READ
-        }
-        if p.write {
-            value |= PROT_WRITE;
-        }
-        value
-    }
-}
-
-/// Validates that `offset`..`offset+range_size` lies within the bounds of a memory mapping of
-/// `mmap_size` bytes.  Also checks for any overflow.
-fn validate_includes_range(mmap_size: usize, offset: usize, range_size: usize) -> Result<()> {
-    // Ensure offset + size doesn't overflow
-    let end_offset = offset
-        .checked_add(range_size)
-        .ok_or(Error::InvalidAddress)?;
-    // Ensure offset + size are within the mapping bounds
-    if end_offset <= mmap_size {
-        Ok(())
-    } else {
-        Err(Error::InvalidAddress)
-    }
-}
-
-impl dyn MappedRegion {
-    /// Calls msync with MS_SYNC on a mapping of `size` bytes starting at `offset` from the start of
-    /// the region.  `offset`..`offset+size` must be contained within the `MappedRegion`.
-    pub fn msync(&self, offset: usize, size: usize) -> Result<()> {
-        validate_includes_range(self.size(), offset, size)?;
-
-        // SAFETY:
-        // Safe because the MemoryMapping/MemoryMappingArena interface ensures our pointer and size
-        // are correct, and we've validated that `offset`..`offset+size` is in the range owned by
-        // this `MappedRegion`.
-        let ret = unsafe {
-            libc::msync(
-                (self.as_ptr() as usize + offset) as *mut libc::c_void,
-                size,
-                libc::MS_SYNC,
-            )
-        };
-        if ret != -1 {
-            Ok(())
-        } else {
-            Err(Error::SystemCallFailed(ErrnoError::last()))
-        }
-    }
-
-    /// Calls madvise on a mapping of `size` bytes starting at `offset` from the start of
-    /// the region.  `offset`..`offset+size` must be contained within the `MappedRegion`.
-    pub fn madvise(&self, offset: usize, size: usize, advice: libc::c_int) -> Result<()> {
-        validate_includes_range(self.size(), offset, size)?;
-
-        // SAFETY:
-        // Safe because the MemoryMapping/MemoryMappingArena interface ensures our pointer and size
-        // are correct, and we've validated that `offset`..`offset+size` is in the range owned by
-        // this `MappedRegion`.
-        let ret = unsafe {
-            libc::madvise(
-                (self.as_ptr() as usize + offset) as *mut libc::c_void,
-                size,
-                advice,
-            )
-        };
-        if ret != -1 {
-            Ok(())
-        } else {
-            Err(Error::SystemCallFailed(ErrnoError::last()))
-        }
-    }
-}
 
 /// Wraps an anonymous shared memory mapping in the current process. Provides
 /// RAII semantics including munmap when no longer needed.

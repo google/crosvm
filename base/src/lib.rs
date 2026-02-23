@@ -127,6 +127,20 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
+    if #[cfg(target_os = "macos")] {
+        pub use sys::macos;
+
+        pub use macos::{flock, FlockOperation};
+        pub use macos::is_cpu_online;
+        pub use macos::pipe;
+        pub use macos::logical_core_capacity;
+        pub use macos::logical_core_cluster_id;
+        pub use macos::logical_core_frequencies_khz;
+        pub use macos::logical_core_max_freq_khz;
+    }
+}
+
+cfg_if::cfg_if! {
      if #[cfg(windows)] {
         pub use sys::windows;
 

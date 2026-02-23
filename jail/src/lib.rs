@@ -19,3 +19,7 @@ pub use crate::helpers::*;
 // compile it out. In the long term, this should go away.
 #[cfg(windows)]
 pub struct FakeMinijailStub {}
+
+// macOS doesn't have minijail either. Provide a similar stub.
+#[cfg(target_os = "macos")]
+pub struct FakeMinijailStub {}
