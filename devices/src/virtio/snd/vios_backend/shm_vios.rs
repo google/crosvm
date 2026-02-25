@@ -61,8 +61,12 @@ pub enum Error {
     BufferStatusSenderLost(RecvError),
     #[error("Command failed with status {0}")]
     CommandFailed(u32),
+    #[error("Expected {0} controls, received {1}")]
+    ControlsMismatch(u32, u32),
     #[error("Error duplicating file descriptor: {0}")]
     DupError(BaseError),
+    #[error("Duplicated control index: {0} name: '{1}'")]
+    DuplicatedControlId(u32, String),
     #[error("Failed to create Recv event: {0}")]
     EventCreateError(BaseError),
     #[error("Failed to dup Recv event: {0}")]
@@ -135,6 +139,7 @@ pub struct VioSClient {
     jacks: Vec<virtio_snd_jack_info>,
     streams: Vec<virtio_snd_pcm_info>,
     chmaps: Vec<virtio_snd_chmap_info>,
+    controls: Vec<virtio_snd_ctl_info>,
     // The control socket is used from multiple threads to send and wait for a reply, which needs
     // to happen atomically, hence the need for a mutex instead of just sharing clones of the
     // socket.
@@ -162,6 +167,7 @@ pub struct VioSClientSnapshot {
     jacks: Vec<virtio_snd_jack_info>,
     streams: Vec<virtio_snd_pcm_info>,
     chmaps: Vec<virtio_snd_chmap_info>,
+    controls: Vec<virtio_snd_ctl_info>,
     params: HashMap<u32, virtio_snd_pcm_set_params>,
 }
 
@@ -173,22 +179,33 @@ impl VioSClient {
                 .map_err(|e| Error::ServerConnectionError(e, server.as_ref().into()))?,
         )
         .map_err(|e| Error::ServerConnectionError(e, server.as_ref().into()))?;
+
         let mut config: VioSConfig = Default::default();
         const NUM_FDS: usize = 5;
         let (recv_size, mut safe_fds) = client_socket
             .recv_with_fds(config.as_mut_bytes(), NUM_FDS)
             .map_err(Error::ServerError)?;
 
-        if recv_size != std::mem::size_of::<VioSConfig>() {
-            return Err(Error::ProtocolError(
-                ProtocolErrorKind::UnexpectedConfigSize(recv_size),
-            ));
-        }
-
-        if config.version != VIOS_VERSION {
-            return Err(Error::ProtocolError(ProtocolErrorKind::VersionMismatch(
-                config.version,
-            )));
+        match config.version {
+            2 => {
+                if recv_size != VIOS_SIZE_V2 {
+                    return Err(Error::ProtocolError(
+                        ProtocolErrorKind::UnexpectedConfigSize(recv_size),
+                    ));
+                }
+            }
+            3 => {
+                if recv_size != VIOS_SIZE_V3 {
+                    return Err(Error::ProtocolError(
+                        ProtocolErrorKind::UnexpectedConfigSize(recv_size),
+                    ));
+                }
+            }
+            _ => {
+                return Err(Error::ProtocolError(ProtocolErrorKind::VersionMismatch(
+                    config.version,
+                )));
+            }
         }
 
         fn pop<T: FromRawDescriptor>(
@@ -238,6 +255,7 @@ impl VioSClient {
             jacks: Vec::new(),
             streams: Vec::new(),
             chmaps: Vec::new(),
+            controls: Vec::new(),
             control_socket: Mutex::new(client_socket.into_inner()),
             event_socket,
             tx: IoBufferQueue::new(tx_socket, tx_shm_file)?,
@@ -282,6 +300,80 @@ impl VioSClient {
     /// Get the configuration information on a channel map
     pub fn chmap_info(&self, idx: u32) -> Option<virtio_snd_chmap_info> {
         self.chmaps.get(idx as usize).copied()
+    }
+
+    /// Get the number of controls
+    pub fn num_controls(&self) -> u32 {
+        self.config.controls
+    }
+
+    /// Get the configuration information on a control
+    pub fn control_info(&self, idx: u32) -> Option<virtio_snd_ctl_info> {
+        self.controls.get(idx as usize).copied()
+    }
+
+    /// Set the value of a control
+    pub fn set_control(&self, control_id: u32, value: virtio_snd_ctl_value) -> Result<()> {
+        // Define a combined struct locally to ensure atomic transmission
+        #[repr(C)]
+        #[derive(Copy, Clone, Immutable, IntoBytes, KnownLayout)]
+        struct virtio_snd_ctl_set_value {
+            hdr: virtio_snd_ctl_hdr,
+            value: virtio_snd_ctl_value,
+        }
+
+        let control_socket_lock = self.control_socket.lock();
+        send_cmd(
+            &control_socket_lock,
+            virtio_snd_ctl_set_value {
+                hdr: virtio_snd_ctl_hdr {
+                    hdr: virtio_snd_hdr {
+                        code: VIRTIO_SND_R_CTL_WRITE.into(),
+                    },
+                    control_id: control_id.into(),
+                },
+                value,
+            },
+        )
+    }
+
+    /// Get the value of a control
+    pub fn get_control(&self, control_id: u32) -> Result<virtio_snd_ctl_value> {
+        let msg = virtio_snd_ctl_hdr {
+            hdr: virtio_snd_hdr {
+                code: VIRTIO_SND_R_CTL_READ.into(),
+            },
+            control_id: control_id.into(),
+        };
+        let control_socket_lock = self.control_socket.lock();
+        seq_socket_send(&control_socket_lock, msg.as_bytes())?;
+        let reply = control_socket_lock
+            .recv_as_vec()
+            .map_err(Error::ServerIOError)?;
+        let status_size = std::mem::size_of::<virtio_snd_hdr>();
+        let mut status: virtio_snd_hdr = Default::default();
+        if reply.len() < status_size {
+            return Err(Error::ProtocolError(
+                ProtocolErrorKind::UnexpectedMessageSize(status_size, reply.len()),
+            ));
+        }
+        status
+            .as_mut_bytes()
+            .copy_from_slice(&reply[0..status_size]);
+        if status.code.to_native() != VIRTIO_SND_S_OK {
+            return Err(Error::CommandFailed(status.code.to_native()));
+        }
+        if reply.len() != status_size + std::mem::size_of::<virtio_snd_ctl_value>() {
+            return Err(Error::ProtocolError(
+                ProtocolErrorKind::UnexpectedMessageSize(
+                    status_size + std::mem::size_of::<virtio_snd_ctl_value>(),
+                    reply.len(),
+                ),
+            ));
+        }
+        let mut value: virtio_snd_ctl_value = Default::default();
+        value.as_mut_bytes().copy_from_slice(&reply[status_size..]);
+        Ok(value)
     }
 
     /// Starts the background thread that receives release messages from the server. If the thread
@@ -508,6 +600,7 @@ impl VioSClient {
         self.request_and_cache_jacks_info()?;
         self.request_and_cache_streams_info()?;
         self.request_and_cache_chmaps_info()?;
+        self.request_and_cache_controls_info()?;
         Ok(())
     }
 
@@ -540,7 +633,10 @@ impl VioSClient {
         }
         if reply.len() != status_size + count * info_size {
             return Err(Error::ProtocolError(
-                ProtocolErrorKind::UnexpectedMessageSize(count * info_size, reply.len()),
+                ProtocolErrorKind::UnexpectedMessageSize(
+                    status_size + count * info_size,
+                    reply.len(),
+                ),
             ));
         }
         Ok(reply[status_size..]
@@ -576,12 +672,63 @@ impl VioSClient {
         Ok(())
     }
 
+    fn request_and_cache_controls_info(&mut self) -> Result<()> {
+        let num_controls = self.config.controls as usize;
+        if num_controls == 0 {
+            return Ok(());
+        }
+        let raw_controls: Vec<virtio_snd_ctl_info> =
+            self.request_info(VIRTIO_SND_R_CTL_INFO, num_controls)?;
+
+        let mut seen = std::collections::HashSet::new();
+
+        self.controls.clear();
+        for (i, info) in raw_controls.into_iter().enumerate() {
+            let name_bytes = info.name; // Copy name bytes
+            let index = info.index.to_native();
+            let key = (name_bytes, index);
+
+            if seen.contains(&key) {
+                let name = std::str::from_utf8(&info.name)
+                    .unwrap_or("invalid utf8")
+                    .trim_matches(char::from(0));
+                base::error!(
+                    "CTLS: encountered a duplicate vec_idx: {}, index: {}, name: {}",
+                    i,
+                    index,
+                    name
+                );
+                return Err(Error::DuplicatedControlId(index, name.to_owned()));
+            }
+            seen.insert(key);
+            self.controls.push(info);
+            let name = std::str::from_utf8(&info.name)
+                .unwrap_or("invalid utf8")
+                .trim_matches(char::from(0));
+            base::info!(
+                "CTLS: kept vec_idx: {}, index: {}, name: {}",
+                i,
+                index,
+                name
+            );
+        }
+
+        if self.controls.len() != self.config.controls as usize {
+            return Err(Error::ControlsMismatch(
+                self.config.controls,
+                self.controls.len() as u32,
+            ));
+        }
+        Ok(())
+    }
+
     pub fn snapshot(&self) -> VioSClientSnapshot {
         VioSClientSnapshot {
             config: self.config,
             jacks: self.jacks.clone(),
             streams: self.streams.clone(),
             chmaps: self.chmaps.clone(),
+            controls: self.controls.clone(),
             params: self.params.clone(),
         }
     }
@@ -598,6 +745,7 @@ impl VioSClient {
         self.jacks = data.jacks;
         self.streams = data.streams;
         self.chmaps = data.chmaps;
+        self.controls = data.controls;
         self.params = data.params;
         Ok(())
     }
@@ -879,8 +1027,6 @@ fn seq_socket_send(socket: &UnixSeqpacket, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-const VIOS_VERSION: u32 = 2;
-
 #[repr(C)]
 #[derive(
     Copy,
@@ -897,11 +1043,18 @@ const VIOS_VERSION: u32 = 2;
     Debug,
 )]
 struct VioSConfig {
+    // Fields below belong to version 2
     version: u32,
     jacks: u32,
     streams: u32,
     chmaps: u32,
+
+    // Fields below belong to version 3
+    controls: u32,
 }
+
+const VIOS_SIZE_V2: usize = 4 * std::mem::size_of::<u32>();
+const VIOS_SIZE_V3: usize = std::mem::size_of::<VioSConfig>();
 
 struct BufferReleaseMsg {
     status: u32,

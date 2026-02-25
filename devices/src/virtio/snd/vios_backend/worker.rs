@@ -351,6 +351,114 @@ impl Worker {
                 VIRTIO_SND_R_PCM_STOP => {
                     self.try_parse_pcm_hdr_and_send_msg(&read_buf, StreamMsg::Stop(avail_desc))?
                 }
+                VIRTIO_SND_R_CTL_INFO => {
+                    let (code, info_vec) = {
+                        match self.parse_info_query(&read_buf) {
+                            None => (VIRTIO_SND_S_BAD_MSG, Vec::new()),
+                            Some((start_id, count)) => {
+                                let end_id = start_id.saturating_add(count);
+                                if end_id > self.vios_client.lock().num_controls() {
+                                    error!(
+                                        "virtio-snd: Requested info on invalid control ids: {}..{}",
+                                        start_id,
+                                        end_id - 1
+                                    );
+                                    (VIRTIO_SND_S_NOT_SUPP, Vec::new())
+                                } else {
+                                    (
+                                        VIRTIO_SND_S_OK,
+                                        (start_id..end_id)
+                                            .map(|id| {
+                                                // Unwrap won't panic because we just ensured all
+                                                // the ids are valid
+                                                self.vios_client.lock().control_info(id).unwrap()
+                                            })
+                                            .collect(),
+                                    )
+                                }
+                            }
+                        }
+                    };
+                    self.send_info_reply(avail_desc, code, info_vec)?;
+                }
+                VIRTIO_SND_R_CTL_READ => {
+                    if read_buf.len() != std::mem::size_of::<virtio_snd_ctl_hdr>() {
+                        error!(
+                            "virtio-snd: The driver sent the wrong number bytes for a ctl_hdr struct: {}",
+                            read_buf.len()
+                        );
+                        reply_control_op_status(
+                            VIRTIO_SND_S_BAD_MSG,
+                            avail_desc,
+                            &self.control_queue,
+                        )?;
+                    } else {
+                        let mut hdr: virtio_snd_ctl_hdr = Default::default();
+                        hdr.as_mut_bytes().copy_from_slice(&read_buf);
+                        let control_id = hdr.control_id.to_native();
+                        match self.vios_client.lock().get_control(control_id) {
+                            Ok(value) => {
+                                let writer = &mut avail_desc.writer;
+                                writer
+                                    .write_obj(virtio_snd_hdr {
+                                        code: Le32::from(VIRTIO_SND_S_OK),
+                                    })
+                                    .map_err(SoundError::QueueIO)?;
+                                writer.write_obj(value).map_err(SoundError::QueueIO)?;
+                                {
+                                    let mut queue_lock = self.control_queue.lock();
+                                    queue_lock.add_used(avail_desc);
+                                    queue_lock.trigger_interrupt();
+                                }
+                            }
+                            Err(e) => {
+                                error!("virtio-snd: Failed to get control: {}", e);
+                                reply_control_op_status(
+                                    vios_error_to_status_code(e),
+                                    avail_desc,
+                                    &self.control_queue,
+                                )?;
+                            }
+                        }
+                    }
+                }
+                VIRTIO_SND_R_CTL_WRITE => {
+                    const HDR_SIZE: usize = std::mem::size_of::<virtio_snd_ctl_hdr>();
+                    if read_buf.len() != std::mem::size_of::<virtio_snd_ctl_value>() + HDR_SIZE {
+                        error!(
+                            "virtio-snd: The driver sent the wrong number bytes for a ctl_value struct: {}",
+                            read_buf.len()
+                        );
+                        reply_control_op_status(
+                            VIRTIO_SND_S_BAD_MSG,
+                            avail_desc,
+                            &self.control_queue,
+                        )?;
+                    } else {
+                        let mut hdr: virtio_snd_ctl_hdr = Default::default();
+                        let mut val: virtio_snd_ctl_value = Default::default();
+                        hdr.as_mut_bytes().copy_from_slice(&read_buf[..HDR_SIZE]);
+                        val.as_mut_bytes().copy_from_slice(&read_buf[HDR_SIZE..]);
+                        let control_id = hdr.control_id.to_native();
+                        match self.vios_client.lock().set_control(control_id, val) {
+                            Ok(_) => {
+                                reply_control_op_status(
+                                    VIRTIO_SND_S_OK,
+                                    avail_desc,
+                                    &self.control_queue,
+                                )?;
+                            }
+                            Err(e) => {
+                                error!("virtio-snd: Failed to set control: {}", e);
+                                reply_control_op_status(
+                                    vios_error_to_status_code(e),
+                                    avail_desc,
+                                    &self.control_queue,
+                                )?;
+                            }
+                        }
+                    }
+                }
                 _ => {
                     error!(
                         "virtio-snd: Unknown control queue mesage code: {}",
