@@ -46,8 +46,8 @@ fn create_chosen_node(
     let chosen_node = fdt.root_mut().subnode_mut("chosen")?;
 
     if let Some((initrd_addr, initrd_size)) = initrd {
-        let initrd_start = initrd_addr.offset() as u32;
-        let initrd_end = initrd_start + initrd_size as u32;
+        let initrd_start: u64 = initrd_addr.offset();
+        let initrd_end: u64 = initrd_start + initrd_size as u64;
         chosen_node.set_prop("linux,initrd-start", initrd_start)?;
         chosen_node.set_prop("linux,initrd-end", initrd_end)?;
     }
