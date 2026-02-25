@@ -42,6 +42,41 @@ pub const VIRTIO_SND_D_INPUT: u8 = 1;
 /* supported jack features */
 pub const VIRTIO_SND_JACK_F_REMAP: u32 = 0;
 
+/* supported PCM The features */
+pub const VIRTIO_SND_F_CTLS: u32 = 0;
+
+/* supported control request types */
+pub const VIRTIO_SND_R_CTL_INFO: u32 = 0x0300;
+pub const VIRTIO_SND_R_CTL_ENUM_ITEMS: u32 = 0x0301;
+pub const VIRTIO_SND_R_CTL_READ: u32 = 0x0302;
+pub const VIRTIO_SND_R_CTL_WRITE: u32 = 0x0303;
+pub const VIRTIO_SND_R_CTL_TLV_READ: u32 = 0x0304;
+pub const VIRTIO_SND_R_CTL_TLV_WRITE: u32 = 0x0305;
+pub const VIRTIO_SND_R_CTL_TLV_COMMAND: u32 = 0x0306;
+
+/* supported control element roles */
+pub const VIRTIO_SND_CTL_ROLE_UNDEFINED: u32 = 0;
+pub const VIRTIO_SND_CTL_ROLE_VOLUME: u32 = 1;
+pub const VIRTIO_SND_CTL_ROLE_MUTE: u32 = 2;
+pub const VIRTIO_SND_CTL_ROLE_GAIN: u32 = 3;
+
+/* supported control element types */
+pub const VIRTIO_SND_CTL_TYPE_BOOLEAN: u32 = 0;
+pub const VIRTIO_SND_CTL_TYPE_INTEGER: u32 = 1;
+pub const VIRTIO_SND_CTL_TYPE_INTEGER64: u32 = 2;
+pub const VIRTIO_SND_CTL_TYPE_ENUMERATED: u32 = 3;
+pub const VIRTIO_SND_CTL_TYPE_BYTES: u32 = 4;
+pub const VIRTIO_SND_CTL_TYPE_IEC958: u32 = 5;
+
+/* supported control element access */
+pub const VIRTIO_SND_CTL_ACCESS_READ: u32 = 0;
+pub const VIRTIO_SND_CTL_ACCESS_WRITE: u32 = 1;
+pub const VIRTIO_SND_CTL_ACCESS_VOLATILE: u32 = 2;
+pub const VIRTIO_SND_CTL_ACCESS_INACTIVE: u32 = 3;
+pub const VIRTIO_SND_CTL_ACCESS_TLV_READ: u32 = 4;
+pub const VIRTIO_SND_CTL_ACCESS_TLV_WRITE: u32 = 5;
+pub const VIRTIO_SND_CTL_ACCESS_TLV_COMMAND: u32 = 6;
+
 /* supported PCM stream features */
 pub const VIRTIO_SND_PCM_F_SHMEM_HOST: u8 = 0;
 pub const VIRTIO_SND_PCM_F_SHMEM_GUEST: u8 = 1;

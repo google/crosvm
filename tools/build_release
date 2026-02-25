@@ -181,7 +181,7 @@ def main():
     build_env = os.environ.copy()
     build_env.update(build_target.get_cargo_env())
     build_env.setdefault("RUSTFLAGS", "")
-    build_env["RUSTFLAGS"] += " -D warnings"
+    build_env["RUSTFLAGS"] += " -D warnings --cfg zerocopy_derive_union_into_bytes"
     if args.strip:
         build_env["RUSTFLAGS"] += " -C strip=symbols"
     if args.profile_generate:

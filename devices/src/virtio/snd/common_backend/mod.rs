@@ -300,6 +300,7 @@ pub fn hardcoded_virtio_snd_config(params: &Parameters) -> virtio_snd_config {
         jacks: 0.into(),
         streams: params.get_total_streams().into(),
         chmaps: (params.num_output_devices * 3 + params.num_input_devices).into(),
+        controls: 0.into(),
     }
 }
 

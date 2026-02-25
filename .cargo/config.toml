@@ -21,6 +21,9 @@ rustflags = [
     "-Aclippy::unreadable_literal",
     "-Aclippy::useless_transmute",
     "-Dclippy::undocumented_unsafe_blocks",
+
+    # To support 'IntoBytes' on unions
+    "--cfg", "zerocopy_derive_union_into_bytes"
 ]
 
 [env]

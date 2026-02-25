@@ -40,6 +40,7 @@ use zerocopy::IntoBytes;
 
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::snd::virtio_snd_config;
+use crate::virtio::snd::constants::VIRTIO_SND_F_CTLS;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -276,11 +277,17 @@ pub fn new_sound<P: AsRef<Path>>(path: P, virtio_features: u64) -> Result<Sound>
     let jacks = Le32::from(vios_client.num_jacks());
     let streams = Le32::from(vios_client.num_streams());
     let chmaps = Le32::from(vios_client.num_chmaps());
+    let controls = Le32::from(vios_client.num_controls());
+    let mut virtio_features = virtio_features;
+    if vios_client.num_controls() > 0 {
+        virtio_features |= 1 << VIRTIO_SND_F_CTLS
+    }
     Ok(Sound {
         config: virtio_snd_config {
             jacks,
             streams,
             chmaps,
+            controls,
         },
         virtio_features,
         worker_thread: None,
