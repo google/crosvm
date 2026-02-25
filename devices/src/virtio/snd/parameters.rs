@@ -109,6 +109,17 @@ pub struct Parameters {
     pub output_device_config: Vec<PCMDeviceParameters>,
     pub input_device_config: Vec<PCMDeviceParameters>,
     pub card_index: usize,
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[serde(default)]
+    /// set MADV_DONTFORK on guest memory
+    ///
+    /// Intended for use in combination with protected VMs, where the guest memory can be dangerous
+    /// to access. Some systems, e.g. Android, have tools that fork processes and examine their
+    /// memory. This flag effectively hides the guest memory from those tools.
+    ///
+    /// Not compatible with sandboxing.
+    pub unmap_guest_memory_on_fork: bool,
 }
 
 impl Default for Parameters {
@@ -129,6 +140,8 @@ impl Default for Parameters {
             output_device_config: vec![],
             input_device_config: vec![],
             card_index: 0,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            unmap_guest_memory_on_fork: false,
         }
     }
 }

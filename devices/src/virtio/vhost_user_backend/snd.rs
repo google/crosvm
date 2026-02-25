@@ -75,6 +75,7 @@ struct SndBackend {
     rx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
     // Appended to logs for when there are mutliple audio devices.
     card_index: usize,
+    unmap_guest_memory_on_fork: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -123,6 +124,11 @@ impl SndBackend {
         let (tx_send, tx_recv) = mpsc::unbounded();
         let (rx_send, rx_recv) = mpsc::unbounded();
 
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        let unmap_guest_memory_on_fork = params.unmap_guest_memory_on_fork;
+        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        let unmap_guest_memory_on_fork = false;
+
         Ok(SndBackend {
             ex: ex.clone(),
             cfg,
@@ -136,6 +142,7 @@ impl SndBackend {
             tx_recv: Some(tx_recv),
             rx_recv: Some(rx_recv),
             card_index,
+            unmap_guest_memory_on_fork,
         })
     }
 }
@@ -160,6 +167,10 @@ impl VhostUserDevice for SndBackend {
         VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::DEVICE_STATE
+    }
+
+    fn unmap_guest_memory_on_fork(&self) -> bool {
+        self.unmap_guest_memory_on_fork
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
