@@ -1287,21 +1287,21 @@ pub fn load_image<F>(
     image: &mut F,
     guest_addr: GuestAddress,
     max_size: u64,
-) -> Result<usize, LoadImageError>
+) -> Result<u32, LoadImageError>
 where
     F: FileReadWriteAtVolatile + FileGetLen,
 {
     let size = image.get_len().map_err(LoadImageError::GetLen)?;
 
-    if size > usize::MAX as u64 || size > max_size {
+    if size > u32::MAX as u64 || size > max_size {
         return Err(LoadImageError::ImageSizeTooLarge(size));
     }
 
     // This is safe due to the bounds check above.
-    let size = size as usize;
+    let size = size as u32;
 
     let guest_slice = guest_mem
-        .get_slice_at_addr(guest_addr, size)
+        .get_slice_at_addr(guest_addr, size as usize)
         .map_err(LoadImageError::GuestMemorySlice)?;
     image
         .read_exact_at_volatile(guest_slice, 0)
@@ -1331,7 +1331,7 @@ pub fn load_image_high<F>(
     max_guest_addr: GuestAddress,
     region_filter: Option<fn(&MemoryRegionInformation) -> bool>,
     align: u64,
-) -> Result<(GuestAddress, usize), LoadImageError>
+) -> Result<(GuestAddress, u32), LoadImageError>
 where
     F: FileReadWriteAtVolatile + FileGetLen,
 {
@@ -1346,7 +1346,7 @@ where
         return Err(LoadImageError::ZeroSizedImage);
     }
 
-    if size > usize::MAX as u64 || size > max_size {
+    if size > u32::MAX as u64 || size > max_size {
         return Err(LoadImageError::ImageSizeTooLarge(size));
     }
 
@@ -1385,10 +1385,10 @@ where
         .ok_or(LoadImageError::NoSuitableMemoryRegion)?;
 
     // This is safe due to the bounds check above.
-    let size = size as usize;
+    let size = size as u32;
 
     let guest_slice = guest_mem
-        .get_slice_at_addr(guest_addr, size)
+        .get_slice_at_addr(guest_addr, size as usize)
         .map_err(LoadImageError::GuestMemorySlice)?;
     image
         .read_exact_at_volatile(guest_slice, 0)
@@ -1510,6 +1510,6 @@ mod tests {
 
         assert_eq!(addr, GuestAddress(0xBFFF_8000));
         assert_eq!(addr.offset() % TEST_ALIGN, 0);
-        assert_eq!(size, TEST_IMAGE_SIZE as usize);
+        assert_eq!(size, TEST_IMAGE_SIZE as u32);
     }
 }

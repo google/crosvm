@@ -331,7 +331,7 @@ impl arch::LinuxArch for Riscv64 {
 
         // separate out image loading from other setup to get a specific error for
         // image loading
-        let initrd;
+        let initrd: Option<(GuestAddress, u32)>;
         let kernel_initrd_end = match components.vm_image {
             VmImage::Bios(ref _bios) => {
                 return Err(Error::ImageTypeUnsupported);

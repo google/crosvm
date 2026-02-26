@@ -39,10 +39,7 @@ fn create_config_node(fdt: &mut Fdt, kernel_region: AddressRange) -> cros_fdt::R
     Ok(())
 }
 
-fn create_chosen_node(
-    fdt: &mut Fdt,
-    initrd: Option<(GuestAddress, usize)>,
-) -> cros_fdt::Result<()> {
+fn create_chosen_node(fdt: &mut Fdt, initrd: Option<(GuestAddress, u32)>) -> cros_fdt::Result<()> {
     let chosen_node = fdt.root_mut().subnode_mut("chosen")?;
 
     if let Some((initrd_addr, initrd_size)) = initrd {
@@ -67,7 +64,7 @@ pub fn create_fdt(
     dump_device_tree_blob: Option<PathBuf>,
     device_tree_overlays: Vec<DtbOverlay>,
     kernel_region: AddressRange,
-    initrd: Option<(GuestAddress, usize)>,
+    initrd: Option<(GuestAddress, u32)>,
 ) -> Result<Vec<u8>, Error> {
     let mut fdt = Fdt::new(&[]);
     let reserved_memory_regions = reserved_memory_regions_from_guest_mem(guest_mem);

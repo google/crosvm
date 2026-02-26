@@ -288,7 +288,7 @@ fn create_psci_node(fdt: &mut Fdt, version: &PsciVersion) -> Result<()> {
 fn create_chosen_node(
     fdt: &mut Fdt,
     cmdline: &str,
-    initrd: Option<(GuestAddress, usize)>,
+    initrd: Option<(GuestAddress, u32)>,
     stdout_path: Option<&str>,
 ) -> Result<()> {
     let chosen_node = fdt.root_mut().subnode_mut("chosen")?;
@@ -637,7 +637,7 @@ pub fn create_fdt(
     fdt_address: GuestAddress,
     cmdline: &str,
     kernel_region: AddressRange,
-    initrd: Option<(GuestAddress, usize)>,
+    initrd: Option<(GuestAddress, u32)>,
     android_fstab: Option<File>,
     is_gicv3: bool,
     has_vgic_its: bool,

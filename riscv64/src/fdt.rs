@@ -62,7 +62,7 @@ fn create_cpu_nodes(fdt: &mut Fdt, num_cpus: u32, timebase_frequency: u32) -> Re
 fn create_chosen_node(
     fdt: &mut Fdt,
     cmdline: &str,
-    initrd: Option<(GuestAddress, usize)>,
+    initrd: Option<(GuestAddress, u32)>,
 ) -> Result<()> {
     let chosen_node = fdt.root_mut().subnode_mut("chosen")?;
     chosen_node.set_prop("linux,pci-probe-only", 1u32)?;
@@ -277,7 +277,7 @@ pub fn create_fdt(
     aia_num_ids: usize,
     aia_num_sources: usize,
     cmdline: &str,
-    initrd: Option<(GuestAddress, usize)>,
+    initrd: Option<(GuestAddress, u32)>,
     timebase_frequency: u32,
     device_tree_overlays: Vec<DtbOverlay>,
 ) -> Result<()> {

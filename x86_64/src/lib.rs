@@ -575,7 +575,7 @@ fn configure_boot_params(
     guest_mem: &GuestMemory,
     cmdline_addr: GuestAddress,
     setup_data: Option<GuestAddress>,
-    initrd: Option<(GuestAddress, usize)>,
+    initrd: Option<(GuestAddress, u32)>,
     mut params: boot_params,
     e820_entries: &[E820Entry],
 ) -> Result<()> {
@@ -596,8 +596,8 @@ fn configure_boot_params(
     if let Some((initrd_addr, initrd_size)) = initrd {
         params.hdr.ramdisk_image = initrd_addr.offset() as u32;
         params.ext_ramdisk_image = (initrd_addr.offset() >> 32) as u32;
-        params.hdr.ramdisk_size = initrd_size as u32;
-        params.ext_ramdisk_size = (initrd_size as u64 >> 32) as u32;
+        params.hdr.ramdisk_size = initrd_size;
+        params.ext_ramdisk_size = 0;
     }
 
     if e820_entries.len() >= params.e820_table.len() {

@@ -592,7 +592,7 @@ impl arch::LinuxArch for AArch64 {
 
         // separate out image loading from other setup to get a specific error for
         // image loading
-        let mut initrd = None;
+        let mut initrd: Option<(GuestAddress, u32)> = None;
         let (payload, payload_end_address) = match components.vm_image {
             VmImage::Bios(ref mut bios) => {
                 let image_size = arch::load_image(&mem, bios, payload_address, u64::MAX)
@@ -603,7 +603,7 @@ impl arch::LinuxArch for AArch64 {
                         image_size: image_size as u64,
                     },
                     payload_address
-                        .checked_add(image_size.try_into().unwrap())
+                        .checked_add(image_size as u64)
                         .and_then(|end| end.checked_sub(1))
                         .unwrap(),
                 )
@@ -624,7 +624,7 @@ impl arch::LinuxArch for AArch64 {
                             arch::load_image(&mem, &mut initrd_file, initrd_addr, initrd_max_size)
                                 .map_err(Error::InitrdLoadFailure)?;
                         payload_end = initrd_addr
-                            .checked_add(initrd_size.try_into().unwrap())
+                            .checked_add(initrd_size as u64)
                             .and_then(|end| end.checked_sub(1))
                             .unwrap();
                         Some((initrd_addr, initrd_size))
