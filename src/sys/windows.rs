@@ -2433,7 +2433,7 @@ fn run_config_inner(
             )?;
 
             let mut irq_chip = match irq_chip {
-                IrqChipKind::Kernel => unimplemented!("Kernel irqchip mode not supported by WHPX"),
+                IrqChipKind::Kernel {} => unimplemented!("Kernel irqchip mode not supported by WHPX"),
                 IrqChipKind::Split => {
                     if !apic_emulation_supported {
                         panic!(
