@@ -667,8 +667,13 @@ impl VirtioDevice for VhostUserFrontend {
         if missing_features != 0 {
             bail!("The destination backend doesn't support all features acknowledged by the source, missing: {}", missing_features);
         }
-        // Set the features in the destination to match the source before restoring its state.
-        self.ack_features(device_state.acked_features);
+        if self.acked_features != device_state.acked_features {
+            // Set the features in the destination to match the source before restoring its state.
+            self.ack_features(device_state.acked_features);
+            self.backend_client
+                .set_features(self.acked_features)
+                .map_err(Error::SetFeatures)?;
+        }
         // Send the backend an FD to read the device state from. If it gives us an FD back,
         // then we need to write to that instead.
         let (r, w) = new_pipe_pair()?;
