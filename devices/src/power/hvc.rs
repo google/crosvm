@@ -30,12 +30,14 @@ impl HvcDevicePowerManager {
         }
     }
 
-    fn set_power_state(&self, domain_id: usize, power_level: usize) -> anyhow::Result<()> {
-        match power_level {
-            0 => self.manager.lock().power_off(domain_id)?,
-            _ => self.manager.lock().power_on(domain_id)?,
-        };
-        Ok(())
+    fn handle(&self, abi: &HypercallAbi) -> anyhow::Result<()> {
+        let call = DeviceManagerHypercall::new(abi)
+            .with_context(|| format!("Invalid HvcDevicePowerManager call: {abi:?}"))?;
+        match call {
+            DeviceManagerHypercall::PowerOff(d) => self.manager.lock().power_off(d),
+            DeviceManagerHypercall::PowerOn(d) => self.manager.lock().power_on(d),
+        }
+        .with_context(|| format!("HvcDevicePowerManager::handle({call:?})"))
     }
 }
 
@@ -51,17 +53,7 @@ impl BusDevice for HvcDevicePowerManager {
     fn handle_hypercall(&self, abi: &mut HypercallAbi) -> anyhow::Result<()> {
         match abi.hypercall_id() as u32 {
             Self::HVC_FUNCTION_ID => {
-                let domain_id = *abi.get_argument(0).unwrap();
-                let power_level = *abi.get_argument(1).unwrap();
-
-                let ok_or_err = self
-                    .set_power_state(domain_id, power_level)
-                    .with_context(|| {
-                        format!(
-                            "HvcDevicePowerManager::handle_hypercall({domain_id}, {power_level})"
-                        )
-                    });
-
+                let ok_or_err = self.handle(abi);
                 let r0 = if ok_or_err.is_ok() {
                     0 // SMCCC_SUCCESS
                 } else {
@@ -96,3 +88,22 @@ impl BusDeviceSync for HvcDevicePowerManager {
 }
 
 impl Suspendable for HvcDevicePowerManager {}
+
+#[derive(Debug)]
+enum DeviceManagerHypercall {
+    PowerOff(usize),
+    PowerOn(usize),
+}
+
+impl DeviceManagerHypercall {
+    fn new(abi: &HypercallAbi) -> Option<Self> {
+        let func = *abi.get_argument(0).unwrap();
+        let arg0 = *abi.get_argument(1).unwrap();
+
+        match func {
+            0 => Some(Self::PowerOff(arg0)),
+            1 => Some(Self::PowerOn(arg0)),
+            _ => None,
+        }
+    }
+}
