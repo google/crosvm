@@ -1139,6 +1139,23 @@ mod tests {
         }
     }
 
+    fn create_queues(
+        num: usize,
+        mem: &GuestMemory,
+        interrupt: &Interrupt,
+    ) -> BTreeMap<usize, Queue> {
+        let mut queues = BTreeMap::new();
+        for idx in 0..num {
+            let mut queue = QueueConfig::new(0x10, 0);
+            queue.set_ready(true);
+            let queue = queue
+                .activate(mem, Event::new().unwrap(), interrupt.clone())
+                .expect("QueueConfig::activate");
+            queues.insert(idx, queue);
+        }
+        queues
+    }
+
     #[test]
     fn test_vhost_user_lifecycle() {
         test_vhost_user_lifecycle_parameterized(false);
@@ -1182,25 +1199,17 @@ mod tests {
             // Check if the obtained config data is correct.
             assert_eq!(config, FAKE_CONFIG_DATA);
 
-            let activate = |vmm_device: &mut VhostUserFrontend| {
-                let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
-                let interrupt = Interrupt::new_for_test_with_msix();
+            let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
+            let interrupt = Interrupt::new_for_test_with_msix();
 
-                let mut queues = BTreeMap::new();
-                for idx in 0..QUEUES_NUM {
-                    let mut queue = QueueConfig::new(0x10, 0);
-                    queue.set_ready(true);
-                    let queue = queue
-                        .activate(&mem, Event::new().unwrap(), interrupt.clone())
-                        .expect("QueueConfig::activate");
-                    queues.insert(idx, queue);
-                }
-
-                println!("activate");
-                vmm_device.activate(mem, interrupt, queues).unwrap();
-            };
-
-            activate(&mut vmm_device);
+            println!("activate");
+            vmm_device
+                .activate(
+                    mem.clone(),
+                    interrupt.clone(),
+                    create_queues(QUEUES_NUM, &mem, &interrupt),
+                )
+                .unwrap();
 
             println!("reset");
             let reset_result = vmm_device.reset();
@@ -1210,7 +1219,14 @@ mod tests {
                 reset_result.unwrap_err()
             );
 
-            activate(&mut vmm_device);
+            println!("activate");
+            vmm_device
+                .activate(
+                    mem.clone(),
+                    interrupt.clone(),
+                    create_queues(QUEUES_NUM, &mem, &interrupt),
+                )
+                .unwrap();
 
             println!("virtio_sleep");
             let queues = vmm_device
@@ -1228,10 +1244,8 @@ mod tests {
                 .expect("virtio_restore failed");
 
             println!("virtio_wake");
-            let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
-            let interrupt = Interrupt::new_for_test_with_msix();
             vmm_device
-                .virtio_wake(Some((mem, interrupt, queues)))
+                .virtio_wake(Some((mem.clone(), interrupt.clone(), queues)))
                 .unwrap();
 
             println!("wait for shutdown signal");
