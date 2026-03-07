@@ -1009,7 +1009,6 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc::channel;
-    use std::sync::Barrier;
 
     use anyhow::bail;
     use base::Event;
@@ -1172,17 +1171,11 @@ mod tests {
 
         let (client_connection, server_connection) = vmm_vhost::Connection::pair().unwrap();
 
-        let vmm_bar = Arc::new(Barrier::new(2));
-        let dev_bar = vmm_bar.clone();
-
-        let (ready_tx, ready_rx) = channel();
         let (shutdown_tx, shutdown_rx) = channel();
         let (vm_evt_wrtube, _vm_evt_rdtube) = base::Tube::directional_pair().unwrap();
 
-        std::thread::spawn(move || {
+        let vmm_thread = std::thread::spawn(move || {
             // VMM side
-            ready_rx.recv().unwrap(); // Ensure the device is ready.
-
             let mut vmm_device = VhostUserFrontend::new(
                 DeviceType::Console,
                 0,
@@ -1253,17 +1246,11 @@ mod tests {
 
             // The VMM side is supposed to stop before the device side.
             println!("drop");
-            drop(vmm_device);
-
-            vmm_bar.wait();
         });
 
         // Device side
         let mut handler = DeviceRequestHandler::new(FakeBackend::new());
         handler.as_mut().allow_backend_req = allow_backend_req;
-
-        // Notify listener is ready.
-        ready_tx.send(()).unwrap();
 
         let mut req_handler = BackendServer::new(server_connection, handler);
 
@@ -1360,13 +1347,14 @@ mod tests {
 
         // Ask the client to shutdown, then wait to it to finish.
         shutdown_tx.send(()).unwrap();
-        dev_bar.wait();
 
         // Verify recv_header fails with `ClientExit` after the client has disconnected.
         match req_handler.recv_header() {
             Err(VhostError::ClientExit) => (),
             r => panic!("expected Err(ClientExit) but got {r:?}"),
         }
+
+        vmm_thread.join().unwrap();
     }
 
     #[track_caller]
