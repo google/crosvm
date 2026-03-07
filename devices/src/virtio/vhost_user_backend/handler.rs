@@ -1169,192 +1169,288 @@ mod tests {
     fn test_vhost_user_lifecycle_parameterized(allow_backend_req: bool) {
         const QUEUES_NUM: usize = 2;
 
-        let (client_connection, server_connection) = vmm_vhost::Connection::pair().unwrap();
-
-        let (shutdown_tx, shutdown_rx) = channel();
-        let (vm_evt_wrtube, _vm_evt_rdtube) = base::Tube::directional_pair().unwrap();
-
-        let vmm_thread = std::thread::spawn(move || {
-            // VMM side
-            let mut vmm_device = VhostUserFrontend::new(
-                DeviceType::Console,
-                0,
-                client_connection,
-                vm_evt_wrtube,
-                None,
-                None,
-            )
-            .unwrap();
-
-            println!("read_config");
-            let mut config = FakeConfig::new_zeroed();
-            vmm_device.read_config(0, config.as_mut_bytes());
-            // Check if the obtained config data is correct.
-            assert_eq!(config, FAKE_CONFIG_DATA);
-
-            let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
-            let interrupt = Interrupt::new_for_test_with_msix();
-
-            println!("activate");
-            vmm_device
-                .activate(
-                    mem.clone(),
-                    interrupt.clone(),
-                    create_queues(QUEUES_NUM, &mem, &interrupt),
+        // First phase: Test normal usage, then take a snapshot and shutdown.
+        let snapshot = {
+            let (client_connection, server_connection) = vmm_vhost::Connection::pair().unwrap();
+            let (shutdown_tx, shutdown_rx) = channel();
+            let (vm_evt_wrtube, _vm_evt_rdtube) = base::Tube::directional_pair().unwrap();
+            let vmm_thread = std::thread::spawn(move || {
+                // VMM side
+                let mut vmm_device = VhostUserFrontend::new(
+                    DeviceType::Console,
+                    0,
+                    client_connection,
+                    vm_evt_wrtube,
+                    None,
+                    None,
                 )
                 .unwrap();
 
-            println!("reset");
-            let reset_result = vmm_device.reset();
-            assert!(
-                reset_result.is_ok(),
-                "reset failed: {:#}",
-                reset_result.unwrap_err()
-            );
+                let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
+                let interrupt = Interrupt::new_for_test_with_msix();
 
-            println!("activate");
-            vmm_device
-                .activate(
-                    mem.clone(),
-                    interrupt.clone(),
-                    create_queues(QUEUES_NUM, &mem, &interrupt),
+                println!("read_config");
+                let mut config = FakeConfig::new_zeroed();
+                vmm_device.read_config(0, config.as_mut_bytes());
+                // Check if the obtained config data is correct.
+                assert_eq!(config, FAKE_CONFIG_DATA);
+
+                println!("activate");
+                vmm_device
+                    .activate(
+                        mem.clone(),
+                        interrupt.clone(),
+                        create_queues(QUEUES_NUM, &mem, &interrupt),
+                    )
+                    .unwrap();
+
+                println!("reset");
+                let reset_result = vmm_device.reset();
+                assert!(
+                    reset_result.is_ok(),
+                    "reset failed: {:#}",
+                    reset_result.unwrap_err()
+                );
+
+                println!("activate");
+                vmm_device
+                    .activate(
+                        mem.clone(),
+                        interrupt.clone(),
+                        create_queues(QUEUES_NUM, &mem, &interrupt),
+                    )
+                    .unwrap();
+
+                println!("virtio_sleep");
+                let queues = vmm_device
+                    .virtio_sleep()
+                    .unwrap()
+                    .expect("virtio_sleep unexpectedly returned None");
+
+                println!("virtio_snapshot");
+                let snapshot = vmm_device
+                    .virtio_snapshot()
+                    .expect("virtio_snapshot failed");
+
+                println!("virtio_wake");
+                vmm_device
+                    .virtio_wake(Some((mem.clone(), interrupt.clone(), queues)))
+                    .unwrap();
+
+                println!("wait for shutdown signal");
+                shutdown_rx.recv().unwrap();
+
+                // The VMM side is supposed to stop before the device side.
+                println!("drop");
+
+                snapshot
+            });
+
+            // Device side
+            let mut handler = DeviceRequestHandler::new(FakeBackend::new());
+            handler.as_mut().allow_backend_req = allow_backend_req;
+
+            let mut req_handler = BackendServer::new(server_connection, handler);
+
+            // VhostUserFrontend::new()
+            handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();
+            handle_request(&mut req_handler, FrontendReq::GET_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
+            if allow_backend_req {
+                handle_request(&mut req_handler, FrontendReq::SET_BACKEND_REQ_FD).unwrap();
+            }
+
+            // VhostUserFrontend::read_config()
+            handle_request(&mut req_handler, FrontendReq::GET_CONFIG).unwrap();
+
+            // VhostUserFrontend::activate()
+            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
+            for _ in 0..QUEUES_NUM {
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+            }
+
+            // VhostUserFrontend::reset()
+            for _ in 0..QUEUES_NUM {
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+                handle_request(&mut req_handler, FrontendReq::GET_VRING_BASE).unwrap();
+            }
+
+            // VhostUserFrontend::activate()
+            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
+            for _ in 0..QUEUES_NUM {
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+            }
+
+            if allow_backend_req {
+                // Make sure the connection still works even after reset/reactivate.
+                req_handler
+                    .as_ref()
+                    .as_ref()
+                    .backend_conn
+                    .as_ref()
+                    .expect("backend_conn missing")
+                    .send_config_changed()
+                    .expect("send_config_changed failed");
+            }
+
+            // VhostUserFrontend::virtio_sleep()
+            for _ in 0..QUEUES_NUM {
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+                handle_request(&mut req_handler, FrontendReq::GET_VRING_BASE).unwrap();
+            }
+
+            // VhostUserFrontend::virtio_snapshot()
+            handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
+            handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
+
+            // VhostUserFrontend::virtio_wake()
+            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
+            for _ in 0..QUEUES_NUM {
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+            }
+
+            if allow_backend_req {
+                // Make sure the connection still works even after sleep/wake.
+                req_handler
+                    .as_ref()
+                    .as_ref()
+                    .backend_conn
+                    .as_ref()
+                    .expect("backend_conn missing")
+                    .send_config_changed()
+                    .expect("send_config_changed failed");
+            }
+
+            // Ask the client to shutdown, then wait to it to finish.
+            shutdown_tx.send(()).unwrap();
+
+            // Verify recv_header fails with `ClientExit` after the client has disconnected.
+            match req_handler.recv_header() {
+                Err(VhostError::ClientExit) => (),
+                r => panic!("expected Err(ClientExit) but got {r:?}"),
+            }
+
+            vmm_thread.join().unwrap()
+        };
+
+        // Second phase: Restore the snapshot.
+        {
+            let (client_connection, server_connection) = vmm_vhost::Connection::pair().unwrap();
+            let (shutdown_tx, shutdown_rx) = channel();
+            let (vm_evt_wrtube, _vm_evt_rdtube) = base::Tube::directional_pair().unwrap();
+            let vmm_thread = std::thread::spawn(move || {
+                // VMM side
+                let mut vmm_device = VhostUserFrontend::new(
+                    DeviceType::Console,
+                    0,
+                    client_connection,
+                    vm_evt_wrtube,
+                    None,
+                    None,
                 )
                 .unwrap();
 
-            println!("virtio_sleep");
-            let queues = vmm_device
-                .virtio_sleep()
-                .unwrap()
-                .expect("virtio_sleep unexpectedly returned None");
+                let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
+                let interrupt = Interrupt::new_for_test_with_msix();
 
-            println!("virtio_snapshot");
-            let snapshot = vmm_device
-                .virtio_snapshot()
-                .expect("virtio_snapshot failed");
-            println!("virtio_restore");
-            vmm_device
-                .virtio_restore(snapshot)
-                .expect("virtio_restore failed");
+                println!("virtio_sleep");
+                assert!(vmm_device.virtio_sleep().unwrap().is_none());
 
-            println!("virtio_wake");
-            vmm_device
-                .virtio_wake(Some((mem.clone(), interrupt.clone(), queues)))
-                .unwrap();
+                println!("virtio_restore");
+                vmm_device
+                    .virtio_restore(snapshot)
+                    .expect("virtio_restore failed");
 
-            println!("wait for shutdown signal");
-            shutdown_rx.recv().unwrap();
+                println!("virtio_wake");
+                vmm_device
+                    .virtio_wake(Some((
+                        mem.clone(),
+                        interrupt.clone(),
+                        create_queues(QUEUES_NUM, &mem, &interrupt),
+                    )))
+                    .unwrap();
 
-            // The VMM side is supposed to stop before the device side.
-            println!("drop");
-        });
+                println!("wait for shutdown signal");
+                shutdown_rx.recv().unwrap();
 
-        // Device side
-        let mut handler = DeviceRequestHandler::new(FakeBackend::new());
-        handler.as_mut().allow_backend_req = allow_backend_req;
+                // The VMM side is supposed to stop before the device side.
+                println!("drop");
+            });
 
-        let mut req_handler = BackendServer::new(server_connection, handler);
+            // Device side
+            let mut handler = DeviceRequestHandler::new(FakeBackend::new());
+            handler.as_mut().allow_backend_req = allow_backend_req;
 
-        // VhostUserFrontend::new()
-        handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();
-        handle_request(&mut req_handler, FrontendReq::GET_FEATURES).unwrap();
-        handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
-        handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
-        if allow_backend_req {
-            handle_request(&mut req_handler, FrontendReq::SET_BACKEND_REQ_FD).unwrap();
+            let mut req_handler = BackendServer::new(server_connection, handler);
+
+            // VhostUserFrontend::new()
+            handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();
+            handle_request(&mut req_handler, FrontendReq::GET_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
+            if allow_backend_req {
+                handle_request(&mut req_handler, FrontendReq::SET_BACKEND_REQ_FD).unwrap();
+            }
+
+            // VhostUserFrontend::virtio_sleep()
+            // (no-op)
+
+            // VhostUserFrontend::virtio_restore()
+            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
+            handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
+
+            // VhostUserFrontend::virtio_wake()
+            handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
+            for _ in 0..QUEUES_NUM {
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
+                handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+            }
+
+            if allow_backend_req {
+                // Make sure the connection still works even after restore.
+                req_handler
+                    .as_ref()
+                    .as_ref()
+                    .backend_conn
+                    .as_ref()
+                    .expect("backend_conn missing")
+                    .send_config_changed()
+                    .expect("send_config_changed failed");
+            }
+
+            // Ask the client to shutdown, then wait to it to finish.
+            shutdown_tx.send(()).unwrap();
+            // Verify recv_header fails with `ClientExit` after the client has disconnected.
+            match req_handler.recv_header() {
+                Err(VhostError::ClientExit) => (),
+                r => panic!("expected Err(ClientExit) but got {r:?}"),
+            }
+            vmm_thread.join().unwrap();
         }
-
-        // VhostUserFrontend::read_config()
-        handle_request(&mut req_handler, FrontendReq::GET_CONFIG).unwrap();
-
-        // VhostUserFrontend::activate()
-        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
-        handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
-        for _ in 0..QUEUES_NUM {
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
-        }
-
-        // VhostUserFrontend::reset()
-        for _ in 0..QUEUES_NUM {
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
-            handle_request(&mut req_handler, FrontendReq::GET_VRING_BASE).unwrap();
-        }
-
-        // VhostUserFrontend::activate()
-        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
-        handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
-        for _ in 0..QUEUES_NUM {
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
-        }
-
-        if allow_backend_req {
-            // Make sure the connection still works even after reset/reactivate.
-            req_handler
-                .as_ref()
-                .as_ref()
-                .backend_conn
-                .as_ref()
-                .expect("backend_conn missing")
-                .send_config_changed()
-                .expect("send_config_changed failed");
-        }
-
-        // VhostUserFrontend::virtio_sleep()
-        for _ in 0..QUEUES_NUM {
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
-            handle_request(&mut req_handler, FrontendReq::GET_VRING_BASE).unwrap();
-        }
-
-        // VhostUserFrontend::virtio_snapshot()
-        handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
-        handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
-        // VhostUserFrontend::virtio_restore()
-        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
-        handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
-        handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
-
-        // VhostUserFrontend::virtio_wake()
-        handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
-        for _ in 0..QUEUES_NUM {
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
-            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
-        }
-
-        if allow_backend_req {
-            // Make sure the connection still works even after sleep/wake.
-            req_handler
-                .as_ref()
-                .as_ref()
-                .backend_conn
-                .as_ref()
-                .expect("backend_conn missing")
-                .send_config_changed()
-                .expect("send_config_changed failed");
-        }
-
-        // Ask the client to shutdown, then wait to it to finish.
-        shutdown_tx.send(()).unwrap();
-
-        // Verify recv_header fails with `ClientExit` after the client has disconnected.
-        match req_handler.recv_header() {
-            Err(VhostError::ClientExit) => (),
-            r => panic!("expected Err(ClientExit) but got {r:?}"),
-        }
-
-        vmm_thread.join().unwrap();
     }
 
     #[track_caller]
