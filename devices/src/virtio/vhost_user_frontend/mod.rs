@@ -595,8 +595,6 @@ impl VirtioDevice for VhostUserFrontend {
 
     fn virtio_wake(
         &mut self,
-        // Vhost user doesn't need to pass queue_states back to the device process, since it will
-        // already have it.
         queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
