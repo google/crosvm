@@ -1290,8 +1290,6 @@ mod tests {
             }
 
             // VhostUserFrontend::activate()
-            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
-            assert_eq!(req_handler.as_ref().acked_features, EXPECTED_FEATURES);
             handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
             for _ in 0..QUEUES_NUM {
                 handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
@@ -1325,8 +1323,6 @@ mod tests {
             handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
 
             // VhostUserFrontend::virtio_wake()
-            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
-            assert_eq!(req_handler.as_ref().acked_features, EXPECTED_FEATURES);
             handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
             for _ in 0..QUEUES_NUM {
                 handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
@@ -1424,11 +1420,6 @@ mod tests {
             // (no-op)
 
             // VhostUserFrontend::virtio_restore()
-            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
-            assert_eq!(
-                req_handler.as_ref().acked_features,
-                1 << VHOST_USER_F_PROTOCOL_FEATURES
-            );
             handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
             assert_eq!(req_handler.as_ref().acked_features, EXPECTED_FEATURES);
             handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();

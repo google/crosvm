@@ -60,7 +60,8 @@ pub struct VhostUserFrontend {
     backend_client: BackendClient,
     avail_features: u64,
     acked_features: u64,
-    sent_set_features: bool,
+    // Last `acked_features` we sent to the backend.
+    last_acked_features: u64,
     protocol_features: VhostUserProtocolFeatures,
     // `backend_req_handler` is only present if the backend supports BACKEND_REQ. `worker_thread`
     // takes ownership of `backend_req_handler` when it starts. The worker thread will always
@@ -221,7 +222,7 @@ impl VhostUserFrontend {
             backend_client,
             avail_features,
             acked_features,
-            sent_set_features: false,
+            last_acked_features: acked_features,
             protocol_features,
             backend_req_handler,
             shmem_region: RefCell::new(None),
@@ -448,11 +449,11 @@ impl VirtioDevice for VhostUserFrontend {
         interrupt: Interrupt,
         queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
-        if !self.sent_set_features {
+        if self.last_acked_features != self.acked_features {
             self.backend_client
                 .set_features(self.acked_features)
                 .map_err(Error::SetFeatures)?;
-            self.sent_set_features = true;
+            self.last_acked_features = self.acked_features;
         }
 
         self.set_mem_table(&mem)?;
@@ -496,8 +497,6 @@ impl VirtioDevice for VhostUserFrontend {
             self.backend_req_handler = backend_req_handler;
             self.vm_evt_wrtube = vm_evt_wrtube;
         }
-
-        self.sent_set_features = false;
 
         Ok(())
     }
@@ -588,8 +587,6 @@ impl VirtioDevice for VhostUserFrontend {
             self.vm_evt_wrtube = vm_evt_wrtube;
         }
 
-        self.sent_set_features = false;
-
         Ok(Some(queues))
     }
 
@@ -644,14 +641,6 @@ impl VirtioDevice for VhostUserFrontend {
     }
 
     fn virtio_restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
-        // Ensure features are negotiated before restoring.
-        if !self.sent_set_features {
-            self.backend_client
-                .set_features(self.acked_features)
-                .map_err(Error::SetFeatures)?;
-            self.sent_set_features = true;
-        }
-
         if !self
             .protocol_features
             .contains(VhostUserProtocolFeatures::DEVICE_STATE)
@@ -661,17 +650,20 @@ impl VirtioDevice for VhostUserFrontend {
 
         let device_state: VhostUserDeviceState =
             AnySnapshot::from_any(data).map_err(Error::SerdeValueToSlice)?;
+
+        // Restore and negotiate features before restoring backend state.
         let missing_features = !self.avail_features & device_state.acked_features;
         if missing_features != 0 {
             bail!("The destination backend doesn't support all features acknowledged by the source, missing: {}", missing_features);
         }
-        if self.acked_features != device_state.acked_features {
-            // Set the features in the destination to match the source before restoring its state.
-            self.ack_features(device_state.acked_features);
+        self.acked_features = device_state.acked_features;
+        if self.last_acked_features != self.acked_features {
             self.backend_client
                 .set_features(self.acked_features)
                 .map_err(Error::SetFeatures)?;
+            self.last_acked_features = self.acked_features;
         }
+
         // Send the backend an FD to read the device state from. If it gives us an FD back,
         // then we need to write to that instead.
         let (r, w) = new_pipe_pair()?;
