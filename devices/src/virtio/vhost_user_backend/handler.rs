@@ -1355,6 +1355,7 @@ mod tests {
         }
     }
 
+    #[track_caller]
     fn handle_request<S: vmm_vhost::Backend>(
         handler: &mut BackendServer<S>,
         expected_message_type: FrontendReq,
