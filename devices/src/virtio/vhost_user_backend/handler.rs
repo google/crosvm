@@ -1012,6 +1012,7 @@ mod tests {
 
     use anyhow::bail;
     use base::Event;
+    use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
     use vmm_vhost::BackendServer;
     use vmm_vhost::FrontendReq;
     use zerocopy::FromBytes;
@@ -1054,7 +1055,7 @@ mod tests {
             let mut active_queues = Vec::new();
             active_queues.resize_with(Self::MAX_QUEUE_NUM, Default::default);
             Self {
-                avail_features: 1 << VHOST_USER_F_PROTOCOL_FEATURES,
+                avail_features: 1 << VHOST_USER_F_PROTOCOL_FEATURES | 1 << VIRTIO_RING_F_EVENT_IDX,
                 acked_features: 0,
                 active_queues,
                 allow_backend_req: false,
@@ -1168,6 +1169,9 @@ mod tests {
 
     fn test_vhost_user_lifecycle_parameterized(allow_backend_req: bool) {
         const QUEUES_NUM: usize = 2;
+        const BASE_FEATURES: u64 = 1 << VIRTIO_RING_F_EVENT_IDX;
+        const EXPECTED_FEATURES: u64 =
+            1 << VHOST_USER_F_PROTOCOL_FEATURES | 1 << VIRTIO_RING_F_EVENT_IDX;
 
         // First phase: Test normal usage, then take a snapshot and shutdown.
         let snapshot = {
@@ -1178,13 +1182,15 @@ mod tests {
                 // VMM side
                 let mut vmm_device = VhostUserFrontend::new(
                     DeviceType::Console,
-                    0,
+                    BASE_FEATURES,
                     client_connection,
                     vm_evt_wrtube,
                     None,
                     None,
                 )
                 .unwrap();
+
+                vmm_device.ack_features(BASE_FEATURES);
 
                 let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
                 let interrupt = Interrupt::new_for_test_with_msix();
@@ -1266,6 +1272,7 @@ mod tests {
 
             // VhostUserFrontend::activate()
             handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            assert_eq!(req_handler.as_ref().acked_features, EXPECTED_FEATURES);
             handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
             for _ in 0..QUEUES_NUM {
                 handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
@@ -1284,6 +1291,7 @@ mod tests {
 
             // VhostUserFrontend::activate()
             handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            assert_eq!(req_handler.as_ref().acked_features, EXPECTED_FEATURES);
             handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
             for _ in 0..QUEUES_NUM {
                 handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
@@ -1318,6 +1326,7 @@ mod tests {
 
             // VhostUserFrontend::virtio_wake()
             handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            assert_eq!(req_handler.as_ref().acked_features, EXPECTED_FEATURES);
             handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
             for _ in 0..QUEUES_NUM {
                 handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
@@ -1361,7 +1370,7 @@ mod tests {
                 // VMM side
                 let mut vmm_device = VhostUserFrontend::new(
                     DeviceType::Console,
-                    0,
+                    BASE_FEATURES,
                     client_connection,
                     vm_evt_wrtube,
                     None,
@@ -1416,6 +1425,12 @@ mod tests {
 
             // VhostUserFrontend::virtio_restore()
             handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            assert_eq!(
+                req_handler.as_ref().acked_features,
+                1 << VHOST_USER_F_PROTOCOL_FEATURES
+            );
+            handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+            assert_eq!(req_handler.as_ref().acked_features, EXPECTED_FEATURES);
             handle_request(&mut req_handler, FrontendReq::SET_DEVICE_STATE_FD).unwrap();
             handle_request(&mut req_handler, FrontendReq::CHECK_DEVICE_STATE).unwrap();
 
