@@ -71,3 +71,4 @@ ioctl_iow_nr!(
     0x16,
     gunyah_auth_desc
 );
+ioctl_io_nr!(GH_VM_CHECK_EXTENSION, GH_ANDROID_IOCTL_TYPE, 0x17);

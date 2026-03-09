@@ -23,6 +23,7 @@ pub const GH_VCPU_EXIT_UNKNOWN: u32 = 0;
 pub const GH_VCPU_EXIT_MMIO: u32 = 1;
 pub const GH_VCPU_EXIT_STATUS: u32 = 2;
 pub const GH_ANDROID_IOCTL_TYPE: u8 = 65u8;
+pub const GH_CAP_VCPU_TIMER_WAKEUP: u64 = 0;
 pub const GH_VM_BOOT_CONTEXT_REG_SHIFT: u32 = 8;
 pub type i8 = ::std::os::raw::c_schar;
 pub type u8 = ::std::os::raw::c_uchar;

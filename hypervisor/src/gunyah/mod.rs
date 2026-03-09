@@ -397,6 +397,19 @@ impl GunyahVm {
         })
     }
 
+    pub fn vcpu_timer_wakeup_supported(&self) -> bool {
+        // SAFETY: Safe because self.vm is a valid VM fd and the ioctl takes no
+        // pointer argument — the cap ID is passed directly as the unsigned long arg.
+        let ret = unsafe {
+            ioctl_with_val(
+                self,
+                GH_VM_CHECK_EXTENSION,
+                GH_CAP_VCPU_TIMER_WAKEUP as c_ulong,
+            )
+        };
+        ret > 0
+    }
+
     pub fn register_irqfd(&self, label: u32, evt: &Event, level: bool) -> Result<()> {
         let gh_fn_irqfd_arg = gh_fn_irqfd_arg {
             fd: evt.as_raw_descriptor() as u32,

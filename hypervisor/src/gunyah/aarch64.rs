@@ -116,6 +116,11 @@ impl VmAArch64 for GunyahVm {
 
         let vcpus_node = top_node.subnode_mut("vcpus")?;
         vcpus_node.set_prop("affinity", "proxy")?;
+        // The following properties applies for proxy scheduled vCPUs
+        // and this is not a Qualcomm Trusted VM (vm_id/pas_id not set).
+        if !(self.vm_id.is_some() && self.pas_id.is_some()) && self.vcpu_timer_wakeup_supported() {
+            vcpus_node.set_prop("no-timer-wakeups", ())?;
+        }
 
         let vdev_node = top_node.subnode_mut("vdevices")?;
         vdev_node.set_prop("generate", "/hypervisor")?;
