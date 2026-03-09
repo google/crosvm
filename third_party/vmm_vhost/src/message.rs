@@ -381,7 +381,7 @@ bitflags! {
         /// Support VHOST_USER_SET_DEVICE_STATE_FD and VHOST_USER_CHECK_DEVICE_STATE messages.
         const DEVICE_STATE = 0x0008_0000;
         /// Support shared memory regions.
-        const SHMEM_MAP = 0x0010_0000;
+        const SHMEM_MAP = 0x0020_0000;
     }
 }
 
