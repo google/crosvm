@@ -73,7 +73,8 @@ use vm_control::VmRequest;
 use vm_control::VmResponse;
 use vm_control::USB_CONTROL_MAX_PORTS;
 
-#[cfg(feature = "gpu")]
+#[repr(C)]
+#[derive(Clone, zerocopy::FromZeros)]
 pub struct CrosvmDisplayEntry {
     pub id: u32,
     pub width: u32,
@@ -83,61 +84,167 @@ pub struct CrosvmDisplayEntry {
     pub vertical_dpi: u32,
 }
 
-#[cfg(feature = "gpu")]
-pub fn gpu_display_add(
-    socket_path: &Path,
+// Must match `VIRTIO_GPU_MAX_SCANOUTS` in `devices/src/virtio/gpu/protocol.rs`
+pub const CROSVM_MAX_DISPLAYS: usize = 16;
+
+/// Simply returns the maximum possible number of GPU displays
+#[no_mangle]
+pub extern "C" fn crosvm_client_max_gpu_displays() -> usize {
+    CROSVM_MAX_DISPLAYS
+}
+
+/// Adds a new display to the crosvm instance whose control socket is listening on `socket_path`.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_gpu_display_add(
+    socket_path: *const c_char,
     width: u32,
     height: u32,
     refresh_rate: u32,
     horizontal_dpi: u32,
     vertical_dpi: u32,
-) -> std::result::Result<(), String> {
-    let mode = DisplayMode::Windowed(width, height);
-    let params = DisplayParameters::new(
-        mode,
-        false, // hidden
-        refresh_rate,
-        horizontal_dpi,
-        vertical_dpi,
-    );
-    let result = do_gpu_display_add(socket_path, vec![params]).map_err(|e| e.to_string())?;
-    match result {
-        GpuControlResult::DisplaysUpdated => Ok(()),
-        other => Err(format!("Unexpected response: {other}")),
-    }
+) -> bool {
+    catch_unwind(|| {
+        #[cfg(feature = "gpu")]
+        {
+            let Some(socket_path) = validate_socket_path(socket_path) else {
+                return false;
+            };
+            let mode = DisplayMode::Windowed(width, height);
+            let params = DisplayParameters::new(
+                mode,
+                false, // hidden
+                refresh_rate,
+                horizontal_dpi,
+                vertical_dpi,
+            );
+            let Ok(result) = do_gpu_display_add(socket_path, vec![params]) else {
+                return false;
+            };
+            matches!(result, GpuControlResult::DisplaysUpdated)
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            let _ = (
+                socket_path,
+                width,
+                height,
+                refresh_rate,
+                horizontal_dpi,
+                vertical_dpi,
+            );
+            false
+        }
+    })
+    .unwrap_or(false)
 }
 
-#[cfg(feature = "gpu")]
-pub fn gpu_display_list(
-    socket_path: &Path,
-) -> std::result::Result<Vec<CrosvmDisplayEntry>, String> {
-    let result = do_gpu_display_list(socket_path).map_err(|e| e.to_string())?;
-    match result {
-        GpuControlResult::DisplayList { displays } => Ok(displays
-            .into_iter()
-            .map(|(id, params)| {
+/// Returns all displays attached to the crosvm instance whose control socket is listening on
+/// `socket_path`.
+///
+/// The function returns the amount of entries written.
+/// # Arguments
+///
+/// * `socket_path` - Path to the crosvm control socket
+/// * `entries` - Pointer to an array of `CrosvmDisplayEntry` where the details about the attached
+///   displays will be written to
+/// * `entries_length` - Amount of entries in the array specified by `entries`
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a C
+/// string that is valid and for reads and not modified for the duration of the call. `entries`
+/// should be a valid pointer to an array of `CrosvmDisplayEntry` valid for writes that contains at
+/// least `entries_length` elements and is not externally modified for the duration of this call.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_gpu_display_list(
+    socket_path: *const c_char,
+    entries: *mut CrosvmDisplayEntry,
+    entries_length: ssize_t,
+) -> ssize_t {
+    catch_unwind(|| {
+        #[cfg(feature = "gpu")]
+        {
+            if entries.is_null() {
+                return -1;
+            }
+            let Some(socket_path) = validate_socket_path(socket_path) else {
+                return -1;
+            };
+            let Ok(GpuControlResult::DisplayList { displays }) = do_gpu_display_list(socket_path)
+            else {
+                return -1;
+            };
+
+            let limit = usize::try_from(entries_length).unwrap_or(0);
+            if limit == 0 {
+                return 0;
+            }
+            let cnt = limit.min(displays.len());
+            // SAFETY: checked that `entries` is not null and `limit` is less than or equal to
+            // `entries_length`.
+            let entries_slice = unsafe {
+                std::slice::from_raw_parts_mut(entries as *mut CrosvmDisplayEntry, limit)
+            };
+            for (entry, (id, params)) in entries_slice.iter_mut().zip(displays) {
                 let (width, height) = params.get_window_size();
-                CrosvmDisplayEntry {
+                *entry = CrosvmDisplayEntry {
                     id,
                     width,
                     height,
                     refresh_rate: params.refresh_rate,
                     horizontal_dpi: params.horizontal_dpi(),
                     vertical_dpi: params.vertical_dpi(),
-                }
-            })
-            .collect()),
-        other => Err(format!("Unexpected response: {other}")),
-    }
+                };
+            }
+            cnt as ssize_t
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            let _ = (socket_path, entries, entries_length);
+            -1
+        }
+    })
+    .unwrap_or(-1)
 }
 
-#[cfg(feature = "gpu")]
-pub fn gpu_display_remove(socket_path: &Path, display_id: u32) -> std::result::Result<(), String> {
-    let result = do_gpu_display_remove(socket_path, vec![display_id]).map_err(|e| e.to_string())?;
-    match result {
-        GpuControlResult::DisplaysUpdated => Ok(()),
-        other => Err(format!("Unexpected response: {other}")),
-    }
+/// Removes a display from the crosvm instance whose control socket is listening on `socket_path`.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` should be a non-null pointer to a
+/// C string that is valid for reads and not modified for the duration of the call.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_gpu_display_remove(
+    socket_path: *const c_char,
+    display_id: u32,
+) -> bool {
+    catch_unwind(|| {
+        #[cfg(feature = "gpu")]
+        {
+            let Some(socket_path) = validate_socket_path(socket_path) else {
+                return false;
+            };
+            let Ok(result) = do_gpu_display_remove(socket_path, vec![display_id]) else {
+                return false;
+            };
+            matches!(result, GpuControlResult::DisplaysUpdated)
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            let _ = (socket_path, display_id);
+            false
+        }
+    })
+    .unwrap_or(false)
 }
 
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;

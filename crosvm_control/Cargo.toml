@@ -19,6 +19,7 @@ base = { workspace = true }
 libc = { workspace = true }
 swap = { path = "../swap", default-features = false }
 vm_control = { workspace = true, features = [ "balloon" ] }
+zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [build-dependencies]
 anyhow = { workspace = true }

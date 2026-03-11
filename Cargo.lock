@@ -951,6 +951,7 @@ dependencies = [
  "swap",
  "tempfile",
  "vm_control",
+ "zerocopy 0.8.14",
 ]
 
 [[package]]
