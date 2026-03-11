@@ -42,7 +42,7 @@ fn main() {
         .allowlist_function("avcodec_.*")
         .allowlist_function("sws_.*")
         .allowlist_function("av_image_.*")
-        .allowlist_var("FF_PROFILE.*")
+        .allowlist_var("AV_PROFILE.*")
         .allowlist_var("AV_.*")
         .allowlist_var("AVERROR_.*")
         // Skip va_list and functions that use it to avoid ABI problems on aarch64.

@@ -263,7 +263,7 @@ impl Iterator for AvCodecIterator {
 pub struct AvProfile(&'static ffi::AVProfile);
 
 impl AvProfile {
-    /// Return the profile id, which can be matched against FF_PROFILE_*.
+    /// Return the profile id, which can be matched against AV_PROFILE_*.
     pub fn profile(&self) -> u32 {
         self.0.profile as u32
     }
@@ -305,11 +305,11 @@ impl Iterator for AvProfileIterator {
             None => None,
             Some(profile) => {
                 match profile.profile {
-                    ffi::FF_PROFILE_UNKNOWN => None,
+                    ffi::AV_PROFILE_UNKNOWN => None,
                     _ => {
                         // SAFETY:
                         // Safe because we have been initialized to a static, valid profiles array
-                        // which is terminated by FF_PROFILE_UNKNOWN.
+                        // which is terminated by AV_PROFILE_UNKNOWN.
                         self.0 = unsafe { self.0.offset(1) };
                         Some(AvProfile(profile))
                     }

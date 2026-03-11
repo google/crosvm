@@ -656,17 +656,17 @@ impl DecoderBackend for FfmpegDecoder {
                     profile_iter
                         .filter_map(|p| {
                             match p.profile() {
-                                FF_PROFILE_H264_BASELINE => Some(Profile::H264Baseline),
-                                FF_PROFILE_H264_MAIN => Some(Profile::H264Main),
-                                FF_PROFILE_H264_EXTENDED => Some(Profile::H264Extended),
-                                FF_PROFILE_H264_HIGH => Some(Profile::H264High),
-                                FF_PROFILE_H264_HIGH_10 => Some(Profile::H264High10),
-                                FF_PROFILE_H264_HIGH_422 => Some(Profile::H264High422),
-                                FF_PROFILE_H264_HIGH_444_PREDICTIVE => {
+                                AV_PROFILE_H264_BASELINE => Some(Profile::H264Baseline),
+                                AV_PROFILE_H264_MAIN => Some(Profile::H264Main),
+                                AV_PROFILE_H264_EXTENDED => Some(Profile::H264Extended),
+                                AV_PROFILE_H264_HIGH => Some(Profile::H264High),
+                                AV_PROFILE_H264_HIGH_10 => Some(Profile::H264High10),
+                                AV_PROFILE_H264_HIGH_422 => Some(Profile::H264High422),
+                                AV_PROFILE_H264_HIGH_444_PREDICTIVE => {
                                     Some(Profile::H264High444PredictiveProfile)
                                 }
-                                FF_PROFILE_H264_STEREO_HIGH => Some(Profile::H264StereoHigh),
-                                FF_PROFILE_H264_MULTIVIEW_HIGH => Some(Profile::H264MultiviewHigh),
+                                AV_PROFILE_H264_STEREO_HIGH => Some(Profile::H264StereoHigh),
+                                AV_PROFILE_H264_MULTIVIEW_HIGH => Some(Profile::H264MultiviewHigh),
                                 // TODO H264ScalableBaseline and H264ScalableHigh have no libav
                                 // equivalents?
                                 _ => None,
@@ -685,18 +685,18 @@ impl DecoderBackend for FfmpegDecoder {
                 }
                 Format::VP9 => profile_iter
                     .filter_map(|p| match p.profile() {
-                        FF_PROFILE_VP9_0 => Some(Profile::VP9Profile0),
-                        FF_PROFILE_VP9_1 => Some(Profile::VP9Profile1),
-                        FF_PROFILE_VP9_2 => Some(Profile::VP9Profile2),
-                        FF_PROFILE_VP9_3 => Some(Profile::VP9Profile3),
+                        AV_PROFILE_VP9_0 => Some(Profile::VP9Profile0),
+                        AV_PROFILE_VP9_1 => Some(Profile::VP9Profile1),
+                        AV_PROFILE_VP9_2 => Some(Profile::VP9Profile2),
+                        AV_PROFILE_VP9_3 => Some(Profile::VP9Profile3),
                         _ => None,
                     })
                     .collect(),
                 Format::Hevc => profile_iter
                     .filter_map(|p| match p.profile() {
-                        FF_PROFILE_HEVC_MAIN => Some(Profile::HevcMain),
-                        FF_PROFILE_HEVC_MAIN_10 => Some(Profile::HevcMain10),
-                        FF_PROFILE_HEVC_MAIN_STILL_PICTURE => Some(Profile::HevcMainStillPicture),
+                        AV_PROFILE_HEVC_MAIN => Some(Profile::HevcMain),
+                        AV_PROFILE_HEVC_MAIN_10 => Some(Profile::HevcMain10),
+                        AV_PROFILE_HEVC_MAIN_STILL_PICTURE => Some(Profile::HevcMainStillPicture),
                         _ => None,
                     })
                     .collect(),
