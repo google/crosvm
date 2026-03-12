@@ -90,7 +90,8 @@ impl UsbPort {
         }
     }
 
-    fn port_id(&self) -> u8 {
+    /// Get the port ID.
+    pub fn port_id(&self) -> u8 {
         self.port_id
     }
 
@@ -118,7 +119,8 @@ impl UsbPort {
         self.backend_device.lock()
     }
 
-    fn is_attached(&self) -> bool {
+    /// Returns true if a backend device is currently attached to this port.
+    pub fn is_attached(&self) -> bool {
         self.backend_device().is_some()
     }
 
@@ -236,7 +238,7 @@ impl UsbHub {
     }
 
     /// Connect backend to next empty port.
-    pub fn connect_backend(&self, backend: Arc<Mutex<BackendDeviceType>>) -> Result<u8> {
+    pub fn connect_backend(&self, backend: Arc<Mutex<BackendDeviceType>>) -> Result<Arc<UsbPort>> {
         for port in &self.ports {
             if port.is_attached() {
                 continue;
@@ -247,7 +249,7 @@ impl UsbHub {
             let port_id = port.port_id();
             port.attach(backend)
                 .map_err(|reason| Error::Attach { port_id, reason })?;
-            return Ok(port_id);
+            return Ok(port.clone());
         }
         Err(Error::AllPortsAttached)
     }

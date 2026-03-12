@@ -12,6 +12,9 @@ use std::os::raw::c_int;
 use std::os::raw::c_uchar;
 use std::os::raw::c_uint;
 use std::os::raw::c_void;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Weak;
 
@@ -27,9 +30,11 @@ use base::Protection;
 use base::RawDescriptor;
 use data_model::vec_with_array_field;
 use libc::EAGAIN;
+use libc::ECONNRESET;
 use libc::ENODEV;
 use libc::ENOENT;
 use libc::EPIPE;
+use libc::ESHUTDOWN;
 use sync::Mutex;
 
 use crate::control_request_type;
@@ -113,6 +118,11 @@ pub struct Device {
     fd: Arc<File>,
     device_descriptor_tree: DeviceDescriptorTree,
     dma_buffer: Option<ManagedDmaBuffer>,
+    in_flight_transfers: AtomicUsize,
+    detaching: AtomicBool,
+    is_lost: AtomicBool,
+    is_unrecoverable: AtomicBool,
+    cancel_lock: Arc<Mutex<()>>,
 }
 
 /// Transfer contains the information necessary to submit a USB request
@@ -132,6 +142,7 @@ pub struct Transfer {
 pub struct TransferHandle {
     weak_transfer: std::sync::Weak<Transfer>,
     fd: std::sync::Weak<File>,
+    cancel_lock: Arc<Mutex<()>>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -157,6 +168,11 @@ impl Device {
             fd: Arc::new(fd),
             device_descriptor_tree,
             dma_buffer: None,
+            in_flight_transfers: AtomicUsize::new(0),
+            detaching: AtomicBool::new(false),
+            is_lost: AtomicBool::new(false),
+            is_unrecoverable: AtomicBool::new(false),
+            cancel_lock: Arc::new(Mutex::new(())),
         };
 
         let map = MemoryMappingBuilder::new(MMAP_SIZE)
@@ -251,6 +267,10 @@ impl Device {
     /// The transfer will be processed asynchronously by the device.
     /// Call `poll_transfers()` on this device to check for completed transfers.
     pub fn submit_transfer(&mut self, transfer: Transfer) -> Result<TransferHandle> {
+        if self.is_detaching() || self.is_device_lost() || self.is_unrecoverable() {
+            return Err(Error::NoDevice);
+        }
+
         let mut rc_transfer = Arc::new(transfer);
 
         // Technically, Arc::from_raw() should only be called on pointers returned
@@ -276,14 +296,25 @@ impl Device {
         // Safe because we control the lifetime of the URB via Arc::into_raw() and
         // Arc::from_raw() in poll_transfers().
         unsafe {
-            self.ioctl_with_mut_ptr(usb_sys::USBDEVFS_SUBMITURB, urb_ptr)?;
+            if let Err(e) = self.ioctl_with_mut_ptr(usb_sys::USBDEVFS_SUBMITURB, urb_ptr) {
+                // Reclaim the leaked Arc reference if submission failed.
+                let leaked_transfer = Arc::from_raw(raw_transfer as *const Transfer);
+                if let TransferBuffer::Dma(buf) = &leaked_transfer.buffer {
+                    if self.release_dma_buffer(buf.clone()).is_err() {
+                        warn!("failed to release dma buffer");
+                    }
+                }
+                return Err(e);
+            }
         }
 
+        let _ = self.in_flight_transfers.fetch_add(1, Ordering::SeqCst);
         let weak_transfer = Arc::downgrade(&rc_transfer);
 
         Ok(TransferHandle {
             weak_transfer,
             fd: Arc::downgrade(&self.fd),
+            cancel_lock: self.cancel_lock.clone(),
         })
     }
 
@@ -300,7 +331,17 @@ impl Device {
             match result {
                 // EAGAIN indicates no more completed transfers right now.
                 Err(Error::IoctlFailed(_nr, e)) if e.errno() == EAGAIN => break,
-                Err(e) => return Err(e),
+                // ENODEV/ESHUTDOWN indicates the device is gone.
+                Err(Error::IoctlFailed(_nr, e))
+                    if e.errno() == ENODEV || e.errno() == ESHUTDOWN =>
+                {
+                    self.is_lost.store(true, Ordering::SeqCst);
+                    break;
+                }
+                Err(e) => {
+                    self.is_unrecoverable.store(true, Ordering::SeqCst);
+                    return Err(e);
+                }
                 Ok(_) => {}
             }
 
@@ -308,15 +349,23 @@ impl Device {
                 break;
             }
 
-            let rc_transfer: Arc<Transfer> =
-        // SAFETY:
-            // Safe because the URB usercontext field is always set to the result of
-            // Arc::into_raw() in submit_transfer().
-                unsafe { Arc::from_raw((*urb_ptr).usercontext as *const Transfer) };
+            let _ = self.in_flight_transfers.fetch_sub(1, Ordering::SeqCst);
 
-            // There should always be exactly one strong reference to rc_transfer,
-            // so try_unwrap() should never fail.
-            let mut transfer = Arc::try_unwrap(rc_transfer).map_err(|_| Error::RcUnwrapFailed)?;
+            let mut transfer = {
+                // Synchronize with TransferHandle::cancel to ensure it drops its strong Arc
+                // reference before we attempt try_unwrap.
+                let _guard = self.cancel_lock.lock();
+
+                let rc_transfer: Arc<Transfer> =
+            // SAFETY:
+                // Safe because the URB usercontext field is always set to the result of
+                // Arc::into_raw() in submit_transfer().
+                    unsafe { Arc::from_raw((*urb_ptr).usercontext as *const Transfer) };
+
+                // There should always be exactly one strong reference to rc_transfer because
+                // cancel_lock guarantees cancel() is not holding a reference.
+                Arc::try_unwrap(rc_transfer).map_err(|_| Error::RcUnwrapFailed)?
+            };
 
             let dmabuf = match &mut transfer.buffer {
                 TransferBuffer::Dma(buf) => Some(buf.clone()),
@@ -335,6 +384,40 @@ impl Device {
         }
 
         Ok(())
+    }
+
+    fn no_in_flight_transfer(&self) -> bool {
+        self.in_flight_transfers.load(Ordering::SeqCst) == 0
+    }
+
+    fn is_detaching(&self) -> bool {
+        self.detaching.load(Ordering::SeqCst)
+    }
+
+    /// Return true if the device is lost.
+    pub fn is_device_lost(&self) -> bool {
+        self.is_lost.load(Ordering::SeqCst)
+    }
+
+    /// Request the device to get ready for detaching. Check the status with ready_to_detach().
+    pub fn set_detaching(&self) {
+        self.detaching.store(true, Ordering::SeqCst);
+    }
+
+    /// Check if the device is ready to be detached, i.e., if we have reaped all the transfers
+    /// we've submitted to the host. Returns true when ready.
+    pub fn ready_to_detach(&self) -> bool {
+        self.is_detaching()
+            && (self.is_device_lost() || self.is_unrecoverable() || self.no_in_flight_transfer())
+    }
+
+    fn is_unrecoverable(&self) -> bool {
+        self.is_unrecoverable.load(Ordering::SeqCst)
+    }
+
+    /// Drop the DMA buffer.
+    pub fn drop_dma_buffer(&mut self) {
+        self.dma_buffer.take();
     }
 
     /// Perform a USB port reset to reinitialize a device.
@@ -654,9 +737,9 @@ impl Transfer {
         let status = self.urb().status;
         if status == 0 {
             TransferStatus::Completed
-        } else if status == -ENODEV {
+        } else if status == -ENODEV || status == -ESHUTDOWN {
             TransferStatus::NoDevice
-        } else if status == -ENOENT {
+        } else if status == -ENOENT || status == -ECONNRESET {
             TransferStatus::Cancelled
         } else if status == -EPIPE {
             TransferStatus::Stalled
@@ -682,6 +765,8 @@ impl TransferHandle {
     /// Safe to call even if the transfer has already completed;
     /// `Error::TransferAlreadyCompleted` will be returned in this case.
     pub fn cancel(&self) -> Result<()> {
+        let _guard = self.cancel_lock.lock();
+
         let rc_transfer = match self.weak_transfer.upgrade() {
             None => return Err(Error::TransferAlreadyCompleted),
             Some(rc_transfer) => rc_transfer,

@@ -20,12 +20,13 @@ use vm_control::UsbControlCommand;
 use vm_control::UsbControlResult;
 use vm_control::USB_CONTROL_MAX_PORTS;
 
-use crate::usb::backend::device::BackendDevice;
+use crate::usb::backend::device::BackendDeviceType;
 use crate::usb::backend::device::DeviceState;
 use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
 use crate::usb::backend::fido_backend::fido_provider::attach_security_key;
 use crate::usb::backend::host_backend::host_backend_device_provider::attach_host_backend_device;
+use crate::usb::backend::utils::UsbUtilEventHandler;
 use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device::XhciBackendDevice;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
@@ -135,12 +136,7 @@ pub struct ProviderInner {
     usb_hub: Arc<UsbHub>,
 
     // Map of USB hub port number to per-device context.
-    devices: Mutex<HashMap<u8, DeviceContext>>,
-}
-
-struct DeviceContext {
-    event_handler: Arc<dyn EventHandler>,
-    device: Arc<Mutex<dyn BackendDevice>>,
+    devices: Mutex<HashMap<u8, Arc<UsbUtilEventHandler>>>,
 }
 
 impl ProviderInner {
@@ -161,9 +157,36 @@ impl ProviderInner {
         }
     }
 
+    fn attach_backend(
+        &self,
+        device: Arc<Mutex<BackendDeviceType>>,
+        event_handler: Arc<UsbUtilEventHandler>,
+        event_type: EventType,
+    ) -> UsbControlResult {
+        let hub_port = match self.usb_hub.connect_backend(device.clone()) {
+            Ok(port) => port,
+            Err(e) => {
+                error!("failed to connect device to hub: {}", e);
+                return UsbControlResult::NoAvailablePort;
+            }
+        };
+
+        let port_id = hub_port.port_id();
+        if let Err(e) = event_handler.activate(event_type, Arc::downgrade(&hub_port)) {
+            error!("failed to activate USB event handler: {}", e);
+            let _ = self.usb_hub.disconnect_port(port_id);
+            return UsbControlResult::FailedToOpenDevice;
+        }
+
+        self.devices.lock().insert(port_id, event_handler);
+        UsbControlResult::Ok { port: port_id }
+    }
+
     fn handle_attach_device(&self, usb_file: File) -> UsbControlResult {
         let (host_device, event_handler) = match attach_host_backend_device(
             usb_file,
+            self.event_loop.clone(),
+            self.job_queue.clone(),
             DeviceState::new(self.fail_handle.clone(), self.job_queue.clone()),
         ) {
             Ok((host_device, event_handler)) => (host_device, event_handler),
@@ -173,55 +196,23 @@ impl ProviderInner {
             }
         };
 
-        if let Err(e) = self.event_loop.add_event(
-            &*host_device.lock(),
-            EventType::ReadWrite,
-            Arc::downgrade(&event_handler),
-        ) {
-            error!("failed to add USB device to event handler: {}", e);
-            return UsbControlResult::FailedToOpenDevice;
-        }
-
         // Resetting the device is used to make sure it is in a known state, but it may
         // still function if the reset fails.
         if let Err(e) = host_device.lock().reset() {
-            error!("failed to reset device after attach: {:?}", e);
+            error!("failed to reset device during attach: {:?}", e);
         }
 
-        let device_ctx = DeviceContext {
-            event_handler,
-            device: host_device.clone(),
-        };
-
-        let port = self.usb_hub.connect_backend(host_device);
-        match port {
-            Ok(port) => {
-                self.devices.lock().insert(port, device_ctx);
-                UsbControlResult::Ok { port }
-            }
-            Err(e) => {
-                error!("failed to connect device to hub: {}", e);
-                UsbControlResult::NoAvailablePort
-            }
-        }
+        self.attach_backend(host_device, event_handler, EventType::ReadWrite)
     }
 
     fn handle_detach_device(&self, port: u8) -> UsbControlResult {
         match self.usb_hub.disconnect_port(port) {
             Ok(()) => {
-                if let Some(device_ctx) = self.devices.lock().remove(&port) {
-                    let _ = device_ctx.event_handler.on_event();
-
-                    if let Err(e) = device_ctx
-                        .device
-                        .lock()
-                        .detach_event_handler(&self.event_loop)
-                    {
-                        error!(
-                            "failed to remove poll change handler from event loop: {}",
-                            e
-                        );
-                    }
+                // The device enters a detaching state in hub.disconnect_port(). We'll remove the
+                // event handler from the event loop in on_event() to properly wait and clean-up
+                // all the in-flight transfers.
+                if let Some(event_handler) = self.devices.lock().remove(&port) {
+                    event_handler.signal_detach();
                 }
                 UsbControlResult::Ok { port }
             }
@@ -236,6 +227,7 @@ impl ProviderInner {
         let (fido_device, event_handler) = match attach_security_key(
             hidraw,
             self.event_loop.clone(),
+            self.job_queue.clone(),
             DeviceState::new(self.fail_handle.clone(), self.job_queue.clone()),
         ) {
             Ok((fido_device, event_handler)) => (fido_device, event_handler),
@@ -248,38 +240,14 @@ impl ProviderInner {
             }
         };
 
-        if let Err(e) = self.event_loop.add_event(
-            &*fido_device.lock(),
-            EventType::Read,
-            Arc::downgrade(&event_handler),
-        ) {
-            error!("failed to add fido device to event handler: {}", e);
-            return UsbControlResult::FailedToOpenDevice;
-        }
-
-        let device_ctx = DeviceContext {
-            event_handler,
-            device: fido_device.clone(),
-        };
-
         // Reset the device to make sure it's in a usable state.
         // Resetting it also stops polling on the FD, since we only poll when there is an active
         // transaction.
         if let Err(e) = fido_device.lock().reset() {
-            error!("failed to reset fido device after attach: {:?}", e);
+            error!("failed to reset fido device during attach: {:?}", e);
         }
 
-        let port = self.usb_hub.connect_backend(fido_device);
-        match port {
-            Ok(port) => {
-                self.devices.lock().insert(port, device_ctx);
-                UsbControlResult::Ok { port }
-            }
-            Err(e) => {
-                error!("failed to connect device to hub: {}", e);
-                UsbControlResult::NoAvailablePort
-            }
-        }
+        self.attach_backend(fido_device, event_handler, EventType::Read)
     }
 
     fn handle_list_devices(&self, ports: [u8; USB_CONTROL_MAX_PORTS]) -> UsbControlResult {

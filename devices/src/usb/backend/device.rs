@@ -221,6 +221,19 @@ impl BackendDevice for BackendDeviceType {
             config_descriptor
         )
     }
+
+    fn is_lost(&self) -> bool {
+        multi_dispatch!(self, BackendDeviceType, HostDevice FidoDevice, is_lost)
+    }
+
+    fn can_finalize(&self) -> bool {
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice FidoDevice,
+            can_finalize
+        )
+    }
 }
 
 impl XhciBackendDevice for BackendDeviceType {
@@ -810,4 +823,10 @@ pub trait BackendDevice: Sync + Send {
     fn clear_feature(&mut self, value: u16, index: u16) -> Result<TransferStatus>;
     /// Creates endpoints for the device with the given config descriptor tree.
     fn create_endpoints(&mut self, config_descriptor: &ConfigDescriptorTree) -> Result<()>;
+
+    /// Returns true if the device is physically lost/unplugged.
+    fn is_lost(&self) -> bool;
+    /// Returns true if the backend device has no pending asynchronous operations and host
+    /// resources can be safely released.
+    fn can_finalize(&self) -> bool;
 }

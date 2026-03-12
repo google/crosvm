@@ -160,12 +160,6 @@ impl HostDevice {
     }
 }
 
-impl Drop for HostDevice {
-    fn drop(&mut self) {
-        self.release_interfaces();
-    }
-}
-
 impl AsRawDescriptor for HostDevice {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.device.lock().as_raw_descriptor()
@@ -316,6 +310,14 @@ impl BackendDevice for HostDevice {
         device_state.write().unwrap().endpoints = endpoints;
         Ok(())
     }
+
+    fn is_lost(&self) -> bool {
+        self.device.lock().is_device_lost()
+    }
+
+    fn can_finalize(&self) -> bool {
+        self.device.lock().ready_to_detach()
+    }
 }
 
 impl XhciBackendDevice for HostDevice {
@@ -385,7 +387,18 @@ impl XhciBackendDevice for HostDevice {
     }
 
     fn stop(&mut self) {
-        // NOOP, nothing to do
+        let device = self.device.lock();
+        device.set_detaching();
+
+        // Actively release interfaces to force the host kernel to cancel all in-flight URBs
+        // immediately. This prevents lingering sessions from blocking subsequent attach requests
+        // for the same physical device.
+        for &ifnum in &self.claimed_interfaces {
+            // We ignore errors here because the device or interface might have been physically
+            // removed already.
+            let _ = device.release_interface(ifnum);
+        }
+        self.claimed_interfaces.clear();
     }
 }
 
