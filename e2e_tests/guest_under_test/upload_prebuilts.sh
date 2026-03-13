@@ -33,15 +33,15 @@ function upload() {
     local local_rootfs=${cargo_target}/guest_under_test/${arch}/rootfs
 
     echo "Checking if prebuilts already exist."
-    gsutil stat "${remote_bzimage}" && prebuilts_exist_error
-    gsutil stat "${remote_rootfs}" && prebuilts_exist_error
+    gcloud storage objects list --stat --fetch-encrypted-object-hashes "${remote_bzimage}" && prebuilts_exist_error
+    gcloud storage objects list --stat --fetch-encrypted-object-hashes "${remote_rootfs}" && prebuilts_exist_error
 
     echo "Building rootfs and kernel."
     make ARCH=${arch} "${local_bzimage}" "${local_rootfs}"
 
     echo "Uploading files."
-    gsutil cp -n "${local_bzimage}" "${remote_bzimage}"
-    gsutil cp -n "${local_rootfs}" "${remote_rootfs}"
+    gcloud storage cp --no-clobber "${local_bzimage}" "${remote_bzimage}"
+    gcloud storage cp --no-clobber "${local_rootfs}" "${remote_rootfs}"
 }
 
 upload x86_64
