@@ -435,7 +435,6 @@ class Command(object):
             stderr=stderr,
             stdin=self.__stdin_stream(),
             env={**os.environ, **self.env_vars},
-            check=check,
             text=True,
         )
         if very_verbose():
