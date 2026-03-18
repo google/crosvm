@@ -11,13 +11,12 @@ use std::os::raw::c_uint;
 use std::path::Path;
 
 use base::ioctl_iow_nr;
-use base::ioctl_with_ptr;
+use base::ioctl_with_ref;
 use base::pagesize;
 use base::FromRawDescriptor;
 use base::MappedRegion;
 use base::SafeDescriptor;
-use data_model::flexible_array_impl;
-use data_model::FlexibleArrayWrapper;
+use zerocopy::FromZeros;
 
 use crate::udmabuf::UdmabufDriverTrait;
 use crate::udmabuf::UdmabufError;
@@ -36,9 +35,6 @@ ioctl_iow_nr!(
     0x43,
     udmabuf_create_list
 );
-
-flexible_array_impl!(udmabuf_create_list, udmabuf_create_item, count, list);
-type UdmabufCreateList = FlexibleArrayWrapper<udmabuf_create_list, udmabuf_create_item>;
 
 // Returns absolute offset within the memory corresponding to a particular guest address.
 // This offset is not relative to a particular mapping.
@@ -97,8 +93,11 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
     ) -> UdmabufResult<SafeDescriptor> {
         let pgsize = pagesize();
 
-        let mut list = UdmabufCreateList::new(iovecs.len());
-        let items = list.mut_entries_slice();
+        let mut list =
+            udmabuf_create_list::<[udmabuf_create_item]>::new_box_zeroed_with_elems(iovecs.len())
+                .unwrap();
+        list.flags = UDMABUF_FLAGS_CLOEXEC;
+        list.count = iovecs.len().try_into().unwrap();
         for (i, &(addr, len)) in iovecs.iter().enumerate() {
             let offset = memory_offset(mem, addr, len as u64)?;
 
@@ -107,19 +106,15 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
             }
 
             // `unwrap` can't panic if `memory_offset obove succeeds.
-            items[i].memfd = mem.shm_region(addr).unwrap().as_raw_descriptor() as u32;
-            items[i].__pad = 0;
-            items[i].offset = offset;
-            items[i].size = len as u64;
+            list.list[i].memfd = mem.shm_region(addr).unwrap().as_raw_descriptor() as u32;
+            list.list[i].__pad = 0;
+            list.list[i].offset = offset;
+            list.list[i].size = len as u64;
         }
 
         // SAFETY:
         // Safe because we always allocate enough space for `udmabuf_create_list`.
-        let fd = unsafe {
-            let create_list = list.as_mut_ptr();
-            (*create_list).flags = UDMABUF_FLAGS_CLOEXEC;
-            ioctl_with_ptr(&self.driver_fd, UDMABUF_CREATE_LIST, create_list)
-        };
+        let fd = unsafe { ioctl_with_ref(&self.driver_fd, UDMABUF_CREATE_LIST, &*list) };
 
         if fd < 0 {
             return Err(UdmabufError::DmabufCreationFail(IoError::last_os_error()));

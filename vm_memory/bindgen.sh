@@ -11,8 +11,11 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source tools/impl/bindgen-common.sh
 
 bindgen_generate \
+    --flexarray-dst \
     --allowlist-type='udmabuf_.*' \
     --allowlist-var="UDMABUF_.*" \
+    --with-derive-custom "udmabuf_create_list=zerocopy::FromBytes,zerocopy::Immutable,zerocopy::KnownLayout" \
+    --with-derive-custom "udmabuf_create_item=zerocopy::FromBytes,zerocopy::Immutable,zerocopy::KnownLayout" \
     "${BINDGEN_LINUX_X86_HEADERS}/include/linux/udmabuf.h" \
     | replace_linux_int_types | rustfmt \
     > vm_memory/src/udmabuf_bindings.rs
