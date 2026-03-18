@@ -248,6 +248,7 @@ impl GunyahVm {
         // SAFETY:
         // Safe because we verify that ret is valid and we own the fd.
         let vm_descriptor = unsafe { SafeDescriptor::from_raw_descriptor(ret) };
+        let mut cma_mapped = false;
         for region in guest_mem.regions() {
             let lend = if cfg.protection_type.isolates_memory() {
                 match region.options.purpose {
@@ -262,38 +263,48 @@ impl GunyahVm {
             } else {
                 false
             };
+            // For QTVMs, the first provided file-backed region is always CMA and must be
+            // mapped with GH_VM_ANDROID_MAP_CMA_MEM. Subsequent file-backed regions (if any)
+            // are mapped normally. The `cma_mapped` flag tracks whether the CMA region has
+            // already been handled.
             if let Some(file_backed) = &region.options.file_backed {
-                map_cma_region(
-                    &vm_descriptor,
-                    region.index as MemSlot,
-                    lend,
-                    !file_backed.writable,
-                    region.guest_addr.offset(),
-                    region.shm.as_raw_descriptor().try_into().unwrap(),
-                    region.size.try_into().unwrap(),
-                    region.shm_offset,
-                )?;
-            } else if lend {
-                // SAFETY:
-                // Safe because the guest regions are guarnteed not to overlap.
-                unsafe {
+                if !cma_mapped {
+                    map_cma_region(
+                        &vm_descriptor,
+                        region.index as MemSlot,
+                        lend,
+                        !file_backed.writable,
+                        region.guest_addr.offset(),
+                        region.shm.as_raw_descriptor().try_into().unwrap(),
+                        region.size.try_into().unwrap(),
+                        region.shm_offset,
+                    )?;
+                    cma_mapped = true;
+                    continue;
+                }
+            }
+            let read_only = region
+                .options
+                .file_backed
+                .as_ref()
+                .is_some_and(|fb| !fb.writable);
+            // SAFETY:
+            // Safe because the guest regions are guaranteed not to overlap.
+            unsafe {
+                if lend {
                     android_lend_user_memory_region(
                         &vm_descriptor,
                         region.index as MemSlot,
-                        false,
+                        read_only,
                         region.guest_addr.offset(),
                         region.size.try_into().unwrap(),
                         region.host_addr as *mut u8,
                     )?;
-                }
-            } else {
-                // SAFETY:
-                // Safe because the guest regions are guarnteed not to overlap.
-                unsafe {
+                } else {
                     set_user_memory_region(
                         &vm_descriptor,
                         region.index as MemSlot,
-                        false,
+                        read_only,
                         region.guest_addr.offset(),
                         region.size.try_into().unwrap(),
                         region.host_addr as *mut u8,
