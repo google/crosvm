@@ -8,9 +8,7 @@ use std::sync::Arc;
 use std::sync::MutexGuard;
 
 use anyhow::Context;
-use base::debug;
 use base::error;
-use base::info;
 use base::Error as SysError;
 use base::Event;
 use base::EventType;
@@ -43,9 +41,6 @@ type Result<T> = std::result::Result<T, Error>;
 enum RingBufferState {
     /// Running: RingBuffer is running, consuming transfer descriptor.
     Running,
-    /// Stopping: Some thread requested RingBuffer stop. It will stop when current descriptor is
-    /// handled.
-    Stopping,
     /// Stopped: RingBuffer already stopped.
     Stopped,
 }
@@ -53,26 +48,19 @@ enum RingBufferState {
 /// TransferDescriptorHandler handles transfer descriptor. User should implement this trait and
 /// build a ring buffer controller with the struct.
 pub trait TransferDescriptorHandler {
-    /// Process descriptor asynchronously, write complete_event when done.
+    /// Process descriptor asynchronously, signal trigger_event when ready to proceed.
     fn handle_transfer_descriptor(
         &self,
         descriptor: TransferDescriptor,
         complete_event: Event,
     ) -> anyhow::Result<()>;
 
-    /// Stop is called when trying to stop ring buffer controller. Returns true when stop must be
-    /// performed asynchronously. This happens because the handler is handling some descriptor
-    /// asynchronously, the stop callback of ring buffer controller must be called after the
-    /// `async` part is handled or canceled. If the TransferDescriptorHandler decide it could stop
-    /// immediately, it could return false.
-    /// For example, if a handler submitted a transfer but the transfer has not yet finished. Then
-    /// guest kernel requests to stop the ring buffer controller. Transfer descriptor handler will
-    /// return true, thus RingBufferController would transfer to Stopping state. It will be stopped
-    /// when all pending transfer completed.
-    /// On the other hand, if handler does not have any pending transfers, it would return false.
-    fn stop(&self) -> bool {
-        true
-    }
+    /// Cancel transfers. This is used to stop the ring activity as soon as possible when we
+    /// process a Stop Endpoint command.
+    /// xHCI spec 4.6.9 states we need to stop the USB activity for the pipe before sending the
+    /// completion event. Use the callback to ensure that all the in-flight transfers are gone
+    /// before sending the event, if the backend cannot immediately cancel them.
+    fn cancel_transfers(&self, _callback: RingBufferStopCallback) {}
 }
 
 /// RingBufferController owns a ring buffer. It lives on a event_loop. It will pop out transfer
@@ -80,7 +68,6 @@ pub trait TransferDescriptorHandler {
 pub struct RingBufferController<T: 'static + TransferDescriptorHandler> {
     name: String,
     state: Mutex<RingBufferState>,
-    stop_callback: Mutex<Vec<RingBufferStopCallback>>,
     ring_buffer: Mutex<RingBuffer>,
     handler: Mutex<T>,
     event_loop: Arc<EventLoop>,
@@ -108,7 +95,6 @@ where
         let controller = Arc::new(RingBufferController {
             name: name.clone(),
             state: Mutex::new(RingBufferState::Stopped),
-            stop_callback: Mutex::new(Vec::new()),
             ring_buffer: Mutex::new(RingBuffer::new(name, mem)),
             handler: Mutex::new(handler),
             event_loop: event_loop.clone(),
@@ -129,15 +115,9 @@ where
         self.ring_buffer.lock()
     }
 
-    /// Get dequeue pointer of the internal ring buffer.
-    pub fn get_dequeue_pointer(&self) -> GuestAddress {
-        self.lock_ring_buffer().get_dequeue_pointer()
-    }
-
     /// Get dequeue pointer and consumer cycle state of the ring buffer when it is stopped.
     // This function should only be called when stopping an endpoint, since it synchronizes the
     // internal dequeue pointers and the consumer cycle states.
-    #[allow(dead_code)]
     pub fn get_stopped_dequeue_state(&self) -> (GuestAddress, bool) {
         let mut locked = self.lock_ring_buffer();
         locked.synchronize_with_hardware();
@@ -152,11 +132,6 @@ where
         xhci_trace!("{}: set_dequeue_pointer({:x})", self.name, ptr.0);
         // Fast because this should only happen during xhci setup.
         self.lock_ring_buffer().set_dequeue_pointer(ptr);
-    }
-
-    /// Get consumer cycle state.
-    pub fn get_consumer_cycle_state(&self) -> bool {
-        self.lock_ring_buffer().get_consumer_cycle_state()
     }
 
     /// Set consumer cycle state.
@@ -182,16 +157,10 @@ where
     pub fn stop(&self, callback: RingBufferStopCallback) {
         xhci_trace!("stop {}", self.name);
         let mut state = self.state.lock();
-        if *state == RingBufferState::Stopped {
-            info!("xhci: {} is already stopped", self.name);
-            return;
-        }
-        if self.handler.lock().stop() {
-            *state = RingBufferState::Stopping;
-            self.stop_callback.lock().push(callback);
-        } else {
-            *state = RingBufferState::Stopped;
-        }
+        // Always issue the cancel, because the ring can also be Stopped when it has submitted all
+        // the transfer requests in the ring but it hasn't reaped them yet.
+        self.handler.lock().cancel_transfers(callback);
+        *state = RingBufferState::Stopped;
     }
 
     /// Report completion of TRB to the ring buffer.
@@ -226,12 +195,6 @@ where
 
         match *state {
             RingBufferState::Stopped => return Ok(()),
-            RingBufferState::Stopping => {
-                debug!("xhci: {}: stopping ring buffer controller", self.name);
-                *state = RingBufferState::Stopped;
-                self.stop_callback.lock().clear();
-                return Ok(());
-            }
             RingBufferState::Running => {}
         }
 
@@ -244,7 +207,6 @@ where
             Some(t) => t,
             None => {
                 *state = RingBufferState::Stopped;
-                self.stop_callback.lock().clear();
                 return Ok(());
             }
         };
@@ -308,6 +270,8 @@ mod tests {
             *locked = descriptor.iter().map(|atrb| atrb.gpa).collect();
             Ok(())
         }
+
+        fn cancel_transfers(&self, _callback: RingBufferStopCallback) {}
     }
 
     fn setup_mem() -> GuestMemory {

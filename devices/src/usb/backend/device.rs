@@ -42,6 +42,7 @@ use crate::usb::xhci::scatter_gather_buffer::ScatterGatherBuffer;
 use crate::usb::xhci::xhci_backend_device::BackendType;
 use crate::usb::xhci::xhci_backend_device::UsbDeviceAddress;
 use crate::usb::xhci::xhci_backend_device::XhciBackendDevice;
+use crate::usb::xhci::xhci_transfer::Error as XhciTransferError;
 use crate::usb::xhci::xhci_transfer::XhciTransfer;
 use crate::usb::xhci::xhci_transfer::XhciTransferState;
 use crate::usb::xhci::xhci_transfer::XhciTransferType;
@@ -219,6 +220,15 @@ impl BackendDevice for BackendDeviceType {
             HostDevice FidoDevice,
             create_endpoints,
             config_descriptor
+        )
+    }
+
+    fn reset_control_transfer_state(&mut self) {
+        multi_dispatch!(
+            self,
+            BackendDeviceType,
+            HostDevice FidoDevice,
+            reset_control_transfer_state
         )
     }
 
@@ -580,7 +590,7 @@ impl BackendDeviceType {
                     .create_usb_request_setup()
                     .map_err(Error::CreateUsbRequestSetup)?;
                 if control_transfer_state.ctl_ep_state != ControlEndpointState::SetupStage {
-                    error!("Control endpoint is in an inconsistant state");
+                    error!("Control endpoint is in an inconsistent state");
                     return Ok(());
                 }
                 usb_trace!("setup stage: setup buffer: {:?}", setup);
@@ -592,7 +602,7 @@ impl BackendDeviceType {
             }
             Ok(XhciTransferType::DataStage) => {
                 if control_transfer_state.ctl_ep_state != ControlEndpointState::DataStage {
-                    error!("Control endpoint is in an inconsistant state");
+                    error!("Control endpoint is in an inconsistent state");
                     return Ok(());
                 }
                 // Requests with a DataStage will be executed here.
@@ -608,7 +618,7 @@ impl BackendDeviceType {
             }
             Ok(XhciTransferType::StatusStage) => {
                 if control_transfer_state.ctl_ep_state == ControlEndpointState::SetupStage {
-                    error!("Control endpoint is in an inconsistant state");
+                    error!("Control endpoint is in an inconsistent state");
                     return Ok(());
                 }
                 if control_transfer_state.executed {
@@ -709,13 +719,11 @@ impl BackendDeviceType {
                             TransferStatus::NoDevice
                         }
                         Ok(canceller) => {
-                            let cancel_callback = Box::new(move || match canceller.cancel() {
-                                Ok(()) => {
-                                    debug!("cancel issued to kernel");
-                                }
-                                Err(e) => {
-                                    error!("failed to cancel XhciTransfer: {}", e);
-                                }
+                            let cancel_callback = Box::new(move || {
+                                debug!("issuing cancel to kernel");
+                                canceller
+                                    .cancel()
+                                    .map_err(|_| XhciTransferError::CancelTransfer)
                             });
                             *state = XhciTransferState::Submitted { cancel_callback };
                             // If it's submitted, we don't need to send on_transfer_complete now.
@@ -824,6 +832,8 @@ pub trait BackendDevice: Sync + Send {
     /// Creates endpoints for the device with the given config descriptor tree.
     fn create_endpoints(&mut self, config_descriptor: &ConfigDescriptorTree) -> Result<()>;
 
+    /// Resets the internal control transfer state.
+    fn reset_control_transfer_state(&mut self);
     /// Returns true if the device is physically lost/unplugged.
     fn is_lost(&self) -> bool;
     /// Returns true if the backend device has no pending asynchronous operations and host

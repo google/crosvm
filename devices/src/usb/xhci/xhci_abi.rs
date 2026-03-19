@@ -93,7 +93,7 @@ pub enum DeviceSlotState {
 /// State of endpoint.
 #[bitfield]
 #[bits = 3]
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum EndpointState {
     Disabled = 0,
     Running = 1,

@@ -517,6 +517,15 @@ impl BackendDevice for FidoPassthroughDevice {
         Ok(())
     }
 
+    fn reset_control_transfer_state(&mut self) {
+        let control_transfer_state = ControlTransferState {
+            ctl_ep_state: ControlEndpointState::SetupStage,
+            control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
+            executed: false,
+        };
+        self.control_transfer_state = Arc::new(RwLock::new(control_transfer_state));
+    }
+
     fn is_lost(&self) -> bool {
         self.device.lock().is_device_lost
     }

@@ -44,6 +44,7 @@ use super::xhci_regs::valid_slot_id;
 use super::xhci_regs::MAX_PORTS;
 use super::xhci_regs::MAX_SLOTS;
 use crate::register_space::Register;
+use crate::usb::backend::device::BackendDevice;
 use crate::usb::backend::error::Error as BackendProviderError;
 use crate::usb::xhci::ring_buffer_stop_cb::fallible_closure;
 use crate::usb::xhci::ring_buffer_stop_cb::RingBufferStopCallback;
@@ -237,7 +238,11 @@ impl DeviceSlots {
         endpoint_id: u8,
         cb: C,
     ) -> Result<()> {
-        self.slots[slot_id as usize - 1].stop_endpoint(self.fail_handle.clone(), endpoint_id, cb)
+        self.slots[slot_id as usize - 1].clone().stop_endpoint(
+            self.fail_handle.clone(),
+            endpoint_id,
+            cb,
+        )
     }
 
     pub fn reset_endpoint<
@@ -248,7 +253,11 @@ impl DeviceSlots {
         endpoint_id: u8,
         cb: C,
     ) -> Result<()> {
-        self.slots[slot_id as usize - 1].reset_endpoint(self.fail_handle.clone(), endpoint_id, cb)
+        self.slots[slot_id as usize - 1].clone().reset_endpoint(
+            self.fail_handle.clone(),
+            endpoint_id,
+            cb,
+        )
     }
 }
 
@@ -663,15 +672,19 @@ impl DeviceSlot {
     pub fn stop_all_trc(&self, auto_callback: RingBufferStopCallback) {
         for i in 0..self.trc_len() {
             if let Some(trcs) = self.get_trcs(i) {
-                match trcs {
-                    TransferRingControllers::Endpoint(trc) => {
-                        trc.stop(auto_callback.clone());
-                    }
-                    TransferRingControllers::Stream(trcs) => {
-                        for trc in trcs {
-                            trc.stop(auto_callback.clone());
-                        }
-                    }
+                self.stop_trcs_helper(trcs, auto_callback.clone());
+            }
+        }
+    }
+
+    fn stop_trcs_helper(&self, trcs: TransferRingControllers, stop_cb: RingBufferStopCallback) {
+        match trcs {
+            TransferRingControllers::Endpoint(trc) => {
+                trc.stop(stop_cb);
+            }
+            TransferRingControllers::Stream(trcs) => {
+                for trc in trcs {
+                    trc.stop(stop_cb.clone());
                 }
             }
         }
@@ -681,7 +694,7 @@ impl DeviceSlot {
     pub fn stop_endpoint<
         C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
     >(
-        &self,
+        self: Arc<Self>,
         fail_handle: Arc<dyn FailHandle>,
         endpoint_id: u8,
         mut cb: C,
@@ -691,53 +704,28 @@ impl DeviceSlot {
             return cb(TrbCompletionCode::TrbError).map_err(|_| Error::CallbackFailed);
         }
         let index = endpoint_id - 1;
-        let mut device_context = self.get_device_context()?;
-        let endpoint_context = &mut device_context.endpoint_context[index as usize];
-        match self.get_trcs(index as usize) {
-            Some(TransferRingControllers::Endpoint(trc)) => {
-                let auto_cb = RingBufferStopCallback::new(fallible_closure(
-                    fail_handle,
-                    move || -> Result<()> {
-                        cb(TrbCompletionCode::Success).map_err(|_| Error::CallbackFailed)
-                    },
-                ));
-                trc.stop(auto_cb);
-                let dequeue_pointer = trc.get_dequeue_pointer();
-                let dcs = trc.get_consumer_cycle_state();
-                endpoint_context.set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
-                endpoint_context.set_dequeue_cycle_state(dcs);
-            }
-            Some(TransferRingControllers::Stream(trcs)) => {
-                let stream_context_array_addr = endpoint_context.get_tr_dequeue_pointer().get_gpa();
-                let mut stream_context_array: StreamContextArray = self
-                    .mem
-                    .read_obj_from_addr(stream_context_array_addr)
-                    .map_err(Error::ReadGuestMemory)?;
-                let auto_cb = RingBufferStopCallback::new(fallible_closure(
-                    fail_handle,
-                    move || -> Result<()> {
-                        cb(TrbCompletionCode::Success).map_err(|_| Error::CallbackFailed)
-                    },
-                ));
-                for (i, trc) in trcs.iter().enumerate() {
-                    let dequeue_pointer = trc.get_dequeue_pointer();
-                    let dcs = trc.get_consumer_cycle_state();
-                    trc.stop(auto_cb.clone());
-                    stream_context_array.stream_contexts[i + 1]
-                        .set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
-                    stream_context_array.stream_contexts[i + 1].set_dequeue_cycle_state(dcs);
-                }
-                self.mem
-                    .write_obj_at_addr(stream_context_array, stream_context_array_addr)
-                    .map_err(Error::WriteGuestMemory)?;
-            }
+        let trcs = match self.get_trcs(index as usize) {
+            Some(trcs) => trcs,
             None => {
                 error!("endpoint at index {} is not started", index);
-                cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed)?;
+                return cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed);
             }
-        }
-        endpoint_context.set_endpoint_state(EndpointState::Stopped);
-        self.set_device_context(device_context)?;
+        };
+
+        let slot_weak = Arc::downgrade(&self);
+        let trcs_for_cb = trcs.clone();
+        // TODO: xHCI spec requires generating a Stopped event. The correct behavior is defined in
+        // Table 4-2. Since our internal dequeue pointer is always pointing to the next TRB, we can
+        // pretend that we stopped within a TRB with no transfer made, or at a TD boundary if we
+        // have already completed all the TRBs, in which case TRB type referenced by TR Dequeue
+        // Pointer will point to the next "Invalid TRB".
+        let stop_cb =
+            RingBufferStopCallback::new(fallible_closure(fail_handle, move || -> Result<()> {
+                let slot = slot_weak.upgrade().ok_or(Error::WeakReferenceUpgrade)?;
+                slot.update_contexts(endpoint_id, &trcs_for_cb, EndpointState::Stopped)?;
+                cb(TrbCompletionCode::Success).map_err(|_| Error::CallbackFailed)
+            }));
+        self.stop_trcs_helper(trcs, stop_cb);
         Ok(())
     }
 
@@ -745,7 +733,7 @@ impl DeviceSlot {
     pub fn reset_endpoint<
         C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
     >(
-        &self,
+        self: Arc<Self>,
         fail_handle: Arc<dyn FailHandle>,
         endpoint_id: u8,
         mut cb: C,
@@ -755,6 +743,14 @@ impl DeviceSlot {
             return cb(TrbCompletionCode::TrbError).map_err(|_| Error::CallbackFailed);
         }
         let index = endpoint_id - 1;
+        let trcs = match self.get_trcs(index as usize) {
+            Some(trcs) => trcs,
+            None => {
+                error!("endpoint at index {} is not started", index);
+                return cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed);
+            }
+        };
+
         let mut device_context = self.get_device_context()?;
         let endpoint_context = &mut device_context.endpoint_context[index as usize];
         if endpoint_context
@@ -765,51 +761,18 @@ impl DeviceSlot {
             error!("endpoint at index {} is not halted", index);
             return cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed);
         }
-        match self.get_trcs(index as usize) {
-            Some(TransferRingControllers::Endpoint(trc)) => {
-                let auto_cb = RingBufferStopCallback::new(fallible_closure(
-                    fail_handle,
-                    move || -> Result<()> {
-                        cb(TrbCompletionCode::Success).map_err(|_| Error::CallbackFailed)
-                    },
-                ));
-                trc.stop(auto_cb);
-                let dequeue_pointer = trc.get_dequeue_pointer();
-                let dcs = trc.get_consumer_cycle_state();
-                endpoint_context.set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
-                endpoint_context.set_dequeue_cycle_state(dcs);
-            }
-            Some(TransferRingControllers::Stream(trcs)) => {
-                let stream_context_array_addr = endpoint_context.get_tr_dequeue_pointer().get_gpa();
-                let mut stream_context_array: StreamContextArray = self
-                    .mem
-                    .read_obj_from_addr(stream_context_array_addr)
-                    .map_err(Error::ReadGuestMemory)?;
-                let auto_cb = RingBufferStopCallback::new(fallible_closure(
-                    fail_handle,
-                    move || -> Result<()> {
-                        cb(TrbCompletionCode::Success).map_err(|_| Error::CallbackFailed)
-                    },
-                ));
-                for (i, trc) in trcs.iter().enumerate() {
-                    let dequeue_pointer = trc.get_dequeue_pointer();
-                    let dcs = trc.get_consumer_cycle_state();
-                    trc.stop(auto_cb.clone());
-                    stream_context_array.stream_contexts[i + 1]
-                        .set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
-                    stream_context_array.stream_contexts[i + 1].set_dequeue_cycle_state(dcs);
-                }
-                self.mem
-                    .write_obj_at_addr(stream_context_array, stream_context_array_addr)
-                    .map_err(Error::WriteGuestMemory)?;
-            }
-            None => {
-                error!("endpoint at index {} is not started", index);
-                cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed)?;
-            }
-        }
-        endpoint_context.set_endpoint_state(EndpointState::Stopped);
-        self.set_device_context(device_context)?;
+
+        // We actually stop the ring and cancel all the transfers here, because we deliberately
+        // avoided that in halt_endpoint().
+        let slot_weak = Arc::downgrade(&self);
+        let trcs_for_cb = trcs.clone();
+        let stop_cb =
+            RingBufferStopCallback::new(fallible_closure(fail_handle, move || -> Result<()> {
+                let slot = slot_weak.upgrade().ok_or(Error::WeakReferenceUpgrade)?;
+                slot.update_contexts(endpoint_id, &trcs_for_cb, EndpointState::Stopped)?;
+                cb(TrbCompletionCode::Success).map_err(|_| Error::CallbackFailed)
+            }));
+        self.stop_trcs_helper(trcs, stop_cb);
         Ok(())
     }
 
@@ -825,6 +788,13 @@ impl DeviceSlot {
             return Ok(TrbCompletionCode::TrbError);
         }
         let index = (endpoint_id - 1) as usize;
+        if index == 0 {
+            if let Some(port) = self.hub.get_port(self.port_id.get()?) {
+                if let Some(backend_device) = port.backend_device().as_mut() {
+                    backend_device.lock().reset_control_transfer_state();
+                }
+            }
+        }
         match self.get_trc(index, stream_id) {
             Some(trc) => {
                 trc.set_dequeue_pointer(GuestAddress(ptr));
@@ -1045,46 +1015,62 @@ impl DeviceSlot {
         self.set_device_context(ctx)
     }
 
-    pub fn halt_endpoint(&self, endpoint_id: u8) -> Result<()> {
+    // xHCI 4.10.2.1 states that xHCI shall stop further activity on the associated Transfer Ring
+    // upon detecting a Stall. This means if we have submitted a control transfer to the host in
+    // the DataStage and got a Stall Error, we should not process the Status Stage TD nor generate
+    // a completion event. However, we just update the contexts and deliberately do not stop the
+    // ring here so cancellation would only come from the guest side. This is okay, because the
+    // host is also stalled and no further TD will be reported as completed.
+    pub fn halt_endpoint(self: Arc<Self>, endpoint_id: u8) -> Result<()> {
         if !valid_endpoint_id(endpoint_id) {
             return Err(Error::BadEndpointId(endpoint_id));
         }
         let index = endpoint_id - 1;
-        let mut device_context = self.get_device_context()?;
-        let endpoint_context = &mut device_context.endpoint_context[index as usize];
-        match self.get_trcs(index as usize) {
-            Some(trcs) => match trcs {
-                TransferRingControllers::Endpoint(trc) => {
-                    endpoint_context
-                        .set_tr_dequeue_pointer(DequeuePtr::new(trc.get_dequeue_pointer()));
-                    endpoint_context.set_dequeue_cycle_state(trc.get_consumer_cycle_state());
-                }
-                TransferRingControllers::Stream(trcs) => {
-                    let stream_context_array_addr =
-                        endpoint_context.get_tr_dequeue_pointer().get_gpa();
-                    let mut stream_context_array: StreamContextArray = self
-                        .mem
-                        .read_obj_from_addr(stream_context_array_addr)
-                        .map_err(Error::ReadGuestMemory)?;
-                    for (i, trc) in trcs.iter().enumerate() {
-                        stream_context_array.stream_contexts[i + 1]
-                            .set_tr_dequeue_pointer(DequeuePtr::new(trc.get_dequeue_pointer()));
-                        stream_context_array.stream_contexts[i + 1]
-                            .set_dequeue_cycle_state(trc.get_consumer_cycle_state());
-                    }
-                    self.mem
-                        .write_obj_at_addr(stream_context_array, stream_context_array_addr)
-                        .map_err(Error::WriteGuestMemory)?;
-                }
-            },
+        let trcs = match self.get_trcs(index as usize) {
+            Some(trcs) => trcs,
             None => {
                 error!("trc for endpoint {} not found", endpoint_id);
                 return Err(Error::BadEndpointId(endpoint_id));
             }
+        };
+
+        self.update_contexts(endpoint_id, &trcs, EndpointState::Halted)
+    }
+
+    fn update_contexts(
+        &self,
+        endpoint_id: u8,
+        trcs: &TransferRingControllers,
+        new_state: EndpointState,
+    ) -> Result<()> {
+        let index = (endpoint_id - 1) as usize;
+        let mut device_context = self.get_device_context()?;
+        let endpoint_context = &mut device_context.endpoint_context[index];
+        match &trcs {
+            TransferRingControllers::Endpoint(trc) => {
+                let (dequeue_pointer, dcs) = trc.get_stopped_dequeue_state();
+                endpoint_context.set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
+                endpoint_context.set_dequeue_cycle_state(dcs);
+            }
+            TransferRingControllers::Stream(trcs) => {
+                let addr = endpoint_context.get_tr_dequeue_pointer().get_gpa();
+                let mut array: StreamContextArray = self
+                    .mem
+                    .read_obj_from_addr(addr)
+                    .map_err(Error::ReadGuestMemory)?;
+                for (i, trc) in trcs.iter().enumerate() {
+                    let (dequeue_pointer, dcs) = trc.get_stopped_dequeue_state();
+                    array.stream_contexts[i + 1]
+                        .set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
+                    array.stream_contexts[i + 1].set_dequeue_cycle_state(dcs);
+                }
+                self.mem
+                    .write_obj_at_addr(array, addr)
+                    .map_err(Error::WriteGuestMemory)?;
+            }
         }
-        endpoint_context.set_endpoint_state(EndpointState::Halted);
-        self.set_device_context(device_context)?;
-        Ok(())
+        endpoint_context.set_endpoint_state(new_state);
+        self.set_device_context(device_context)
     }
 
     pub fn report_trb_completion(

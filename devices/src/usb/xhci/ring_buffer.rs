@@ -98,8 +98,9 @@ impl RingBuffer {
             };
 
             xhci_trace!(
-                "{}: adding trb to td {}",
+                "{}: adding trb {} to td {}",
                 self.name.as_str(),
+                addressed_trb.gpa,
                 addressed_trb.trb
             );
             trbs.push(addressed_trb);
