@@ -1,0 +1,6 @@
+python_version: "3.8"
+
+wheel: <
+  name: "infra/python/wheels/brotli/${vpython_platform}"
+  version: "version:1.0.9"
+>

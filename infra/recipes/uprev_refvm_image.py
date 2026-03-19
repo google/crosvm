@@ -1,0 +1,247 @@
+# -*- coding: utf-8 -*-
+# Copyright 2026 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+"""Recipe for uploading uprevs of the refvm image."""
+
+import json
+import re
+from typing import Generator
+
+from PB.recipes.crosvm.uprev_refvm_image import UprevRefvmImageProperties
+from recipe_engine.recipe_api import RecipeApi
+from recipe_engine.recipe_api import StepFailure
+from recipe_engine.recipe_test_api import RecipeTestApi
+from recipe_engine.recipe_test_api import TestData
+
+DEPS = [
+    "recipe_engine/buildbucket",
+    "recipe_engine/cipd",
+    "recipe_engine/context",
+    "recipe_engine/file",
+    "recipe_engine/path",
+    "recipe_engine/properties",
+    "recipe_engine/raw_io",
+    "recipe_engine/step",
+    "depot_tools/git",
+]
+
+PROPERTIES = UprevRefvmImageProperties
+
+_TAST_TESTS_REPO_URL = "https://chromium.googlesource.com/chromiumos/platform/tast-tests"
+_DATA_DIR_PATH = "src/go.chromium.org/tast-tests/cros/local/bruschetta/data"
+
+
+def RunSteps(api: RecipeApi, properties: UprevRefvmImageProperties) -> None:
+    # Clone the tast-tests repo in a temp dir
+    checkout = api.path.mkdtemp()
+    api.git.checkout(_TAST_TESTS_REPO_URL, dir_path=checkout, depth=1)
+
+    with api.context(cwd=checkout):
+        # Ensure the commit hook is configured
+        api.step(
+            "Install commit hook",
+            [
+                "curl",
+                "-Lo",
+                ".git/hooks/commit-msg",
+                "https://chromium-review.googlesource.com/tools/hooks/commit-msg",
+            ],
+        )
+        api.step("Make commit hook executable", ["chmod", "+x", ".git/hooks/commit-msg"])
+
+        # Step 1. Find latest image
+        res_dir = api.step(
+            "Find latest image",
+            [
+                "gcloud",
+                "storage",
+                "ls",
+                "gs://refvm-images/[0-9][0-9][0-9][0-9]-[0-9][0-9]/refvm-*.qcow2",
+            ],
+            stdout=api.raw_io.output_text(),
+        )
+        objs = res_dir.stdout.strip().splitlines()
+        if not objs:
+            raise StepFailure("No images found in gs://refvm-images/")
+        last_obj = objs[-1].strip()
+
+        match = re.search(r"refvm-([\d_]+)\.qcow2", last_obj)
+        version = match.group(1) if match else "unknown"
+
+        # Step 2. Download image to temp dir
+        tmp_dir = api.path.mkdtemp()
+        downloaded_file = tmp_dir / "image.br"
+
+        api.step(
+            "Download image",
+            ["gcloud", "storage", "cp", last_obj, downloaded_file],
+        )
+
+        # Step 3. Calculate hashes
+        decompressed_file = tmp_dir / "image"
+
+        res_size = api.step(
+            "Get compressed size",
+            ["stat", "-c", "%s", downloaded_file],
+            stdout=api.raw_io.output_text(),
+        )
+        try:
+            compressed_size = int(res_size.stdout.strip())
+        except ValueError:
+            raise StepFailure("Failed to parse compressed size")
+
+        res_c_sha = api.step(
+            "Get compressed sha256",
+            ["sha256sum", downloaded_file],
+            stdout=api.raw_io.output_text(),
+        )
+        compressed_sha256 = res_c_sha.stdout.strip().split()[0]
+
+        api.step(
+            "Decompress image",
+            [
+                "vpython3",
+                "-vpython-spec",
+                api.resource("brotli_decompress.vpython3"),
+                api.resource("brotli_decompress.py"),
+                downloaded_file,
+                decompressed_file,
+            ],
+        )
+
+        res_d_sha = api.step(
+            "Get decompressed sha256",
+            ["sha256sum", decompressed_file],
+            stdout=api.raw_io.output_text(),
+        )
+        decompressed_sha256 = res_d_sha.stdout.strip().split()[0]
+
+        datadir = checkout / _DATA_DIR_PATH
+        external_file = datadir / "refvm.qcow2.external"
+        sha256_file = datadir / "refvm.qcow2.SHA256"
+
+        external_content = {
+            "sha256sum": compressed_sha256,
+            "size": compressed_size,
+            "url": last_obj,
+        }
+
+        api.file.write_text(
+            "Update external file",
+            external_file,
+            json.dumps(external_content, indent=4) + "\n",
+        )
+
+        api.file.write_text(
+            "Update SHA256 file",
+            sha256_file,
+            decompressed_sha256 + "\n",
+        )
+
+        # Step 4. Create commit if there are changes
+        api.git("add", str(external_file))
+        api.git("add", str(sha256_file))
+
+        diff_result = api.git("diff", "--cached", "--exit-code", ok_ret="any")
+        if diff_result.retcode == 0:
+            diff_result.presentation.step_text = "Nothing to submit"
+            return
+
+        commit_lines = [
+            f"bruschetta: Uprev refvm image to {version}.",
+            "",
+            f"Generated by {api.buildbucket.build_url()}.",
+        ]
+
+        api.git("commit", "-m", "\n".join(commit_lines))
+
+        # Push the change to gerrit if requested
+        if properties.push:
+            gerrit_params = ["r=crosvm-uprev@google.com"]
+            if properties.bot:
+                gerrit_params += ["l=Bot-Commit+1", "l=Commit-Queue+2"]
+            else:
+                gerrit_params += ["l=Commit-Queue+1"]
+            api.git("push", "origin", f"HEAD:refs/for/main%{','.join(gerrit_params)}")
+
+
+def GenTests(api: RecipeTestApi) -> Generator[TestData, None, None]:
+    def mock_decompress_output(fail_size=False):
+        steps = []
+        if fail_size:
+            steps.append(
+                api.step_data("Get compressed size", stdout=api.raw_io.output_text("not an int"))
+            )
+            return tuple(steps)
+        else:
+            steps.append(
+                api.step_data("Get compressed size", stdout=api.raw_io.output_text("1024"))
+            )
+
+        steps.append(
+            api.step_data(
+                "Get compressed sha256", stdout=api.raw_io.output_text("aaaa  /tmp/image.br")
+            )
+        )
+        steps.append(api.step_data("Decompress image", retcode=0))
+        steps.append(
+            api.step_data(
+                "Get decompressed sha256", stdout=api.raw_io.output_text("bbbb  /tmp/image")
+            )
+        )
+        return tuple(steps)
+
+    yield api.test(
+        "Submit test uprev",
+        api.properties(push=True, bot=False),
+        api.step_data(
+            "Find latest image",
+            stdout=api.raw_io.output_text("gs://refvm-images/2026-03/refvm-20260316_000339.qcow2"),
+        ),
+        *mock_decompress_output(),
+        api.step_data("git diff", retcode=1),
+    )
+
+    yield api.test(
+        "Submit bot uprev",
+        api.properties(push=True, bot=True),
+        api.step_data(
+            "Find latest image",
+            stdout=api.raw_io.output_text("gs://refvm-images/2026-03/refvm-20260316_000339.qcow2"),
+        ),
+        *mock_decompress_output(),
+        api.step_data("git diff", retcode=1),
+    )
+
+    yield api.test(
+        "Nothing to submit",
+        api.properties(push=True),
+        api.step_data(
+            "Find latest image",
+            stdout=api.raw_io.output_text("gs://refvm-images/2026-03/refvm-20260316_000339.qcow2"),
+        ),
+        *mock_decompress_output(),
+        api.step_data("git diff", retcode=0),
+    )
+
+    yield api.test(
+        "No images",
+        api.step_data(
+            "Find latest image",
+            stdout=api.raw_io.output_text("gs://refvm-images/2026-03/refvm-20260316_000339.qcow2"),
+        ),
+        api.step_data("Find latest image", stdout=api.raw_io.output_text("")),
+        status="FAILURE",
+    )
+
+    yield api.test(
+        "Invalid size output",
+        api.step_data(
+            "Find latest image",
+            stdout=api.raw_io.output_text("gs://refvm-images/2026-03/refvm-20260316_000339.qcow2"),
+        ),
+        *mock_decompress_output(fail_size=True),
+        status="FAILURE",
+    )
