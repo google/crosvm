@@ -7,8 +7,9 @@ enum ReadWriteCapability {
 
 message ComponentDisk {
   string file_path = 1;
-  uint64 offset = 2;
+  uint64 offset = 2; // Guest-visible location
   ReadWriteCapability read_write_capability = 3;
+  uint64 file_offset = 4; // Offset into the host file
 }
 
 message CompositeDisk {
