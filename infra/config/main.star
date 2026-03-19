@@ -459,3 +459,16 @@ infra_builder(
     schedule = "0 12 * * *",  # Check for uprevs daily
     postsubmit = False,
 )
+
+infra_builder(
+    name = "refvm_uprev",
+    executable = luci.recipe(
+        name = "uprev_refvm_image",
+    ),
+    properties = {
+        "push": True,
+        "bot": True,
+    },
+    schedule = "0 12 * * *",  # Check for uprevs daily
+    postsubmit = False,
+)
