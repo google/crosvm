@@ -41,30 +41,32 @@ pub(crate) fn finalize_shm(shm: &mut SharedMemory) -> Result<()> {
 }
 
 impl GuestMemory {
-    /// Madvise away the address range in the host that is associated with the given guest range.
+    /// Free the range of guest memory back to the host. Subsequent accesses to the range will see
+    /// zero data.
     ///
     /// This feature is only available on Unix, where a MemoryMapping can remove a mapped range.
     pub fn remove_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
-        let (mapping, offset, _) = self.find_region(addr)?;
-        mapping
-            .remove_range(offset, count as usize)
-            .map_err(|e| Error::MemoryAccess(addr, e))
-    }
-
-    /// Punch a hole in the backing file that is associated with the given guest range.
-    pub fn punch_hole_range(&self, addr: GuestAddress, count: u64) -> Result<()> {
-        let region = self
-            .regions
-            .iter()
-            .find(|region| region.contains_range(addr, count))
-            .ok_or(Error::InvalidGuestRange(addr, count))?;
-        base::sys::linux::fallocate(
-            &region.shared_obj,
-            base::sys::linux::FallocateMode::PunchHole,
-            region.obj_offset + addr.offset_from(region.guest_base),
-            count,
-        )
-        .map_err(Error::PunchHole)
+        // TODO: It is likely we could use fallocate for everything because, in the kernel,
+        // MADV_REMOVE mostly just delegates to FALLOC_FL_PUNCH_HOLE internally.
+        if self.use_punchhole_locked() {
+            let region = self
+                .regions
+                .iter()
+                .find(|region| region.contains_range(addr, count))
+                .ok_or(Error::InvalidGuestRange(addr, count))?;
+            base::sys::linux::fallocate(
+                &region.shared_obj,
+                base::sys::linux::FallocateMode::PunchHole,
+                region.obj_offset + addr.offset_from(region.guest_base),
+                count,
+            )
+            .map_err(Error::PunchHole)
+        } else {
+            let (mapping, offset, _) = self.find_region(addr)?;
+            mapping
+                .remove_range(offset, count as usize)
+                .map_err(|e| Error::MemoryAccess(addr, e))
+        }
     }
 
     /// Handles guest memory policy hints/advices.

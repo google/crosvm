@@ -847,8 +847,14 @@ fn free_memory(
     mem: &GuestMemory,
     ranges: Vec<(GuestAddress, u64)>,
 ) {
-    // When `--lock-guest-memory` is used, it is not possible to free the memory from the main
-    // process, so we free it from the sandboxed balloon process directly.
+    // If the memory is locked and device sandboxing is enabled (inferred from
+    // `use_punchhole_locked() == false`), then free the memory directly from the sandboxed
+    // process.
+    //
+    // This used to be necessary, but isn't anymore. Instead we keep it just to avoid disrupting
+    // the behavior of crosvm on ChromeOS (possible perf loss). It is likely incompatible with
+    // non-KVM hypervisors. For now it is OK because we don't have known users that do all of (1)
+    // use non-KVM hypervisor, (2) lock guest memory, and (3) enable device sandboxing.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     if mem.locked() && !mem.use_punchhole_locked() {
         for (guest_address, len) in ranges {
