@@ -26,7 +26,7 @@ io_uring_register: 1
 io_uring_enter: 1
 kill: 1
 lseek: 1
-madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE
+madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE || arg2 == MADV_GUARD_INSTALL || arg2 == MADV_GUARD_REMOVE
 membarrier: 1
 memfd_create: 1
 mmap: arg2 in ~PROT_EXEC
