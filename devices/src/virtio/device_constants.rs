@@ -155,7 +155,6 @@ pub mod snd {
         pub jacks: Le32,
         pub streams: Le32,
         pub chmaps: Le32,
-        pub controls: Le32,
     }
 }
 
