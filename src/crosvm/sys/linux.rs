@@ -4288,6 +4288,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 info!("vcpu crashed");
                                 exit_state = ExitState::Crash;
                             }
+                            VmEventType::GuestPanic => {
+                                info!("guest panic event");
+                                exit_state = ExitState::GuestPanic;
+                            }
                             VmEventType::DeviceCrashed => {
                                 info!("device crashed");
                                 exit_state = ExitState::Crash;

@@ -232,6 +232,7 @@ pub enum VmEventType {
     Reset,
     DeviceCrashed,
     Crash,
+    GuestPanic,
     Panic(u8),
     WatchdogReset,
 }

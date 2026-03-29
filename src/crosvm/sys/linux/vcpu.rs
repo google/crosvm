@@ -457,7 +457,7 @@ where
                 }
                 Ok(VcpuExit::SystemEventCrash) => {
                     info!("system crash event on vcpu {}", cpu_id);
-                    return ExitState::Stop;
+                    return ExitState::GuestPanic;
                 }
                 Ok(VcpuExit::Debug) => {
                     #[cfg(feature = "gdb")]
@@ -643,8 +643,7 @@ where
                 ExitState::Stop => VmEventType::Exit,
                 ExitState::Reset => VmEventType::Reset,
                 ExitState::Crash => VmEventType::Crash,
-                // vcpu_loop doesn't exit with GuestPanic.
-                ExitState::GuestPanic => unreachable!(),
+                ExitState::GuestPanic => VmEventType::GuestPanic,
                 ExitState::WatchdogReset => VmEventType::WatchdogReset,
             };
             if let Err(e) = vm_evt_wrtube.send::<VmEventType>(&final_event_data) {

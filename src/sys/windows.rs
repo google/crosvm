@@ -988,6 +988,10 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         error!("got pvpanic event. this event is not expected on Windows.");
                         None
                     }
+                    VmEventType::GuestPanic => {
+                        info!("guest panic event");
+                        Some(ExitState::GuestPanic)
+                    }
                     VmEventType::WatchdogReset => {
                         info!("vcpu stall detected");
                         Some(ExitState::WatchdogReset)
