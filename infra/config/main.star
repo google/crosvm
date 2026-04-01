@@ -30,7 +30,7 @@ luci.project(
                 "role/swarming.taskTriggerer",
                 "role/buildbucket.owner",
             ],
-            groups = "crosvm-acl-luci-admin@twosync.google.com",
+            groups = "google/crosvm-acl-luci-admin@twosync.google.com",
         ),
 
         # Allow any googler to see all bots and tasks there.
@@ -94,7 +94,7 @@ luci.bucket(
         acl.entry(
             roles = acl.BUILDBUCKET_TRIGGERER,
             groups = [
-                "crosvm-acl-luci-admin@twosync.google.com",
+                "google/crosvm-acl-luci-admin@twosync.google.com",
             ],
         ),
     ],
