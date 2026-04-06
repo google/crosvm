@@ -24,7 +24,17 @@ impl EventAsync {
         if n != 8 {
             return Err(AsyncError::EventAsync(base::Error::new(libc::ENODATA)));
         }
-        Ok(u64::from_ne_bytes(v.try_into().unwrap()))
+        match v.try_into() {
+            Ok(bytes) => Ok(u64::from_ne_bytes(bytes)),
+            Err(e) => {
+                base::error!(
+                    "eventfd async read corrupted! n=8, Vec length is {}. Raw bytes: {:?}",
+                    e.len(),
+                    e
+                );
+                Err(AsyncError::EventAsync(base::Error::new(libc::EINVAL)))
+            }
+        }
     }
 }
 
