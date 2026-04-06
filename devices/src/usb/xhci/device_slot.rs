@@ -1079,6 +1079,17 @@ impl DeviceSlot {
         stream_id: Option<u16>,
         trb: &AddressedTrb,
     ) {
+        // This should never happen, since a completed TRB must be associated with a valid endpoint
+        // ID, which is a DCI. We ignore this case with an error message, because this isn't
+        // critical at least until the guest tries to stop the endpoint.
+        if !valid_endpoint_id(endpoint_id) {
+            error!(
+                "Ignoring TRB completion for invalid endpoint ID {}",
+                endpoint_id
+            );
+            return;
+        }
+
         let index = endpoint_id - 1;
         let stream_id = stream_id.unwrap_or(0);
         match self.get_trc(index as usize, stream_id) {

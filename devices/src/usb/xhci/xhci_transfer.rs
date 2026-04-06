@@ -204,7 +204,7 @@ impl XhciTransferManager {
         stream_id: Option<u16>,
     ) -> XhciTransfer {
         let transfer_dir = {
-            if endpoint_id == 0 {
+            if endpoint_id == 1 {
                 TransferDirection::Control
             } else if (endpoint_id % 2) == 0 {
                 TransferDirection::Out
