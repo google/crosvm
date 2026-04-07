@@ -23,7 +23,8 @@ use base::Result;
 use cros_fdt::Fdt;
 use kvm_sys::*;
 use libc::EINVAL;
-use libc::ENOMEM;
+use libc::ENOBUFS;
+use libc::ENOENT;
 use libc::ENOTSUP;
 use libc::ENXIO;
 use serde::Deserialize;
@@ -235,10 +236,10 @@ impl VmAArch64 for KvmVm {
     ) -> Result<()> {
         let info = self.get_protected_vm_info()?;
         if info.firmware_size == 0 {
-            Err(Error::new(EINVAL))
+            Err(Error::new(ENOENT))
         } else {
             if info.firmware_size > fw_max_size {
-                return Err(Error::new(ENOMEM));
+                return Err(Error::new(ENOBUFS));
             }
             self.set_protected_vm_firmware_ipa(fw_addr)
         }
