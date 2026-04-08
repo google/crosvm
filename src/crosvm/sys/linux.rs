@@ -1284,6 +1284,70 @@ fn create_pure_virtual_pcie_root_port(
     Ok(hp_stub)
 }
 
+/// For `vcpu_id`, return the pcpu that it's affined to. It's considered the "representative"
+/// pcpu since there could be multiple pcpu's affined to a single vcpu, so arbitrarily return the
+/// first pcpu we see. This "shouldn't" be an issue since ideally all the affined pcpu's have the
+/// same capacity, frequency, etc.
+fn get_representative_pcpu(vcpu_id: usize, vcpu_affinity: &Option<VcpuAffinity>) -> usize {
+    match vcpu_affinity {
+        // Default to pcpu 0 to preserve the intent to map all vcpu's to the same cluster of pcpu's.
+        Some(VcpuAffinity::Global(s)) => s.iter().next().copied().unwrap_or(0),
+        Some(VcpuAffinity::PerVcpu(m)) => match m.get(&vcpu_id) {
+            Some(s) => s.iter().next().copied().unwrap_or(vcpu_id),
+            None => vcpu_id,
+        },
+        None => vcpu_id,
+    }
+}
+
+/// Given `vcpu_affinity` (vcpu->pcpu mapping) and `host_capacity` (pcpu->pcpu capacity mapping),
+/// return a mapping of vcpu->pcpu's capacity.
+fn map_vcpu_capacity(
+    vcpu_count: usize,
+    vcpu_affinity: &Option<VcpuAffinity>,
+    host_capacity: &BTreeMap<usize, u32>,
+) -> anyhow::Result<BTreeMap<usize, u32>> {
+    let mut mapped_capacity = BTreeMap::new();
+    for vcpu_id in 0..vcpu_count {
+        let pcpu_id = get_representative_pcpu(vcpu_id, vcpu_affinity);
+        let capacity = host_capacity.get(&pcpu_id).copied().unwrap_or(1024);
+        mapped_capacity.insert(vcpu_id, capacity);
+    }
+    Ok(mapped_capacity)
+}
+
+/// Given `vcpu_affinity` (vcpu->pcpu mapping) and `host_clusters` (cluster->pcpu mapping),
+/// return a mapping of cluster->vcpu mapping.
+fn map_vcpu_clusters(
+    vcpu_count: usize,
+    vcpu_affinity: &Option<VcpuAffinity>,
+    host_clusters: Vec<arch::CpuSet>,
+) -> anyhow::Result<Vec<arch::CpuSet>> {
+    let mut pcpu_to_cluster = std::collections::BTreeMap::new();
+    for (cluster_idx, cluster) in host_clusters.iter().enumerate() {
+        for pcpu_id in cluster.iter() {
+            pcpu_to_cluster.insert(*pcpu_id, cluster_idx);
+        }
+    }
+
+    let mut vcpu_clusters_sets: Vec<std::collections::BTreeSet<usize>> =
+        vec![std::collections::BTreeSet::new(); host_clusters.len()];
+
+    for vcpu_id in 0..vcpu_count {
+        let pcpu_id = get_representative_pcpu(vcpu_id, vcpu_affinity);
+
+        if let Some(&cluster_idx) = pcpu_to_cluster.get(&pcpu_id) {
+            vcpu_clusters_sets[cluster_idx].insert(vcpu_id);
+        }
+    }
+
+    Ok(vcpu_clusters_sets
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .map(arch::CpuSet::new)
+        .collect())
+}
+
 fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let initrd_image = if let Some(initrd_path) = &cfg.initrd_path {
         Some(
@@ -1345,24 +1409,36 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     };
 
     #[cfg(target_arch = "aarch64")]
-    let mut cpu_frequencies = BTreeMap::new();
+    // Maps vcpu -> the corresponding vcpu's frequency.
+    let mut vcpu_frequencies = BTreeMap::new();
     #[cfg(target_arch = "aarch64")]
     let mut normalized_cpu_ipc_ratios = BTreeMap::new();
 
     // if --enable-fw-cfg or --fw-cfg was given, we want to enable fw_cfg
     let fw_cfg_enable = cfg.enable_fw_cfg || !cfg.fw_cfg_parameters.is_empty();
-    let (cpu_clusters, cpu_capacity) = if cfg.host_cpu_topology {
-        (
-            Arch::get_host_cpu_clusters()?,
-            Arch::get_host_cpu_capacity()?,
-        )
+    let (vcpu_clusters, vcpu_capacity) = if cfg.host_cpu_topology {
+        let host_capacity = Arch::get_host_cpu_capacity()?;
+        let mapped_capacity = map_vcpu_capacity(
+            cfg.vcpu_count.unwrap_or(1),
+            &cfg.vcpu_affinity,
+            &host_capacity,
+        )?;
+
+        let host_clusters = Arch::get_host_cpu_clusters()?;
+        let mapped_clusters = map_vcpu_clusters(
+            cfg.vcpu_count.unwrap_or(1),
+            &cfg.vcpu_affinity,
+            host_clusters,
+        )?;
+
+        (mapped_clusters, mapped_capacity)
     } else {
         (cfg.cpu_clusters.clone(), cfg.cpu_capacity.clone())
     };
 
     #[cfg(target_arch = "aarch64")]
     let cpu_ipc_ratio = if cfg.host_cpu_topology {
-        &cpu_capacity
+        &vcpu_capacity
     } else {
         &cfg.cpu_ipc_ratio
     };
@@ -1375,15 +1451,15 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     #[cfg(target_arch = "aarch64")]
     if cfg.virt_cpufreq || cfg.virt_cpufreq_v2 {
         if !cfg.cpu_frequencies_khz.is_empty() {
-            cpu_frequencies = cfg.cpu_frequencies_khz.clone();
+            vcpu_frequencies = cfg.cpu_frequencies_khz.clone();
         } else {
             match Arch::get_host_cpu_frequencies_khz() {
                 Ok(host_cpu_frequencies) => {
-                    for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
+                    for vcpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
                         let vcpu_affinity = match cfg.vcpu_affinity.clone() {
                             Some(VcpuAffinity::Global(v)) => v,
                             Some(VcpuAffinity::PerVcpu(mut m)) => {
-                                m.remove(&cpu_id).unwrap_or_default()
+                                m.remove(&vcpu_id).unwrap_or_default()
                             }
                             None => {
                                 panic!("There must be some vcpu_affinity setting with VirtCpufreq enabled!")
@@ -1400,9 +1476,9 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
                                     }
                                 }
                             }
-                            cpu_frequencies.insert(cpu_id, freq_domain.clone());
+                            vcpu_frequencies.insert(vcpu_id, freq_domain.clone());
                         } else {
-                            panic!("No frequency domain for cpu:{cpu_id}");
+                            panic!("No frequency domain for vcpu:{vcpu_id}");
                         }
                     }
                 }
@@ -1412,21 +1488,21 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             }
         }
 
-        if !cpu_frequencies.is_empty() {
+        if !vcpu_frequencies.is_empty() {
             let host_max_freqs = Arch::get_host_cpu_max_freq_khz()?;
             // Find the highest maximum frequency over all host CPUs. The guest CPU IPC ratios will
             // be normalized by dividing by this value.
             let host_max_freq = host_max_freqs.values().copied().max().unwrap_or_default();
 
             normalized_cpu_ipc_ratios = normalize_cpu_ipc_ratios(
-                cpu_frequencies.iter().map(|(cpu_id, frequencies)| {
+                vcpu_frequencies.iter().map(|(vcpu_id, frequencies)| {
                     (
-                        *cpu_id,
+                        *vcpu_id,
                         frequencies.iter().copied().max().unwrap_or_default(),
                     )
                 }),
                 host_max_freq,
-                |cpu_id| cpu_ipc_ratio.get(&cpu_id).copied().unwrap_or(1024),
+                |vcpu_id| cpu_ipc_ratio.get(&vcpu_id).copied().unwrap_or(1024),
             )?;
 
             if !cfg.cpu_freq_domains.is_empty() {
@@ -1496,10 +1572,10 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(target_arch = "aarch64")]
         vcpu_domain_paths,
         #[cfg(target_arch = "aarch64")]
-        cpu_frequencies,
+        vcpu_frequencies,
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
-        cpu_clusters,
-        cpu_capacity,
+        vcpu_clusters,
+        vcpu_capacity,
         dev_pm: cfg.dev_pm,
         #[cfg(target_arch = "aarch64")]
         normalized_cpu_ipc_ratios,
@@ -5270,6 +5346,7 @@ pub fn setup_emulator_crash_reporting(_cfg: &Config) -> anyhow::Result<String> {
 mod tests {
     use std::path::PathBuf;
 
+    use arch::CpuSet;
     use vm_memory::MemoryRegionPurpose;
 
     use super::*;
@@ -5548,5 +5625,75 @@ mod tests {
 
         let ratios: Vec<(usize, u32)> = normalized_cpu_ipc_ratios.into_iter().collect();
         assert_eq!(ratios, vec![(0, 102), (1, 20)]);
+    }
+
+    #[test]
+    fn test_get_representative_pcpu() {
+        use std::collections::BTreeMap;
+        let mut affinity_map = BTreeMap::new();
+        affinity_map.insert(0, arch::CpuSet::new(vec![4, 5]));
+        affinity_map.insert(1, arch::CpuSet::new(vec![6]));
+        let vcpu_affinity = Some(VcpuAffinity::PerVcpu(affinity_map));
+
+        assert_eq!(get_representative_pcpu(0, &vcpu_affinity), 4);
+        assert_eq!(get_representative_pcpu(1, &vcpu_affinity), 6);
+        assert_eq!(get_representative_pcpu(2, &vcpu_affinity), 2); // Fallback to vcpu_id on missing vCPU
+
+        let global_affinity = Some(VcpuAffinity::Global(arch::CpuSet::new(vec![7, 8])));
+        assert_eq!(get_representative_pcpu(0, &global_affinity), 7);
+        assert_eq!(get_representative_pcpu(1, &global_affinity), 7);
+
+        assert_eq!(get_representative_pcpu(0, &None), 0);
+        assert_eq!(get_representative_pcpu(1, &None), 1);
+    }
+
+    #[test]
+    fn test_map_vcpu_capacity() {
+        let vcpu_count = 2;
+        // Assume PCPU 1 is offline or skipped.
+        // VCPU 0 -> PCPU 0
+        // VCPU 1 -> PCPU 2
+        let mut affinity_map = BTreeMap::new();
+        affinity_map.insert(0, CpuSet::new(vec![0]));
+        affinity_map.insert(1, CpuSet::new(vec![2]));
+        let vcpu_affinity = Some(VcpuAffinity::PerVcpu(affinity_map));
+
+        let mut host_capacity = BTreeMap::new();
+        host_capacity.insert(0, 512);
+        host_capacity.insert(2, 1024);
+        // PCPU 1 is missing (offline).
+
+        let vcpu_capacity = map_vcpu_capacity(vcpu_count, &vcpu_affinity, &host_capacity).unwrap();
+
+        // Verify lookup by VCPU ID
+        assert_eq!(*vcpu_capacity.get(&0).unwrap(), 512);
+        assert_eq!(*vcpu_capacity.get(&1).unwrap(), 1024);
+    }
+
+    #[test]
+    fn test_map_vcpu_clusters() {
+        use std::collections::BTreeMap;
+        let host_clusters = vec![
+            arch::CpuSet::new(vec![0, 1, 2, 3]),
+            arch::CpuSet::new(vec![4, 5, 6, 7]),
+        ];
+
+        let mut affinity_map = BTreeMap::new();
+        affinity_map.insert(0, arch::CpuSet::new(vec![0])); // in cluster 0
+        affinity_map.insert(1, arch::CpuSet::new(vec![4])); // in cluster 1
+        affinity_map.insert(2, arch::CpuSet::new(vec![1])); // in cluster 0
+        let vcpu_affinity = Some(VcpuAffinity::PerVcpu(affinity_map));
+
+        let vcpu_clusters = map_vcpu_clusters(3, &vcpu_affinity, host_clusters.clone()).unwrap();
+
+        assert_eq!(vcpu_clusters.len(), 2);
+        // Cluster 0 should have vCPU 0 and 2
+        assert!(vcpu_clusters[0].contains(&0));
+        assert!(vcpu_clusters[0].contains(&2));
+        assert!(!vcpu_clusters[0].contains(&1));
+        // Cluster 1 should have vCPU 1
+        assert!(vcpu_clusters[1].contains(&1));
+        assert!(!vcpu_clusters[1].contains(&0));
+        assert!(!vcpu_clusters[1].contains(&2));
     }
 }

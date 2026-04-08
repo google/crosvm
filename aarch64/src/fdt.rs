@@ -87,19 +87,19 @@ fn create_cpu_nodes(
     fdt: &mut Fdt,
     num_cpus: u32,
     cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
-    cpu_clusters: Vec<CpuSet>,
-    cpu_capacity: BTreeMap<usize, u32>,
+    vcpu_clusters: Vec<CpuSet>,
+    vcpu_capacity: BTreeMap<usize, u32>,
     dynamic_power_coefficient: BTreeMap<usize, u32>,
-    cpu_frequencies: BTreeMap<usize, Vec<u32>>,
+    vcpu_frequencies: BTreeMap<usize, Vec<u32>>,
 ) -> Result<()> {
     let root_node = fdt.root_mut();
     let cpus_node = root_node.subnode_mut("cpus")?;
     cpus_node.set_prop("#address-cells", 0x1u32)?;
     cpus_node.set_prop("#size-cells", 0x0u32)?;
 
-    for cpu_id in 0..num_cpus {
+    for vcpu_id in 0..num_cpus {
         let reg = u32::try_from(
-            cpu_mpidr_generator(cpu_id.try_into().unwrap()).ok_or(Error::PropertyValueInvalid)?,
+            cpu_mpidr_generator(vcpu_id.try_into().unwrap()).ok_or(Error::PropertyValueInvalid)?,
         )
         .map_err(|_| Error::PropertyValueTooLarge)?;
         let cpu_name = format!("cpu@{reg:x}");
@@ -110,19 +110,19 @@ fn create_cpu_nodes(
             cpu_node.set_prop("enable-method", "psci")?;
         }
         cpu_node.set_prop("reg", reg)?;
-        cpu_node.set_prop("phandle", PHANDLE_CPU0 + cpu_id)?;
+        cpu_node.set_prop("phandle", PHANDLE_CPU0 + vcpu_id)?;
 
-        if let Some(pwr_coefficient) = dynamic_power_coefficient.get(&(cpu_id as usize)) {
+        if let Some(pwr_coefficient) = dynamic_power_coefficient.get(&(vcpu_id as usize)) {
             cpu_node.set_prop("dynamic-power-coefficient", *pwr_coefficient)?;
         }
-        if let Some(capacity) = cpu_capacity.get(&(cpu_id as usize)) {
+        if let Some(capacity) = vcpu_capacity.get(&(vcpu_id as usize)) {
             cpu_node.set_prop("capacity-dmips-mhz", *capacity)?;
         }
         // Placed inside cpu nodes for ease of parsing for some secure firmwares(PvmFw).
-        if let Some(frequencies) = cpu_frequencies.get(&(cpu_id as usize)) {
-            cpu_node.set_prop("operating-points-v2", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
-            let opp_table_node = cpu_node.subnode_mut(&format!("opp_table{cpu_id}"))?;
-            opp_table_node.set_prop("phandle", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
+        if let Some(frequencies) = vcpu_frequencies.get(&(vcpu_id as usize)) {
+            cpu_node.set_prop("operating-points-v2", PHANDLE_OPP_DOMAIN_BASE + vcpu_id)?;
+            let opp_table_node = cpu_node.subnode_mut(&format!("opp_table{vcpu_id}"))?;
+            opp_table_node.set_prop("phandle", PHANDLE_OPP_DOMAIN_BASE + vcpu_id)?;
             opp_table_node.set_prop("compatible", "operating-points-v2")?;
             for freq in frequencies.iter() {
                 let opp_hz = (*freq) as u64 * 1000;
@@ -132,13 +132,13 @@ fn create_cpu_nodes(
         }
     }
 
-    if !cpu_clusters.is_empty() {
+    if !vcpu_clusters.is_empty() {
         let cpu_map_node = cpus_node.subnode_mut("cpu-map")?;
-        for (cluster_idx, cpus) in cpu_clusters.iter().enumerate() {
+        for (cluster_idx, vcpus) in vcpu_clusters.iter().enumerate() {
             let cluster_node = cpu_map_node.subnode_mut(&format!("cluster{cluster_idx}"))?;
-            for (core_idx, cpu_id) in cpus.iter().enumerate() {
+            for (core_idx, vcpu_id) in vcpus.iter().enumerate() {
                 let core_node = cluster_node.subnode_mut(&format!("core{core_idx}"))?;
-                core_node.set_prop("cpu", PHANDLE_CPU0 + *cpu_id as u32)?;
+                core_node.set_prop("cpu", PHANDLE_CPU0 + *vcpu_id as u32)?;
             }
         }
     }
@@ -631,9 +631,9 @@ pub fn create_fdt(
     >,
     num_cpus: u32,
     cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
-    cpu_clusters: Vec<CpuSet>,
-    cpu_capacity: BTreeMap<usize, u32>,
-    cpu_frequencies: BTreeMap<usize, Vec<u32>>,
+    vcpu_clusters: Vec<CpuSet>,
+    vcpu_capacity: BTreeMap<usize, u32>,
+    vcpu_frequencies: BTreeMap<usize, Vec<u32>>,
     fdt_address: GuestAddress,
     cmdline: &str,
     kernel_region: AddressRange,
@@ -698,10 +698,10 @@ pub fn create_fdt(
         &mut fdt,
         num_cpus,
         cpu_mpidr_generator,
-        cpu_clusters,
-        cpu_capacity,
+        vcpu_clusters,
+        vcpu_capacity,
         dynamic_power_coefficient,
-        cpu_frequencies.clone(),
+        vcpu_frequencies.clone(),
     )?;
     create_gic_node(&mut fdt, is_gicv3, has_vgic_its, num_cpus as u64)?;
     create_timer_node(&mut fdt, num_cpus)?;
@@ -725,7 +725,7 @@ pub fn create_fdt(
     create_vmwdt_node(&mut fdt, vmwdt_cfg, num_cpus)?;
     create_kvm_cpufreq_node(&mut fdt)?;
     vm_generator(&mut fdt, &phandles)?;
-    if !cpu_frequencies.is_empty() {
+    if !vcpu_frequencies.is_empty() {
         if virt_cpufreq_v2 {
             create_virt_cpufreq_v2_node(&mut fdt, num_cpus as u64)?;
         } else {

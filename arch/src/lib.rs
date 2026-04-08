@@ -410,13 +410,7 @@ pub struct VmComponents {
     pub bootorder_fw_cfg_blob: Vec<u8>,
     #[cfg(target_arch = "x86_64")]
     pub break_linux_pci_config_io: bool,
-    pub cpu_capacity: BTreeMap<usize, u32>,
-    pub cpu_clusters: Vec<CpuSet>,
-    #[cfg(all(
-        target_arch = "aarch64",
-        any(target_os = "android", target_os = "linux")
-    ))]
-    pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,
+
     pub delay_rt: bool,
     pub dev_pm: Option<DevicePowerManagerConfig>,
     pub dynamic_power_coefficient: BTreeMap<usize, u32>,
@@ -454,6 +448,10 @@ pub struct VmComponents {
     pub sve_config: SveConfig,
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
+    /// Map of vCPU ID->corresponding pCPU's capacity.
+    pub vcpu_capacity: BTreeMap<usize, u32>,
+    /// List of vCPU clusters, mapped from pCPU clusters.
+    pub vcpu_clusters: Vec<CpuSet>,
     pub vcpu_count: usize,
     #[cfg(all(
         target_arch = "aarch64",
@@ -465,6 +463,13 @@ pub struct VmComponents {
         any(target_os = "android", target_os = "linux")
     ))]
     pub vcpu_domains: BTreeMap<usize, u32>,
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    /// Maps vcpu -> the corresponding pcpu's frequency, based on the vcpu:pcpu mapping in
+    /// vcpu_affinity
+    pub vcpu_frequencies: BTreeMap<usize, Vec<u32>>,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub vfio_platform_pm: bool,
     #[cfg(all(

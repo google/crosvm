@@ -862,7 +862,7 @@ impl arch::LinuxArch for AArch64 {
             Tube::pair().map_err(Error::CreateTube)?;
         let vcpufreq_shared_tube = Arc::new(Mutex::new(vcpufreq_control_tube));
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        if !components.cpu_frequencies.is_empty() {
+        if !components.vcpu_frequencies.is_empty() {
             let mut freq_domain_vcpus: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
             let mut freq_domain_perfs: BTreeMap<u32, Arc<AtomicU32>> = BTreeMap::new();
             let mut vcpu_affinities: Vec<u32> = Vec::new();
@@ -881,14 +881,14 @@ impl arch::LinuxArch for AArch64 {
                 freq_domain_perfs.insert(*domain, domain_perf);
             }
             let largest_vcpu_affinity_idx = *vcpu_affinities.iter().max().unwrap() as usize;
-            for (vcpu, vcpu_affinity) in vcpu_affinities.iter().enumerate() {
+            for (vcpu, pcpu) in vcpu_affinities.iter().enumerate() {
                 let mut virtfreq_size = AARCH64_VIRTFREQ_SIZE;
                 if components.virt_cpufreq_v2 {
                     let domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
                     virtfreq_size = AARCH64_VIRTFREQ_V2_SIZE;
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreqV2::new(
-                        *vcpu_affinity,
-                        components.cpu_frequencies.get(&vcpu).unwrap().clone(),
+                        *pcpu,
+                        components.vcpu_frequencies.get(&vcpu).unwrap().clone(),
                         components.vcpu_domain_paths.get(&vcpu).cloned(),
                         domain,
                         *components.normalized_cpu_ipc_ratios.get(&vcpu).unwrap(),
@@ -906,10 +906,10 @@ impl arch::LinuxArch for AArch64 {
                         .map_err(Error::RegisterVirtCpufreq)?;
                 } else {
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreq::new(
-                        *vcpu_affinity,
-                        *components.cpu_capacity.get(&vcpu).unwrap(),
+                        *pcpu,
+                        *components.vcpu_capacity.get(&vcpu).unwrap_or(&1024),
                         *components
-                            .cpu_frequencies
+                            .vcpu_frequencies
                             .get(&vcpu)
                             .unwrap()
                             .iter()
@@ -1018,9 +1018,9 @@ impl arch::LinuxArch for AArch64 {
             dev_resources,
             vcpu_count as u32,
             &|n| get_vcpu_mpidr_aff(&vcpus, n),
-            components.cpu_clusters,
-            components.cpu_capacity,
-            components.cpu_frequencies,
+            components.vcpu_clusters,
+            components.vcpu_capacity,
+            components.vcpu_frequencies,
             fdt_address,
             cmdline
                 .as_str_with_max_len(AARCH64_CMDLINE_MAX_SIZE - 1)
