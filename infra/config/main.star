@@ -100,48 +100,6 @@ luci.bucket(
     ],
 )
 
-luci.bucket(
-    name = "ci.shadow",
-    shadows = "ci",
-    constraints = luci.bucket_constraints(
-        pools = ["luci.crosvm.ci"],
-        service_accounts = ["crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com"],
-    ),
-    bindings = [
-        luci.binding(
-            roles = "role/buildbucket.creator",
-            groups = "google/crosvm-acl-luci-admin@twosync.google.com",
-        ),
-        # Needed to allow led builds to create ResultDB invocations (e.g. for reporting test results).
-        luci.binding(
-            roles = "role/resultdb.invocationCreator",
-            users = ["crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com"],
-        ),
-    ],
-    dynamic = True,
-)
-
-luci.bucket(
-    name = "try.shadow",
-    shadows = "try",
-    constraints = luci.bucket_constraints(
-        pools = ["luci.crosvm.try"],
-        service_accounts = ["crosvm-luci-try-builder@crosvm-infra.iam.gserviceaccount.com"],
-    ),
-    bindings = [
-        luci.binding(
-            roles = "role/buildbucket.creator",
-            groups = "google/crosvm-acl-luci-admin@twosync.google.com",
-        ),
-        # Needed to allow led builds to create ResultDB invocations (e.g. for reporting test results).
-        luci.binding(
-            roles = "role/resultdb.invocationCreator",
-            users = ["crosvm-luci-try-builder@crosvm-infra.iam.gserviceaccount.com"],
-        ),
-    ],
-    dynamic = True,
-)
-
 # The prod bucket will include builders which work on post-commit code and
 # generate executable artifacts used by other users or machines.
 luci.bucket(name = "prod")
