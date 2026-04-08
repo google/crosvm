@@ -85,7 +85,7 @@ const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 
 fn create_cpu_nodes(
     fdt: &mut Fdt,
-    num_cpus: u32,
+    num_vcpus: u32,
     cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
     vcpu_clusters: Vec<CpuSet>,
     vcpu_capacity: BTreeMap<usize, u32>,
@@ -97,7 +97,7 @@ fn create_cpu_nodes(
     cpus_node.set_prop("#address-cells", 0x1u32)?;
     cpus_node.set_prop("#size-cells", 0x0u32)?;
 
-    for vcpu_id in 0..num_cpus {
+    for vcpu_id in 0..num_vcpus {
         let reg = u32::try_from(
             cpu_mpidr_generator(vcpu_id.try_into().unwrap()).ok_or(Error::PropertyValueInvalid)?,
         )
@@ -106,7 +106,7 @@ fn create_cpu_nodes(
         let cpu_node = cpus_node.subnode_mut(&cpu_name)?;
         cpu_node.set_prop("device_type", "cpu")?;
         cpu_node.set_prop("compatible", "arm,armv8")?;
-        if num_cpus > 1 {
+        if num_vcpus > 1 {
             cpu_node.set_prop("enable-method", "psci")?;
         }
         cpu_node.set_prop("reg", reg)?;
@@ -146,14 +146,19 @@ fn create_cpu_nodes(
     Ok(())
 }
 
-fn create_gic_node(fdt: &mut Fdt, is_gicv3: bool, has_vgic_its: bool, num_cpus: u64) -> Result<()> {
+fn create_gic_node(
+    fdt: &mut Fdt,
+    is_gicv3: bool,
+    has_vgic_its: bool,
+    num_vcpus: u64,
+) -> Result<()> {
     let mut gic_reg_prop = [AARCH64_GIC_DIST_BASE, AARCH64_GIC_DIST_SIZE, 0, 0];
 
     let intc_node = fdt.root_mut().subnode_mut("intc")?;
     if is_gicv3 {
         intc_node.set_prop("compatible", "arm,gic-v3")?;
-        gic_reg_prop[2] = AARCH64_GIC_DIST_BASE - (AARCH64_GIC_REDIST_SIZE * num_cpus);
-        gic_reg_prop[3] = AARCH64_GIC_REDIST_SIZE * num_cpus;
+        gic_reg_prop[2] = AARCH64_GIC_DIST_BASE - (AARCH64_GIC_REDIST_SIZE * num_vcpus);
+        gic_reg_prop[3] = AARCH64_GIC_REDIST_SIZE * num_vcpus;
     } else {
         intc_node.set_prop("compatible", "arm,cortex-a15-gic")?;
         gic_reg_prop[2] = AARCH64_GIC_CPUI_BASE;
@@ -180,18 +185,18 @@ fn create_gic_node(fdt: &mut Fdt, is_gicv3: bool, has_vgic_its: bool, num_cpus: 
     Ok(())
 }
 
-fn create_timer_node(fdt: &mut Fdt, num_cpus: u32) -> Result<()> {
+fn create_timer_node(fdt: &mut Fdt, num_vcpus: u32) -> Result<()> {
     // These are fixed interrupt numbers for the timer device.
     let irqs = [13, 14, 11, 10];
     let compatible = "arm,armv8-timer";
-    let cpu_mask: u32 =
-        (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
+    let vcpu_mask: u32 =
+        (((1 << num_vcpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
 
     let mut timer_reg_cells = Vec::new();
     for &irq in &irqs {
         timer_reg_cells.push(GIC_FDT_IRQ_TYPE_PPI);
         timer_reg_cells.push(irq);
-        timer_reg_cells.push(cpu_mask | IRQ_TYPE_LEVEL_LOW);
+        timer_reg_cells.push(vcpu_mask | IRQ_TYPE_LEVEL_LOW);
     }
 
     let timer_node = fdt.root_mut().subnode_mut("timer")?;
@@ -201,33 +206,33 @@ fn create_timer_node(fdt: &mut Fdt, num_cpus: u32) -> Result<()> {
     Ok(())
 }
 
-fn create_virt_cpufreq_node(fdt: &mut Fdt, num_cpus: u64) -> Result<()> {
+fn create_virt_cpufreq_node(fdt: &mut Fdt, num_vcpus: u64) -> Result<()> {
     // TODO: b/320770346: add compatible string
     let vcf_node = fdt.root_mut().subnode_mut("cpufreq")?;
-    let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_SIZE * num_cpus];
+    let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_SIZE * num_vcpus];
 
     vcf_node.set_prop("reg", &reg)?;
     Ok(())
 }
 
-fn create_virt_cpufreq_v2_node(fdt: &mut Fdt, num_cpus: u64) -> Result<()> {
+fn create_virt_cpufreq_v2_node(fdt: &mut Fdt, num_vcpus: u64) -> Result<()> {
     let compatible = "qemu,virtual-cpufreq";
     let vcf_node = fdt.root_mut().subnode_mut("cpufreq")?;
-    let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_V2_SIZE * num_cpus];
+    let reg = [AARCH64_VIRTFREQ_BASE, AARCH64_VIRTFREQ_V2_SIZE * num_vcpus];
 
     vcf_node.set_prop("compatible", compatible)?;
     vcf_node.set_prop("reg", &reg)?;
     Ok(())
 }
 
-fn create_pmu_node(fdt: &mut Fdt, num_cpus: u32) -> Result<()> {
+fn create_pmu_node(fdt: &mut Fdt, num_vcpus: u32) -> Result<()> {
     let compatible = "arm,armv8-pmuv3";
-    let cpu_mask: u32 =
-        (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
+    let vcpu_mask: u32 =
+        (((1 << num_vcpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
     let irq = [
         GIC_FDT_IRQ_TYPE_PPI,
         AARCH64_PMU_IRQ,
-        cpu_mask | IRQ_TYPE_LEVEL_HIGH,
+        vcpu_mask | IRQ_TYPE_LEVEL_HIGH,
     ];
 
     let pmu_node = fdt.root_mut().subnode_mut("pmu")?;
@@ -562,15 +567,15 @@ fn create_battery_node(fdt: &mut Fdt, mmio_base: u64, irq: u32) -> Result<()> {
     Ok(())
 }
 
-fn create_vmwdt_node(fdt: &mut Fdt, vmwdt_cfg: VmWdtConfig, num_cpus: u32) -> Result<()> {
+fn create_vmwdt_node(fdt: &mut Fdt, vmwdt_cfg: VmWdtConfig, num_vcpus: u32) -> Result<()> {
     let vmwdt_name = format!("vmwdt@{:x}", vmwdt_cfg.base);
     let reg = [vmwdt_cfg.base, vmwdt_cfg.size];
-    let cpu_mask: u32 =
-        (((1 << num_cpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
+    let vcpu_mask: u32 =
+        (((1 << num_vcpus) - 1) << GIC_FDT_IRQ_PPI_CPU_SHIFT) & GIC_FDT_IRQ_PPI_CPU_MASK;
     let irq = [
         GIC_FDT_IRQ_TYPE_PPI,
         AARCH64_VMWDT_IRQ,
-        cpu_mask | IRQ_TYPE_EDGE_RISING,
+        vcpu_mask | IRQ_TYPE_EDGE_RISING,
     ];
 
     let vmwdt_node = fdt.root_mut().subnode_mut(&vmwdt_name)?;
@@ -608,7 +613,7 @@ fn add_symbols_entry(fdt: &mut Fdt, symbol: &str, path: &str) -> Result<()> {
 /// * `pci_irqs` - List of PCI device address to PCI interrupt number and pin mappings
 /// * `pci_cfg` - Location of the memory-mapped PCI configuration space.
 /// * `pci_ranges` - Memory ranges accessible via the PCI host controller.
-/// * `num_cpus` - Number of virtual CPUs the guest will have
+/// * `num_vcpus` - Number of virtual CPUs the guest will have
 /// * `fdt_address` - The offset into physical memory for the device tree
 /// * `cmdline` - The kernel commandline
 /// * `initrd` - An optional tuple of initrd guest physical address and size
@@ -629,7 +634,7 @@ pub fn create_fdt(
     #[cfg(any(target_os = "android", target_os = "linux"))] platform_dev_resources: Vec<
         PlatformBusResources,
     >,
-    num_cpus: u32,
+    num_vcpus: u32,
     cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
     vcpu_clusters: Vec<CpuSet>,
     vcpu_capacity: BTreeMap<usize, u32>,
@@ -696,17 +701,17 @@ pub fn create_fdt(
 
     create_cpu_nodes(
         &mut fdt,
-        num_cpus,
+        num_vcpus,
         cpu_mpidr_generator,
         vcpu_clusters,
         vcpu_capacity,
         dynamic_power_coefficient,
         vcpu_frequencies.clone(),
     )?;
-    create_gic_node(&mut fdt, is_gicv3, has_vgic_its, num_cpus as u64)?;
-    create_timer_node(&mut fdt, num_cpus)?;
+    create_gic_node(&mut fdt, is_gicv3, has_vgic_its, num_vcpus as u64)?;
+    create_timer_node(&mut fdt, num_vcpus)?;
     if use_pmu {
-        create_pmu_node(&mut fdt, num_cpus)?;
+        create_pmu_node(&mut fdt, num_vcpus)?;
     }
     create_serial_nodes(&mut fdt, serial_devices)?;
     create_psci_node(&mut fdt, &psci_version)?;
@@ -722,14 +727,14 @@ pub fn create_fdt(
     if let Some((bat_mmio_base, bat_irq)) = bat_mmio_base_and_irq {
         create_battery_node(&mut fdt, bat_mmio_base, bat_irq)?;
     }
-    create_vmwdt_node(&mut fdt, vmwdt_cfg, num_cpus)?;
+    create_vmwdt_node(&mut fdt, vmwdt_cfg, num_vcpus)?;
     create_kvm_cpufreq_node(&mut fdt)?;
     vm_generator(&mut fdt, &phandles)?;
     if !vcpu_frequencies.is_empty() {
         if virt_cpufreq_v2 {
-            create_virt_cpufreq_v2_node(&mut fdt, num_cpus as u64)?;
+            create_virt_cpufreq_v2_node(&mut fdt, num_vcpus as u64)?;
         } else {
-            create_virt_cpufreq_node(&mut fdt, num_cpus as u64)?;
+            create_virt_cpufreq_node(&mut fdt, num_vcpus as u64)?;
         }
     }
 

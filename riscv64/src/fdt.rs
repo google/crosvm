@@ -32,29 +32,29 @@ const PHANDLE_AIA_APLIC: u32 = 2;
 const PHANDLE_AIA_IMSIC: u32 = 3;
 const PHANDLE_CPU_INTC_BASE: u32 = 4;
 
-fn create_cpu_nodes(fdt: &mut Fdt, num_cpus: u32, timebase_frequency: u32) -> Result<()> {
+fn create_cpu_nodes(fdt: &mut Fdt, num_vcpus: u32, timebase_frequency: u32) -> Result<()> {
     let cpus_node = fdt.root_mut().subnode_mut("cpus")?;
     cpus_node.set_prop("#address-cells", 0x1u32)?;
     cpus_node.set_prop("#size-cells", 0x0u32)?;
     cpus_node.set_prop("timebase-frequency", timebase_frequency)?;
 
-    for cpu_id in 0..num_cpus {
-        let cpu_name = format!("cpu@{cpu_id:x}");
+    for vcpu_id in 0..num_vcpus {
+        let cpu_name = format!("cpu@{vcpu_id:x}");
         let cpu_node = cpus_node.subnode_mut(&cpu_name)?;
         cpu_node.set_prop("device_type", "cpu")?;
         cpu_node.set_prop("compatible", "riscv")?;
         cpu_node.set_prop("mmu-type", "sv48")?;
         cpu_node.set_prop("riscv,isa", "rv64iafdcsu_smaia_ssaia")?;
         cpu_node.set_prop("status", "okay")?;
-        cpu_node.set_prop("reg", cpu_id)?;
-        cpu_node.set_prop("phandle", PHANDLE_CPU0 + cpu_id)?;
+        cpu_node.set_prop("reg", vcpu_id)?;
+        cpu_node.set_prop("phandle", PHANDLE_CPU0 + vcpu_id)?;
 
         // Add interrupt controller node
         let intc_node = cpu_node.subnode_mut("interrupt-controller")?;
         intc_node.set_prop("compatible", "riscv,cpu-intc")?;
         intc_node.set_prop("#interrupt-cells", 1u32)?;
         intc_node.set_prop("interrupt-controller", ())?;
-        intc_node.set_prop("phandle", PHANDLE_CPU_INTC_BASE + cpu_id)?;
+        intc_node.set_prop("phandle", PHANDLE_CPU_INTC_BASE + vcpu_id)?;
     }
     Ok(())
 }
@@ -88,7 +88,7 @@ fn create_chosen_node(
 // num_sources: number of aplic sources from the aia subsystem
 fn create_aia_node(
     fdt: &mut Fdt,
-    num_cpus: usize,
+    num_vcpus: usize,
     num_ids: usize,
     num_sources: usize,
 ) -> Result<()> {
@@ -100,7 +100,7 @@ fn create_aia_node(
         0u32,
         AIA_IMSIC_BASE as u32,
         0,
-        aia_imsic_size(num_cpus) as u32,
+        aia_imsic_size(num_vcpus) as u32,
     ];
     imsic_node.set_prop("reg", &regs)?;
     imsic_node.set_prop("#interrupt-cells", 0u32)?;
@@ -110,8 +110,8 @@ fn create_aia_node(
     imsic_node.set_prop("phandle", PHANDLE_AIA_IMSIC)?;
 
     const S_MODE_EXT_IRQ: u32 = 9;
-    let mut cpu_intc_regs: Vec<u32> = Vec::with_capacity(num_cpus * 2);
-    for hart in 0..num_cpus {
+    let mut cpu_intc_regs: Vec<u32> = Vec::with_capacity(num_vcpus * 2);
+    for hart in 0..num_vcpus {
         cpu_intc_regs.push(PHANDLE_CPU_INTC_BASE + hart as u32);
         cpu_intc_regs.push(S_MODE_EXT_IRQ);
     }
@@ -119,11 +119,11 @@ fn create_aia_node(
 
     /* Skip APLIC node if we have no interrupt sources */
     if num_sources > 0 {
-        let name = format!("aplic@{:#08x}", aia_aplic_addr(num_cpus));
+        let name = format!("aplic@{:#08x}", aia_aplic_addr(num_vcpus));
         let aplic_node = fdt.root_mut().subnode_mut(&name)?;
         aplic_node.set_prop("compatible", "riscv,aplic")?;
 
-        let regs = [0u32, aia_aplic_addr(num_cpus) as u32, 0, AIA_APLIC_SIZE];
+        let regs = [0u32, aia_aplic_addr(num_vcpus) as u32, 0, AIA_APLIC_SIZE];
         aplic_node.set_prop("reg", &regs)?;
         aplic_node.set_prop("#interrupt-cells", 2u32)?;
         aplic_node.set_prop("interrupt-controller", ())?;
@@ -258,7 +258,7 @@ fn create_pci_nodes(
 /// * `pci_irqs` - List of PCI device address to PCI interrupt number and pin mappings
 /// * `pci_cfg` - Location of the memory-mapped PCI configuration space.
 /// * `pci_ranges` - Memory ranges accessible via the PCI host controller.
-/// * `num_cpus` - Number of virtual CPUs the guest will have
+/// * `num_vcpus` - Number of virtual CPUs the guest will have
 /// * `fdt_load_offset` - The offset into physical memory for the device tree
 /// * `cmdline` - The kernel commandline
 /// * `initrd` - An optional tuple of initrd guest physical address and size
@@ -272,7 +272,7 @@ pub fn create_fdt(
     #[cfg(any(target_os = "android", target_os = "linux"))] platform_dev_resources: Vec<
         PlatformBusResources,
     >,
-    num_cpus: u32,
+    num_vcpus: u32,
     fdt_load_offset: u64,
     aia_num_ids: usize,
     aia_num_sources: usize,
@@ -290,8 +290,8 @@ pub fn create_fdt(
     root_node.set_prop("#size-cells", 0x2u32)?;
     create_chosen_node(&mut fdt, cmdline, initrd)?;
     create_memory_node(&mut fdt, guest_mem)?;
-    create_cpu_nodes(&mut fdt, num_cpus, timebase_frequency)?;
-    create_aia_node(&mut fdt, num_cpus as usize, aia_num_ids, aia_num_sources)?;
+    create_cpu_nodes(&mut fdt, num_vcpus, timebase_frequency)?;
+    create_aia_node(&mut fdt, num_vcpus as usize, aia_num_ids, aia_num_sources)?;
     create_pci_nodes(&mut fdt, pci_irqs, pci_cfg, pci_ranges)?;
 
     // Done writing base FDT, now apply DT overlays

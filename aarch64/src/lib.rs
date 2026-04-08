@@ -1091,7 +1091,7 @@ impl arch::LinuxArch for AArch64 {
         vcpu: &mut dyn VcpuAArch64,
         vcpu_init: VcpuInitAArch64,
         _vcpu_id: usize,
-        _num_cpus: usize,
+        _num_vcpus: usize,
         _cpu_config: Option<CpuConfigAArch64>,
     ) -> std::result::Result<(), Self::Error> {
         for (reg, value) in vcpu_init.regs.iter() {

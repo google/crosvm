@@ -66,7 +66,7 @@ pub struct CpuIdContext {
     /// Id of the Vcpu associated with this context.
     vcpu_id: usize,
     /// The total number of vcpus on this VM.
-    cpu_count: usize,
+    vcpu_count: usize,
     /// Whether or not the IrqChip's APICs support X2APIC.
     x2apic: bool,
     /// Whether or not the IrqChip's APICs support a TSC deadline timer.
@@ -86,7 +86,7 @@ pub struct CpuIdContext {
 impl CpuIdContext {
     pub fn new(
         vcpu_id: usize,
-        cpu_count: usize,
+        vcpu_count: usize,
         irq_chip: Option<&dyn IrqChipX86_64>,
         cpu_config: CpuConfigX86_64,
         calibrated_tsc_leaf_required: bool,
@@ -95,7 +95,7 @@ impl CpuIdContext {
     ) -> CpuIdContext {
         CpuIdContext {
             vcpu_id,
-            cpu_count,
+            vcpu_count,
             x2apic: irq_chip.is_some_and(|chip| chip.check_capability(IrqChipCap::X2Apic)),
             tsc_deadline_timer: irq_chip
                 .is_some_and(|chip| chip.check_capability(IrqChipCap::TscDeadlineTimer)),
@@ -152,9 +152,9 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
 
             entry.cpuid.ebx = (ctx.vcpu_id << EBX_CPUID_SHIFT) as u32
                 | (EBX_CLFLUSH_CACHELINE << EBX_CLFLUSH_SIZE_SHIFT);
-            if ctx.cpu_count > 1 {
+            if ctx.vcpu_count > 1 {
                 // This field is only valid if CPUID.1.EDX.HTT[bit 28]= 1.
-                entry.cpuid.ebx |= (ctx.cpu_count as u32) << EBX_CPU_COUNT_SHIFT;
+                entry.cpuid.ebx |= (ctx.vcpu_count as u32) << EBX_CPU_COUNT_SHIFT;
                 // A value of 0 for HTT indicates there is only a single logical
                 // processor in the package and software should assume only a
                 // single APIC ID is reserved.
@@ -177,11 +177,11 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             }
 
             entry.cpuid.eax &= !0xFC000000;
-            if ctx.cpu_count > 1 {
+            if ctx.vcpu_count > 1 {
                 let cpu_cores = if ctx.cpu_config.no_smt {
-                    ctx.cpu_count as u32
-                } else if ctx.cpu_count % 2 == 0 {
-                    (ctx.cpu_count >> 1) as u32
+                    ctx.vcpu_count as u32
+                } else if ctx.vcpu_count % 2 == 0 {
+                    (ctx.vcpu_count >> 1) as u32
                 } else {
                     1
                 };
@@ -253,27 +253,27 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             // On AMD, these leaves are not used, so it is currently safe to leave in.
             entry.cpuid.edx = ctx.vcpu_id as u32; // x2APIC ID
             if entry.index == 0 {
-                if ctx.cpu_config.no_smt || (ctx.cpu_count == 1) {
+                if ctx.cpu_config.no_smt || (ctx.vcpu_count == 1) {
                     // Make it so that all VCPUs appear as different,
                     // non-hyperthreaded cores on the same package.
                     entry.cpuid.eax = 0; // Shift to get id of next level
                     entry.cpuid.ebx = 1; // Number of logical cpus at this level
-                } else if ctx.cpu_count % 2 == 0 {
+                } else if ctx.vcpu_count % 2 == 0 {
                     // Each core has 2 hyperthreads
                     entry.cpuid.eax = 1; // Shift to get id of next level
                     entry.cpuid.ebx = 2; // Number of logical cpus at this level
                 } else {
-                    // One core contain all the cpu_count hyperthreads
-                    let cpu_bits: u32 = 32 - ((ctx.cpu_count - 1) as u32).leading_zeros();
+                    // One core contain all the vcpu_count hyperthreads
+                    let cpu_bits: u32 = 32 - ((ctx.vcpu_count - 1) as u32).leading_zeros();
                     entry.cpuid.eax = cpu_bits; // Shift to get id of next level
-                    entry.cpuid.ebx = ctx.cpu_count as u32; // Number of logical cpus at this level
+                    entry.cpuid.ebx = ctx.vcpu_count as u32; // Number of logical cpus at this level
                 }
                 entry.cpuid.ecx = (ECX_TOPO_SMT_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
             } else if entry.index == 1 {
-                let cpu_bits: u32 = 32 - ((ctx.cpu_count - 1) as u32).leading_zeros();
+                let cpu_bits: u32 = 32 - ((ctx.vcpu_count - 1) as u32).leading_zeros();
                 entry.cpuid.eax = cpu_bits;
                 // Number of logical cpus at this level
-                entry.cpuid.ebx = (ctx.cpu_count as u32) & 0xffff;
+                entry.cpuid.ebx = (ctx.vcpu_count as u32) & 0xffff;
                 entry.cpuid.ecx = (ECX_TOPO_CORE_TYPE << ECX_TOPO_TYPE_SHIFT) | entry.index;
             } else {
                 entry.cpuid.eax = 0;
@@ -330,7 +330,7 @@ pub fn setup_cpuid(
     irq_chip: &dyn IrqChipX86_64,
     vcpu: &dyn VcpuX86_64,
     vcpu_id: usize,
-    nrcpus: usize,
+    vcpu_count: usize,
     cpu_config: CpuConfigX86_64,
 ) -> Result<()> {
     let mut cpuid = hypervisor
@@ -341,7 +341,7 @@ pub fn setup_cpuid(
         &mut cpuid,
         &CpuIdContext::new(
             vcpu_id,
-            nrcpus,
+            vcpu_count,
             Some(irq_chip),
             cpu_config,
             hypervisor.check_capability(HypervisorCap::CalibratedTscLeafRequired),
@@ -410,7 +410,7 @@ mod tests {
         };
         let ctx = CpuIdContext {
             vcpu_id: 0,
-            cpu_count: 0,
+            vcpu_count: 0,
             x2apic: false,
             tsc_deadline_timer: false,
             apic_frequency: 0,

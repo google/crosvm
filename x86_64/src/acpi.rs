@@ -523,7 +523,7 @@ fn sync_acpi_id_from_cpuid(
 /// # Arguments
 ///
 /// * `guest_mem` - The guest memory where the tables will be stored.
-/// * `num_cpus` - Used to construct the MADT.
+/// * `num_vcpus` - Used to construct the MADT.
 /// * `sci_irq` - Used to fill the FACP SCI_INTERRUPT field, which is going to be used by the ACPI
 ///   drivers to register sci handler.
 /// * `acpi_dev_resource` - resouces needed by the ACPI devices for creating tables.
@@ -536,7 +536,7 @@ fn sync_acpi_id_from_cpuid(
 /// * `max_bus` - Max bus number in MCFG table
 pub fn create_acpi_tables(
     guest_mem: &GuestMemory,
-    num_cpus: u8,
+    num_vcpus: u8,
     sci_irq: u32,
     reset_port: u32,
     reset_value: u8,
@@ -642,16 +642,16 @@ pub fn create_acpi_tables(
             sync_acpi_id_from_cpuid(&mut madt, cpus, apic_ids).ok()?;
         }
         _ => {
-            for cpu in 0..num_cpus {
+            for vcpu_id in 0..num_vcpus {
                 let apic = LocalApic {
                     _type: MADT_TYPE_LOCAL_APIC,
                     _length: std::mem::size_of::<LocalApic>() as u8,
-                    _processor_id: cpu,
-                    _apic_id: cpu,
+                    _processor_id: vcpu_id,
+                    _apic_id: vcpu_id,
                     _flags: MADT_ENABLED,
                 };
                 madt.append(apic);
-                apic_ids.push(cpu as usize);
+                apic_ids.push(vcpu_id as usize);
             }
         }
     }

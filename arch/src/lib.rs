@@ -612,7 +612,7 @@ pub trait LinuxArch {
     /// * `vcpu` - The VCPU object to configure.
     /// * `vcpu_init` - The data required to initialize VCPU registers and other state.
     /// * `vcpu_id` - The id of the given `vcpu`.
-    /// * `num_cpus` - Number of virtual CPUs the guest will have.
+    /// * `num_vcpus` - Number of virtual CPUs the guest will have.
     /// * `cpu_config` - CPU feature configurations.
     fn configure_vcpu<V: Vm>(
         vm: &V,
@@ -621,7 +621,7 @@ pub trait LinuxArch {
         vcpu: &mut dyn VcpuArch,
         vcpu_init: VcpuInitArch,
         vcpu_id: usize,
-        num_cpus: usize,
+        num_vcpus: usize,
         cpu_config: Option<CpuConfigArch>,
     ) -> Result<(), Self::Error>;
 

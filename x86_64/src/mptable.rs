@@ -93,9 +93,9 @@ fn mpf_intel_compute_checksum(v: &mpf_intel) -> u8 {
     (!checksum).wrapping_add(1)
 }
 
-fn compute_mp_size(num_cpus: u8) -> usize {
+fn compute_mp_size(num_vcpus: u8) -> usize {
     mem::size_of::<mpc_table>()
-        + mem::size_of::<mpc_cpu>() * (num_cpus as usize)
+        + mem::size_of::<mpc_cpu>() * (num_vcpus as usize)
         + mem::size_of::<mpc_ioapic>()
         + mem::size_of::<mpc_bus>() * 2
         + mem::size_of::<mpc_intsrc>()
@@ -103,10 +103,10 @@ fn compute_mp_size(num_cpus: u8) -> usize {
         + mem::size_of::<mpc_lintsrc>() * 2
 }
 
-/// Performs setup of the MP table for the given `num_cpus`.
+/// Performs setup of the MP table for the given `num_vcpus`.
 pub fn setup_mptable(
     mem: &GuestMemory,
-    num_cpus: u8,
+    num_vcpus: u8,
     pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
 ) -> Result<()> {
     // Write the MP Floating Pointer structure pointing at `MPTABLE_RANGE`. This structure must be
@@ -132,7 +132,7 @@ pub fn setup_mptable(
         Some(pci_irq) => pci_irq.0.bus + 1,
         _ => 1,
     };
-    let mp_size = compute_mp_size(num_cpus);
+    let mp_size = compute_mp_size(num_vcpus);
 
     // The checked_add here ensures the all of the following base_mp.unchecked_add's will be without
     // overflow.
@@ -154,18 +154,18 @@ pub fn setup_mptable(
     base_mp = base_mp.unchecked_add(mem::size_of::<mpc_table>() as u64);
 
     let mut checksum: u8 = 0;
-    let ioapicid: u8 = num_cpus
+    let ioapicid: u8 = num_vcpus
         .checked_add(1)
-        .ok_or(Error::TooManyCpus(num_cpus))?;
+        .ok_or(Error::TooManyCpus(num_vcpus))?;
 
-    for cpu_id in 0..num_cpus {
+    for vcpu_id in 0..num_vcpus {
         let size = mem::size_of::<mpc_cpu>();
         let mpc_cpu = mpc_cpu {
             type_: MP_PROCESSOR as u8,
-            apicid: cpu_id,
+            apicid: vcpu_id,
             apicver: APIC_VERSION,
             cpuflag: CPU_ENABLED as u8
-                | if cpu_id == 0 {
+                | if vcpu_id == 0 {
                     CPU_BOOTPROCESSOR as u8
                 } else {
                     0
@@ -387,26 +387,26 @@ mod tests {
 
     #[test]
     fn bounds_check() {
-        let num_cpus = 4;
+        let num_vcpus = 4;
         let mem = test_guest_mem();
 
-        setup_mptable(&mem, num_cpus, &[]).unwrap();
+        setup_mptable(&mem, num_vcpus, &[]).unwrap();
     }
 
     #[test]
     fn bounds_check_fails() {
-        let num_cpus = 255;
+        let num_vcpus = 255;
         let mem = test_guest_mem();
 
-        assert!(setup_mptable(&mem, num_cpus, &[]).is_err());
+        assert!(setup_mptable(&mem, num_vcpus, &[]).is_err());
     }
 
     #[test]
     fn mpf_intel_checksum() {
-        let num_cpus = 1;
+        let num_vcpus = 1;
         let mem = test_guest_mem();
 
-        setup_mptable(&mem, num_cpus, &[]).unwrap();
+        setup_mptable(&mem, num_vcpus, &[]).unwrap();
 
         let mpf_intel = mem
             .read_obj_from_addr(GuestAddress(MP_FLOATING_POINTER_ADDR))
@@ -417,10 +417,10 @@ mod tests {
 
     #[test]
     fn mpc_table_checksum() {
-        let num_cpus = 4;
+        let num_vcpus = 4;
         let mem = test_guest_mem();
 
-        setup_mptable(&mem, num_cpus, &[]).unwrap();
+        setup_mptable(&mem, num_vcpus, &[]).unwrap();
 
         let mpf_intel: mpf_intel = mem
             .read_obj_from_addr(GuestAddress(MP_FLOATING_POINTER_ADDR))
@@ -456,7 +456,7 @@ mod tests {
             let mut entry_offset = mpc_offset
                 .checked_add(mem::size_of::<mpc_table>() as u64)
                 .unwrap();
-            let mut cpu_count = 0;
+            let mut vcpu_count = 0;
             while entry_offset < mpc_end {
                 let entry_type: u8 = mem.read_obj_from_addr(entry_offset).unwrap();
                 entry_offset = entry_offset
@@ -464,10 +464,10 @@ mod tests {
                     .unwrap();
                 assert!(entry_offset <= mpc_end);
                 if entry_type as u32 == MP_PROCESSOR {
-                    cpu_count += 1;
+                    vcpu_count += 1;
                 }
             }
-            assert_eq!(cpu_count, i);
+            assert_eq!(vcpu_count, i);
         }
     }
 }

@@ -1508,7 +1508,7 @@ impl arch::LinuxArch for X8664arch {
         vcpu: &mut dyn VcpuX86_64,
         vcpu_init: VcpuInitX86_64,
         vcpu_id: usize,
-        num_cpus: usize,
+        num_vcpus: usize,
         cpu_config: Option<CpuConfigX86_64>,
     ) -> Result<()> {
         let cpu_config = match cpu_config {
@@ -1516,7 +1516,7 @@ impl arch::LinuxArch for X8664arch {
             None => return Err(Error::InvalidCpuConfig),
         };
         if !vm.check_capability(VmCap::EarlyInitCpuid) {
-            cpuid::setup_cpuid(hypervisor, irq_chip, vcpu, vcpu_id, num_cpus, cpu_config)
+            cpuid::setup_cpuid(hypervisor, irq_chip, vcpu, vcpu_id, num_vcpus, cpu_config)
                 .map_err(Error::SetupCpuid)?;
         }
 

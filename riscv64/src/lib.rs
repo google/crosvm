@@ -470,7 +470,7 @@ impl arch::LinuxArch for Riscv64 {
         vcpu: &mut dyn VcpuRiscv64,
         _vcpu_init: VcpuInitRiscv64,
         vcpu_id: usize,
-        _num_cpus: usize,
+        _num_vcpus: usize,
         cpu_config: Option<CpuConfigRiscv64>,
     ) -> std::result::Result<(), Self::Error> {
         vcpu.set_one_reg(VcpuRegister::Core(CoreRegister::Pc), get_kernel_addr().0)
