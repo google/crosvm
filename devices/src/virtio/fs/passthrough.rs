@@ -1878,10 +1878,15 @@ impl PassthroughFs {
             name.to_str().unwrap_or("<non UTF-8 str>")
         );
 
+        self.change_ugid_creds_for_path(ctx, &path)
+    }
+
+    /// Set host uid/gid to configured value according to path
+    fn change_ugid_creds_for_path(&self, ctx: &Context, path: &str) -> (u32, u32) {
         let is_root_path = path.is_empty();
 
-        if self.find_ugid_creds_for_path(&path, is_root_path).is_some() {
-            return self.find_ugid_creds_for_path(&path, is_root_path).unwrap();
+        if let Some(creds) = self.find_ugid_creds_for_path(path, is_root_path) {
+            return creds;
         }
 
         if let Some(perm_data) = self
@@ -1953,13 +1958,18 @@ impl PassthroughFs {
             name.to_str().unwrap_or("<non UTF-8 str>")
         );
 
+        self.change_creds_for_path(ctx, &path)
+    }
+
+    /// Set host uid/gid to configured value according to path
+    fn change_creds_for_path(&self, ctx: &Context, path: &str) -> (u32, u32) {
         for perm_data in self
             .permission_paths
             .read()
             .expect("acquire permission_paths read lock")
             .iter()
         {
-            if perm_data.need_set_permission(&path) {
+            if perm_data.need_set_permission(path) {
                 return (perm_data.host_uid, perm_data.host_gid);
             }
         }
@@ -3570,12 +3580,22 @@ impl FileSystem for PassthroughFs {
             length,
             flags
         );
+        let dst_inode_data = self.find_inode(inode_dst)?;
+
+        #[allow(unused_variables)]
+        #[cfg(feature = "arc_quota")]
+        let (uid, gid) = self.change_creds_for_path(&ctx, &dst_inode_data.path);
+        #[cfg(feature = "fs_runtime_ugid_map")]
+        let (uid, gid) = self.change_ugid_creds_for_path(&ctx, &dst_inode_data.path);
+        #[cfg(not(feature = "fs_permission_translation"))]
+        let (uid, gid) = (ctx.uid, ctx.gid);
+
         // We need to change credentials during a write so that the kernel will remove setuid or
         // setgid bits from the file if it was written to by someone other than the owner.
-        let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
+        let (_uid, _gid) = set_creds(uid, gid)?;
         let (src_data, dst_data): (Arc<dyn AsRawDescriptor>, Arc<dyn AsRawDescriptor>) =
             if self.zero_message_open.load(Ordering::Relaxed) {
-                (self.find_inode(inode_src)?, self.find_inode(inode_dst)?)
+                (self.find_inode(inode_src)?, dst_inode_data)
             } else {
                 (
                     self.find_handle(handle_src, inode_src)?,
@@ -4746,6 +4766,80 @@ mod tests {
         assert_eq!(in_dir_b_entry.attr.st_uid, BY_PATH_UID);
         assert_eq!(in_dir_b_entry.attr.st_gid, BY_PATH_GID);
         assert_eq!(in_dir_b_entry.attr.st_mode & 0o777, !BY_PATH_UMASK & 0o777);
+    }
+
+    #[test]
+    #[cfg(feature = "fs_permission_translation")]
+    fn test_copy_file_range_path_mapping() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let real_ctx = get_context();
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path().join("dir");
+        create_test_data(&temp_dir, &["dir"], &["src.txt", "dir/dst.txt"]);
+
+        let cfg = Config {
+            ..Default::default()
+        };
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+
+        // Use a fake UID in the context that would normally fail set_creds()
+        let mut fake_ctx = real_ctx;
+        fake_ctx.uid = 9999;
+        fake_ctx.gid = 9999;
+
+        // Create mapping: mapping the fake guest UID to the REAL host UID.
+        // If the mapping works, copy_file_range will use real_ctx.uid and succeed.
+        // If the mapping is ignored, it will use fake_ctx.uid (9999) and set_creds will fail with
+        // EPERM.
+        let permission_data = PermissionData {
+            guest_uid: fake_ctx.uid,
+            guest_gid: fake_ctx.gid,
+            host_uid: real_ctx.uid,
+            host_gid: real_ctx.gid,
+            umask: 0,
+            perm_path: dir_path.to_string_lossy().into_owned(),
+        };
+        fs.permission_paths.write().unwrap().push(permission_data);
+
+        let src_path = temp_dir.path().join("src.txt");
+        let dst_path = dir_path.join("dst.txt");
+
+        std::fs::write(&src_path, b"hello world").unwrap();
+
+        let src_inode = lookup(&fs, &src_path).unwrap();
+        let dst_inode = lookup(&fs, &dst_path).unwrap();
+
+        // Open files to get handles.
+        // Note: we use real_ctx here to ensure file handles are opened successfully.
+        // The copy_file_range call itself will use fake_ctx.
+        let (src_handle, _) = fs
+            .open(real_ctx, src_inode, libc::O_RDONLY as u32)
+            .expect("open src");
+        let (dst_handle, _) = fs
+            .open(real_ctx, dst_inode, libc::O_WRONLY as u32)
+            .expect("open dst");
+
+        let src_handle = src_handle.unwrap();
+        let dst_handle = dst_handle.unwrap();
+
+        // Execute copy_file_range with fake_ctx.
+        // This will only succeed if change_creds_for_path correctly translates 9999 -> real_uid.
+        let result = fs.copy_file_range(
+            fake_ctx, src_inode, src_handle, 0, dst_inode, dst_handle, 0, 5, 0,
+        );
+
+        assert!(
+            result.is_ok(),
+            "copy_file_range failed: {:?}. Mapping might not be applied.",
+            result.err()
+        );
+        assert_eq!(result.unwrap(), 5);
+
+        let content = std::fs::read(&dst_path).unwrap();
+        assert_eq!(&content[0..5], b"hello");
     }
 
     #[test]
