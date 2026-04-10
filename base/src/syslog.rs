@@ -180,7 +180,7 @@ pub(crate) trait Syslog {
 
 pub struct State {
     /// Record filter
-    filter: env_logger::filter::Filter,
+    filter: env_filter::Filter,
     /// All the loggers we have
     loggers: Vec<Box<dyn Log + Send>>,
     /// Raw Descriptors to preserve
@@ -256,7 +256,7 @@ impl State {
     pub fn new(cfg: LogConfig) -> Result<Self, Error> {
         let mut loggers: Vec<Box<dyn Log + Send>> = vec![];
         let mut descriptors = vec![];
-        let mut builder = env_logger::filter::Builder::new();
+        let mut builder = env_filter::Builder::new();
         builder.parse(&cfg.log_args.filter);
         let filter = builder.build();
 
@@ -361,7 +361,7 @@ pub fn init() -> Result<(), Error> {
 /// panic.
 ///
 /// Arguments:
-/// * filter: See <https://docs.rs/env_logger/0.9/env_logger/index.html> for example filter
+/// * filter: See <https://docs.rs/env_filter/1.0.0/env_filter/index.html> for example filter
 ///   specifications
 /// * stderr: If set will output to stderr (in addition)
 /// * file:  If set will output to this file (in addition)
