@@ -407,8 +407,7 @@ impl Device {
     /// Check if the device is ready to be detached, i.e., if we have reaped all the transfers
     /// we've submitted to the host. Returns true when ready.
     pub fn ready_to_detach(&self) -> bool {
-        self.is_detaching()
-            && (self.is_device_lost() || self.is_unrecoverable() || self.no_in_flight_transfer())
+        self.is_detaching() && (self.is_unrecoverable() || self.no_in_flight_transfer())
     }
 
     fn is_unrecoverable(&self) -> bool {

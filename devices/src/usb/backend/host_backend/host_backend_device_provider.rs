@@ -14,7 +14,6 @@ use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
 use crate::usb::backend::host_backend::host_device::HostDevice;
 use crate::usb::backend::utils::UsbUtilEventHandler;
-use crate::utils::AsyncJobQueue;
 use crate::utils::EventLoop;
 
 /// Attaches a host device to the backend. This creates a host USB device object by opening a
@@ -22,14 +21,13 @@ use crate::utils::EventLoop;
 pub(crate) fn attach_host_backend_device(
     usb_file: File,
     event_loop: Arc<EventLoop>,
-    job_queue: Arc<AsyncJobQueue>,
     device_state: DeviceState,
 ) -> Result<(Arc<Mutex<BackendDeviceType>>, Arc<UsbUtilEventHandler>)> {
     let device = Device::new(usb_file).map_err(Error::CreateHostUsbDevice)?;
     let host_device = HostDevice::new(Arc::new(Mutex::new(device)), device_state)?;
     let device_impl = BackendDeviceType::HostDevice(host_device);
     let arc_mutex_device = Arc::new(Mutex::new(device_impl));
-    let event_handler = UsbUtilEventHandler::new(arc_mutex_device.clone(), event_loop, job_queue);
+    let event_handler = UsbUtilEventHandler::new(arc_mutex_device.clone(), event_loop);
 
     Ok((arc_mutex_device, event_handler))
 }

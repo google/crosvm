@@ -186,7 +186,6 @@ impl ProviderInner {
         let (host_device, event_handler) = match attach_host_backend_device(
             usb_file,
             self.event_loop.clone(),
-            self.job_queue.clone(),
             DeviceState::new(self.fail_handle.clone(), self.job_queue.clone()),
         ) {
             Ok((host_device, event_handler)) => (host_device, event_handler),
@@ -227,7 +226,6 @@ impl ProviderInner {
         let (fido_device, event_handler) = match attach_security_key(
             hidraw,
             self.event_loop.clone(),
-            self.job_queue.clone(),
             DeviceState::new(self.fail_handle.clone(), self.job_queue.clone()),
         ) {
             Ok((fido_device, event_handler)) => (fido_device, event_handler),

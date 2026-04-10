@@ -17,7 +17,6 @@ use crate::usb::backend::error::Error;
 use crate::usb::backend::error::Result;
 use crate::usb::xhci::usb_hub::UsbPort;
 use crate::usb::xhci::xhci_transfer::XhciTransferState;
-use crate::utils::AsyncJobQueue;
 use crate::utils::EventHandler;
 use crate::utils::EventLoop;
 
@@ -68,7 +67,6 @@ pub(crate) use multi_dispatch;
 pub(crate) struct UsbUtilEventHandler {
     pub device: Arc<Mutex<BackendDeviceType>>,
     pub event_loop: Arc<EventLoop>,
-    pub job_queue: Arc<AsyncJobQueue>,
     pub port: Mutex<Weak<UsbPort>>,
     pub self_ref: Mutex<Option<Arc<UsbUtilEventHandler>>>,
 }
@@ -98,7 +96,7 @@ impl EventHandler for UsbUtilEventHandler {
             !port.is_attached()
         });
 
-        if is_detached && self.device.lock().can_finalize() {
+        if is_detached {
             self.signal_detach();
         }
 
@@ -113,12 +111,10 @@ impl UsbUtilEventHandler {
     pub(crate) fn new(
         device: Arc<Mutex<BackendDeviceType>>,
         event_loop: Arc<EventLoop>,
-        job_queue: Arc<AsyncJobQueue>,
     ) -> Arc<Self> {
         Arc::new(Self {
             device,
             event_loop,
-            job_queue,
             port: Mutex::new(Weak::new()),
             self_ref: Mutex::new(None),
         })
@@ -143,27 +139,55 @@ impl UsbUtilEventHandler {
 
     /// Signal this handler to perform the host resource cleanup.
     pub fn signal_detach(&self) {
-        let self_ref = self.self_ref.lock();
-        if let Some(self_arc) = &*self_ref {
-            let self_clone = self_arc.clone();
-            if let Err(e) = self.job_queue.queue_job(move || {
-                if self_clone.device.lock().can_finalize() {
-                    if let Err(e) = self_clone.finalize_detach() {
-                        error!("failed to finalize USB detachment: {}", e);
+        // self_ref acts as our atomic flag. Only the first caller (i.e., manual detach vs unplug)
+        // will succeed.
+        let self_arc = match self.self_ref.lock().take() {
+            Some(arc) => arc,
+            None => return, // Detach process is already running.
+        };
+
+        std::thread::spawn(move || {
+            let mut retries = 0;
+            loop {
+                let can_finalize = {
+                    let mut device = self_arc.device.lock();
+                    if let BackendDeviceType::HostDevice(host_device) = &mut *device {
+                        let _ = host_device.device.lock().poll_transfers();
                     }
+                    device.can_finalize()
+                };
+
+                if can_finalize {
+                    break;
                 }
-            }) {
-                error!("failed to queue USB detach job: {}", e);
+
+                // When a device is unplugged from the host, the in-flight URBs will be aborted and
+                // queued back to the completion list. However, there's a small window where the
+                // completion list is empty because the actual hardware has not responded to the
+                // host kernel. Since there's no way for the user space to wait for the host kernel
+                // to queue them back, we keep polling here.
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                retries += 1;
+
+                // Use a generous 30-second timeout. The guest's StopEndpointCommand typically
+                // times out in 5 seconds. We want to wait much longer to guarantee the host kernel
+                // has time to finish aborting the URBs. In theory, we shouldn't hit this timeout,
+                // because the host driver would also time out around the same time and reset the
+                // HC, making all the in-flight URBs reap-able.
+                if retries > 300 {
+                    error!("Timeout waiting for host device to release all URBs.");
+                    break;
+                }
             }
-        }
+
+            if let Err(e) = self_arc.finalize_detach() {
+                error!("failed to finalize USB detachment: {}", e);
+            }
+        });
     }
 
     /// Clean up the resources and remove itself from the event loop.
     pub(crate) fn finalize_detach(&self) -> Result<()> {
-        if self.self_ref.lock().take().is_none() {
-            return Ok(());
-        }
-
         let mut device = self.device.lock();
         if let BackendDeviceType::HostDevice(host_device) = &mut *device {
             host_device.device.lock().drop_dma_buffer();

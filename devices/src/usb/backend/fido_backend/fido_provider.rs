@@ -14,7 +14,6 @@ use crate::usb::backend::error::Result;
 use crate::usb::backend::fido_backend::fido_device::FidoDevice;
 use crate::usb::backend::fido_backend::fido_passthrough::FidoPassthroughDevice;
 use crate::usb::backend::utils::UsbUtilEventHandler;
-use crate::utils::AsyncJobQueue;
 use crate::utils::EventLoop;
 
 /// Utility function to attach a security key device to the backend provider. It initializes a
@@ -22,7 +21,6 @@ use crate::utils::EventLoop;
 pub(crate) fn attach_security_key(
     hidraw: File,
     event_loop: Arc<EventLoop>,
-    job_queue: Arc<AsyncJobQueue>,
     device_state: DeviceState,
 ) -> Result<(Arc<Mutex<BackendDeviceType>>, Arc<UsbUtilEventHandler>)> {
     let device =
@@ -35,7 +33,7 @@ pub(crate) fn attach_security_key(
     .map_err(Error::CreateFidoBackendDevice)?;
     let device_impl = BackendDeviceType::FidoDevice(passthrough_device);
     let arc_mutex_device = Arc::new(Mutex::new(device_impl));
-    let event_handler = UsbUtilEventHandler::new(arc_mutex_device.clone(), event_loop, job_queue);
+    let event_handler = UsbUtilEventHandler::new(arc_mutex_device.clone(), event_loop);
 
     Ok((arc_mutex_device, event_handler))
 }
