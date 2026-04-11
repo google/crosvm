@@ -655,7 +655,7 @@ impl arch::LinuxArch for AArch64 {
 
         let mut use_pmu = vm.check_capability(VmCap::ArmPmuV3);
         use_pmu &= !no_pmu;
-        let vcpu_count = components.vcpu_count;
+        let vcpu_count = components.vcpu_properties.len();
         let mut has_pvtime = true;
         let mut vcpus = Vec::with_capacity(vcpu_count);
         let mut vcpu_init = Vec::with_capacity(vcpu_count);
@@ -862,19 +862,32 @@ impl arch::LinuxArch for AArch64 {
             Tube::pair().map_err(Error::CreateTube)?;
         let vcpufreq_shared_tube = Arc::new(Mutex::new(vcpufreq_control_tube));
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        if !components.vcpu_frequencies.is_empty() {
+        if components
+            .vcpu_properties
+            .values()
+            .any(|p| !p.frequencies.is_empty())
+        {
             let mut freq_domain_vcpus: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
             let mut freq_domain_perfs: BTreeMap<u32, Arc<AtomicU32>> = BTreeMap::new();
             let mut vcpu_affinities: Vec<u32> = Vec::new();
             for vcpu in 0..vcpu_count {
-                let freq_domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
+                let props = components
+                    .vcpu_properties
+                    .get(&vcpu)
+                    .expect("missing vcpu props");
+                let freq_domain = props.vcpu_domain.unwrap_or(vcpu as u32);
                 freq_domain_vcpus.entry(freq_domain).or_default().push(vcpu);
-                let vcpu_affinity = match components.vcpu_affinity.clone() {
-                    Some(VcpuAffinity::Global(v)) => v,
-                    Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&vcpu).unwrap_or_default(),
+                let pcpu = match &components.vcpu_affinity {
+                    Some(VcpuAffinity::Global(s)) => {
+                        s.iter().next().copied().expect("empty global affinity")
+                    }
+                    Some(VcpuAffinity::PerVcpu(m)) => m
+                        .get(&vcpu)
+                        .and_then(|s| s.iter().next().copied())
+                        .expect("missing or empty per-vcpu affinity for vcpu"),
                     None => panic!("vcpu_affinity needs to be set for VirtCpufreq"),
                 };
-                vcpu_affinities.push(vcpu_affinity[0].try_into().unwrap());
+                vcpu_affinities.push(pcpu.try_into().unwrap());
             }
             for domain in freq_domain_vcpus.keys() {
                 let domain_perf = Arc::new(AtomicU32::new(0));
@@ -882,16 +895,20 @@ impl arch::LinuxArch for AArch64 {
             }
             let largest_vcpu_affinity_idx = *vcpu_affinities.iter().max().unwrap() as usize;
             for (vcpu, pcpu) in vcpu_affinities.iter().enumerate() {
+                let props = components
+                    .vcpu_properties
+                    .get(&vcpu)
+                    .expect("missing vcpu props");
                 let mut virtfreq_size = AARCH64_VIRTFREQ_SIZE;
                 if components.virt_cpufreq_v2 {
-                    let domain = *components.vcpu_domains.get(&vcpu).unwrap_or(&(vcpu as u32));
+                    let domain = props.vcpu_domain.unwrap_or(vcpu as u32);
                     virtfreq_size = AARCH64_VIRTFREQ_V2_SIZE;
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreqV2::new(
                         *pcpu,
-                        components.vcpu_frequencies.get(&vcpu).unwrap().clone(),
-                        components.vcpu_domain_paths.get(&vcpu).cloned(),
+                        props.frequencies.clone(),
+                        props.vcpu_domain_path.clone(),
                         domain,
-                        *components.normalized_cpu_ipc_ratios.get(&vcpu).unwrap(),
+                        props.normalized_cpu_ipc_ratio.unwrap(),
                         largest_vcpu_affinity_idx,
                         vcpufreq_shared_tube.clone(),
                         freq_domain_vcpus.get(&domain).unwrap().clone(),
@@ -907,14 +924,8 @@ impl arch::LinuxArch for AArch64 {
                 } else {
                     let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreq::new(
                         *pcpu,
-                        *components.vcpu_capacity.get(&vcpu).unwrap_or(&1024),
-                        *components
-                            .vcpu_frequencies
-                            .get(&vcpu)
-                            .unwrap()
-                            .iter()
-                            .max()
-                            .unwrap(),
+                        props.capacity.unwrap_or(arch::DEFAULT_CPU_CAPACITY),
+                        *props.frequencies.iter().max().unwrap(),
                     )));
                     mmio_bus
                         .insert(
@@ -1019,8 +1030,7 @@ impl arch::LinuxArch for AArch64 {
             vcpu_count as u32,
             &|n| get_vcpu_mpidr_aff(&vcpus, n),
             components.vcpu_clusters,
-            components.vcpu_capacity,
-            components.vcpu_frequencies,
+            components.vcpu_properties.clone(),
             fdt_address,
             cmdline
                 .as_str_with_max_len(AARCH64_CMDLINE_MAX_SIZE - 1)
@@ -1042,7 +1052,6 @@ impl arch::LinuxArch for AArch64 {
             vmwdt_cfg,
             dump_device_tree_blob,
             &|writer, phandles| vm.create_fdt(writer, phandles),
-            components.dynamic_power_coefficient,
             device_tree_overlays,
             &serial_devices,
             components.virt_cpufreq_v2,

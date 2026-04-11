@@ -2114,12 +2114,16 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .checked_mul(1024 * 1024)
             .ok_or_else(|| anyhow!("requested memory size too large"))?,
         swiotlb,
-        vcpu_count: cfg.vcpu_count.unwrap_or(1),
         fw_cfg_enable: false,
         bootorder_fw_cfg_blob: Vec::new(),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         vcpu_clusters: cfg.cpu_clusters.clone(),
-        vcpu_capacity: cfg.cpu_capacity.clone(),
+        vcpu_properties: arch::derive_vcpu_properties(
+            cfg.vcpu_count.unwrap_or(1),
+            &cfg.cpu_capacity,
+            &cfg.dynamic_power_coefficient,
+            &Default::default(),
+        ),
         dev_pm: None,
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
@@ -2165,7 +2169,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         #[cfg(target_arch = "x86_64")]
         smbios: cfg.smbios.clone(),
         smccc_trng: cfg.smccc_trng,
-        dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         #[cfg(target_arch = "x86_64")]
         break_linux_pci_config_io: cfg.break_linux_pci_config_io,
         boot_cpu: cfg.boot_cpu,
@@ -2389,8 +2392,10 @@ fn run_config_inner(
             let vm = create_haxm_vm(haxm, guest_mem, &cfg.kernel_log_file)?;
             let (ioapic_host_tube, ioapic_device_tube) =
                 Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
-            let irq_chip =
-                create_userspace_irq_chip::<HaxmVcpu>(components.vcpu_count, ioapic_device_tube)?;
+            let irq_chip = create_userspace_irq_chip::<HaxmVcpu>(
+                components.vcpu_properties.len(),
+                ioapic_device_tube,
+            )?;
             run_vm::<HaxmVcpu, HaxmVm>(
                 cfg,
                 components,
@@ -2427,7 +2432,7 @@ fn run_config_inner(
             let vm = create_whpx_vm(
                 whpx,
                 guest_mem,
-                components.vcpu_count,
+                components.vcpu_properties.len(),
                 no_smt,
                 apic_emulation_supported && irq_chip == IrqChipKind::Split,
                 cfg.force_calibrated_tsc_leaf,
@@ -2449,7 +2454,7 @@ fn run_config_inner(
                 }
                 IrqChipKind::Userspace => {
                     WindowsIrqChip::Userspace(create_userspace_irq_chip::<WhpxVcpu>(
-                        components.vcpu_count,
+                        components.vcpu_properties.len(),
                         ioapic_device_tube,
                     )?)
                 }
@@ -2476,14 +2481,14 @@ fn run_config_inner(
                 IrqChipKind::Split => unimplemented!("Split irqchip mode not supported by GVM"),
                 IrqChipKind::Kernel => {
                     ioapic_host_tube = None;
-                    WindowsIrqChip::Gvm(create_gvm_irq_chip(&vm, components.vcpu_count)?)
+                    WindowsIrqChip::Gvm(create_gvm_irq_chip(&vm, components.vcpu_properties.len())?)
                 }
                 IrqChipKind::Userspace => {
                     let (host_tube, ioapic_device_tube) =
                         Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
                     ioapic_host_tube = Some(host_tube);
                     WindowsIrqChip::Userspace(create_userspace_irq_chip::<GvmVcpu>(
-                        components.vcpu_count,
+                        components.vcpu_properties.len(),
                         ioapic_device_tube,
                     )?)
                 }
@@ -2600,7 +2605,8 @@ where
         .context("failed to calculate init balloon size")?;
 
     let tsc_state = devices::tsc::tsc_state().exit_code(Exit::TscCalibrationFailed)?;
-    let tsc_sync_mitigations = get_tsc_sync_mitigations(&tsc_state, components.vcpu_count);
+    let tsc_sync_mitigations =
+        get_tsc_sync_mitigations(&tsc_state, components.vcpu_properties.len());
 
     if tsc_state.core_grouping.size() > 1 {
         // Host TSCs are not in sync, log a metric about it.

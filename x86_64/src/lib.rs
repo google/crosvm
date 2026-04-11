@@ -1069,7 +1069,7 @@ impl arch::LinuxArch for X8664arch {
     {
         let mem = vm.get_memory().clone();
 
-        let vcpu_count = components.vcpu_count;
+        let vcpu_count = components.vcpu_properties.len();
 
         vm.set_identity_map_addr(identity_map_addr_start())
             .map_err(Error::SetIdentityMapAddr)?;

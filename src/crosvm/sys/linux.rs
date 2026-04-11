@@ -70,6 +70,7 @@ use arch::VirtioDeviceStub;
 use arch::VmArch;
 use arch::VmComponents;
 use arch::VmImage;
+use arch::DEFAULT_CPU_CAPACITY;
 use argh::FromArgs;
 use base::ReadNotifier;
 #[cfg(feature = "balloon")]
@@ -1310,7 +1311,10 @@ fn map_vcpu_capacity(
     let mut mapped_capacity = BTreeMap::new();
     for vcpu_id in 0..vcpu_count {
         let pcpu_id = get_representative_pcpu(vcpu_id, vcpu_affinity);
-        let capacity = host_capacity.get(&pcpu_id).copied().unwrap_or(1024);
+        let capacity = host_capacity
+            .get(&pcpu_id)
+            .copied()
+            .unwrap_or(DEFAULT_CPU_CAPACITY);
         mapped_capacity.insert(vcpu_id, capacity);
     }
     Ok(mapped_capacity)
@@ -1408,9 +1412,9 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         (None, 0)
     };
 
-    #[cfg(target_arch = "aarch64")]
     // Maps vcpu -> the corresponding vcpu's frequency.
-    let mut vcpu_frequencies = BTreeMap::new();
+    #[allow(unused_mut)]
+    let mut vcpu_frequencies: BTreeMap<usize, Vec<u32>> = BTreeMap::new();
     #[cfg(target_arch = "aarch64")]
     let mut normalized_cpu_ipc_ratios = BTreeMap::new();
 
@@ -1502,7 +1506,12 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
                     )
                 }),
                 host_max_freq,
-                |vcpu_id| cpu_ipc_ratio.get(&vcpu_id).copied().unwrap_or(1024),
+                |vcpu_id| {
+                    cpu_ipc_ratio
+                        .get(&vcpu_id)
+                        .copied()
+                        .unwrap_or(DEFAULT_CPU_CAPACITY)
+                },
             )?;
 
             if !cfg.cpu_freq_domains.is_empty() {
@@ -1552,6 +1561,29 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         }
     }
 
+    let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+    let vcpu_properties = arch::derive_vcpu_properties(
+        vcpu_count,
+        &vcpu_capacity,
+        &cfg.dynamic_power_coefficient,
+        &vcpu_frequencies,
+        #[cfg(all(
+            target_arch = "aarch64",
+            any(target_os = "android", target_os = "linux")
+        ))]
+        &normalized_cpu_ipc_ratios,
+        #[cfg(all(
+            target_arch = "aarch64",
+            any(target_os = "android", target_os = "linux")
+        ))]
+        &vcpu_domains,
+        #[cfg(all(
+            target_arch = "aarch64",
+            any(target_os = "android", target_os = "linux")
+        ))]
+        &vcpu_domain_paths,
+    );
+
     Ok(VmComponents {
         #[cfg(target_arch = "x86_64")]
         ac_adapter: cfg.ac_adapter,
@@ -1565,20 +1597,11 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         swiotlb,
         fw_cfg_enable,
         bootorder_fw_cfg_blob: Vec::new(),
-        vcpu_count: cfg.vcpu_count.unwrap_or(1),
+        vcpu_properties,
         vcpu_affinity: cfg.vcpu_affinity.clone(),
-        #[cfg(target_arch = "aarch64")]
-        vcpu_domains,
-        #[cfg(target_arch = "aarch64")]
-        vcpu_domain_paths,
-        #[cfg(target_arch = "aarch64")]
-        vcpu_frequencies,
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         vcpu_clusters,
-        vcpu_capacity,
         dev_pm: cfg.dev_pm,
-        #[cfg(target_arch = "aarch64")]
-        normalized_cpu_ipc_ratios,
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         hv_cfg: hypervisor::Config {
@@ -1623,7 +1646,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         force_s2idle: cfg.force_s2idle,
         pvm_fw: pvm_fw_image,
         pci_config: cfg.pci_config,
-        dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
         boot_cpu: cfg.boot_cpu,
         vfio_platform_pm: cfg.vfio_platform_pm,
         #[cfg(target_arch = "aarch64")]
@@ -1826,7 +1848,7 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
         IrqChipKind::Userspace => bail!("Geniezone does not support userspace irqchip mode"),
         IrqChipKind::Kernel { allow_vgic_its: _ } => {
             ioapic_host_tube = None;
-            GeniezoneKernelIrqChip::new(vm_clone, components.vcpu_count)
+            GeniezoneKernelIrqChip::new(vm_clone, components.vcpu_properties.len())
                 .context("failed to create IRQ chip")?
         }
     };
@@ -1886,7 +1908,7 @@ fn run_halla(
         IrqChipKind::Userspace => bail!("Halla does not support userspace irqchip mode"),
         IrqChipKind::Kernel { allow_vgic_its: _ } => {
             ioapic_host_tube = None;
-            HallaKernelIrqChip::new(vm_clone, components.vcpu_count)
+            HallaKernelIrqChip::new(vm_clone, components.vcpu_properties.len())
                 .context("failed to create IRQ chip")?
         }
     };
@@ -1978,7 +2000,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
                 KvmIrqChip::Split(
                     KvmSplitIrqChip::new(
                         vm_clone,
-                        components.vcpu_count,
+                        components.vcpu_properties.len(),
                         ioapic_device_tube,
                         Some(24),
                     )
@@ -1994,7 +2016,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
             KvmIrqChip::Kernel(
                 KvmKernelIrqChip::new(
                     vm_clone,
-                    components.vcpu_count,
+                    components.vcpu_properties.len(),
                     #[cfg(target_arch = "aarch64")]
                     allow_vgic_its,
                 )
@@ -2478,7 +2500,16 @@ where
         .collect::<Result<Vec<DtbOverlay>>>()?;
 
     #[cfg(target_arch = "aarch64")]
-    let vcpu_domain_paths = components.vcpu_domain_paths.clone();
+    let vcpu_domain_paths: BTreeMap<usize, PathBuf> = components
+        .vcpu_properties
+        .iter()
+        .filter_map(|(id, props)| {
+            props
+                .vcpu_domain_path
+                .as_ref()
+                .map(|path| (*id, path.clone()))
+        })
+        .collect();
 
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
@@ -4017,9 +4048,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         };
 
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
-        let vcpu_affinity = match linux.vcpu_affinity.clone() {
-            Some(VcpuAffinity::Global(v)) => v,
-            Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
+        let vcpu_affinity = match &linux.vcpu_affinity {
+            Some(VcpuAffinity::Global(v)) => v.clone(),
+            Some(VcpuAffinity::PerVcpu(m)) => m.get(&cpu_id).cloned().unwrap_or_default(),
             None => Default::default(),
         };
 
@@ -5623,7 +5654,12 @@ mod tests {
                 )
             }),
             host_max_freq,
-            |cpu_id| cpu_ipc_ratio.get(&cpu_id).copied().unwrap_or(1024),
+            |cpu_id| {
+                cpu_ipc_ratio
+                    .get(&cpu_id)
+                    .copied()
+                    .unwrap_or(DEFAULT_CPU_CAPACITY)
+            },
         )
         .expect("normalize_cpu_ipc_ratios failed");
 

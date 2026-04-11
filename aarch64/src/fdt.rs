@@ -88,9 +88,7 @@ fn create_cpu_nodes(
     num_vcpus: u32,
     cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
     vcpu_clusters: Vec<CpuSet>,
-    vcpu_capacity: BTreeMap<usize, u32>,
-    dynamic_power_coefficient: BTreeMap<usize, u32>,
-    vcpu_frequencies: BTreeMap<usize, Vec<u32>>,
+    vcpu_properties: &BTreeMap<usize, arch::VcpuProperties>,
 ) -> Result<()> {
     let root_node = fdt.root_mut();
     let cpus_node = root_node.subnode_mut("cpus")?;
@@ -112,22 +110,24 @@ fn create_cpu_nodes(
         cpu_node.set_prop("reg", reg)?;
         cpu_node.set_prop("phandle", PHANDLE_CPU0 + vcpu_id)?;
 
-        if let Some(pwr_coefficient) = dynamic_power_coefficient.get(&(vcpu_id as usize)) {
-            cpu_node.set_prop("dynamic-power-coefficient", *pwr_coefficient)?;
-        }
-        if let Some(capacity) = vcpu_capacity.get(&(vcpu_id as usize)) {
-            cpu_node.set_prop("capacity-dmips-mhz", *capacity)?;
-        }
-        // Placed inside cpu nodes for ease of parsing for some secure firmwares(PvmFw).
-        if let Some(frequencies) = vcpu_frequencies.get(&(vcpu_id as usize)) {
-            cpu_node.set_prop("operating-points-v2", PHANDLE_OPP_DOMAIN_BASE + vcpu_id)?;
-            let opp_table_node = cpu_node.subnode_mut(&format!("opp_table{vcpu_id}"))?;
-            opp_table_node.set_prop("phandle", PHANDLE_OPP_DOMAIN_BASE + vcpu_id)?;
-            opp_table_node.set_prop("compatible", "operating-points-v2")?;
-            for freq in frequencies.iter() {
-                let opp_hz = (*freq) as u64 * 1000;
-                let opp_node = opp_table_node.subnode_mut(&format!("opp{opp_hz}"))?;
-                opp_node.set_prop("opp-hz", opp_hz)?;
+        if let Some(props) = vcpu_properties.get(&(vcpu_id as usize)) {
+            if let Some(pwr_coefficient) = props.dynamic_power_coefficient {
+                cpu_node.set_prop("dynamic-power-coefficient", pwr_coefficient)?;
+            }
+            if let Some(capacity) = props.capacity {
+                cpu_node.set_prop("capacity-dmips-mhz", capacity)?;
+            }
+            // Placed inside cpu nodes for ease of parsing for some secure firmwares(PvmFw).
+            if !props.frequencies.is_empty() {
+                cpu_node.set_prop("operating-points-v2", PHANDLE_OPP_DOMAIN_BASE + vcpu_id)?;
+                let opp_table_node = cpu_node.subnode_mut(&format!("opp_table{vcpu_id}"))?;
+                opp_table_node.set_prop("phandle", PHANDLE_OPP_DOMAIN_BASE + vcpu_id)?;
+                opp_table_node.set_prop("compatible", "operating-points-v2")?;
+                for freq in props.frequencies.iter() {
+                    let opp_hz = (*freq) as u64 * 1000;
+                    let opp_node = opp_table_node.subnode_mut(&format!("opp{opp_hz}"))?;
+                    opp_node.set_prop("opp-hz", opp_hz)?;
+                }
             }
         }
     }
@@ -637,8 +637,7 @@ pub fn create_fdt(
     num_vcpus: u32,
     cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
     vcpu_clusters: Vec<CpuSet>,
-    vcpu_capacity: BTreeMap<usize, u32>,
-    vcpu_frequencies: BTreeMap<usize, Vec<u32>>,
+    vcpu_properties: BTreeMap<usize, arch::VcpuProperties>,
     fdt_address: GuestAddress,
     cmdline: &str,
     kernel_region: AddressRange,
@@ -653,7 +652,6 @@ pub fn create_fdt(
     vmwdt_cfg: VmWdtConfig,
     dump_device_tree_blob: Option<PathBuf>,
     vm_generator: &impl Fn(&mut Fdt, &BTreeMap<&str, u32>) -> cros_fdt::Result<()>,
-    dynamic_power_coefficient: BTreeMap<usize, u32>,
     device_tree_overlays: Vec<DtbOverlay>,
     serial_devices: &[SerialDeviceInfo],
     virt_cpufreq_v2: bool,
@@ -704,9 +702,7 @@ pub fn create_fdt(
         num_vcpus,
         cpu_mpidr_generator,
         vcpu_clusters,
-        vcpu_capacity,
-        dynamic_power_coefficient,
-        vcpu_frequencies.clone(),
+        &vcpu_properties,
     )?;
     create_gic_node(&mut fdt, is_gicv3, has_vgic_its, num_vcpus as u64)?;
     create_timer_node(&mut fdt, num_vcpus)?;
@@ -730,7 +726,7 @@ pub fn create_fdt(
     create_vmwdt_node(&mut fdt, vmwdt_cfg, num_vcpus)?;
     create_kvm_cpufreq_node(&mut fdt)?;
     vm_generator(&mut fdt, &phandles)?;
-    if !vcpu_frequencies.is_empty() {
+    if vcpu_properties.values().any(|p| !p.frequencies.is_empty()) {
         if virt_cpufreq_v2 {
             create_virt_cpufreq_v2_node(&mut fdt, num_vcpus as u64)?;
         } else {

@@ -364,7 +364,7 @@ impl arch::LinuxArch for Riscv64 {
         };
 
         // Creates vcpus early as the irqchip needs them created to attach interrupts.
-        let vcpu_count = components.vcpu_count;
+        let vcpu_count = components.vcpu_properties.len();
         let mut vcpus = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
             let vcpu: Vcpu = *vm
@@ -419,7 +419,7 @@ impl arch::LinuxArch for Riscv64 {
             pci_cfg,
             &pci_ranges,
             dev_resources,
-            components.vcpu_count as u32,
+            components.vcpu_properties.len() as u32,
             fdt_offset,
             aia_num_ids,
             aia_num_sources,
@@ -439,7 +439,7 @@ impl arch::LinuxArch for Riscv64 {
 
         Ok(RunnableLinuxVm {
             vm,
-            vcpu_count: components.vcpu_count,
+            vcpu_count: components.vcpu_properties.len(),
             vcpus: Some(vcpus),
             vcpu_init,
             vcpu_affinity: components.vcpu_affinity,

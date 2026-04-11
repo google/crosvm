@@ -398,6 +398,84 @@ pub struct PciConfig {
     pub mem: Option<MemoryRegionConfig>,
 }
 
+pub const DEFAULT_CPU_CAPACITY: u32 = 1024;
+
+#[sorted]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct VcpuProperties {
+    pub capacity: Option<u32>,
+    pub dynamic_power_coefficient: Option<u32>,
+    pub frequencies: Vec<u32>,
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    pub normalized_cpu_ipc_ratio: Option<u32>,
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    pub vcpu_domain: Option<u32>,
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    pub vcpu_domain_path: Option<PathBuf>,
+}
+
+/// Derives base VCPU properties from various config fields.
+pub fn derive_vcpu_properties(
+    vcpu_count: usize,
+    vcpu_capacity: &std::collections::BTreeMap<usize, u32>,
+    dynamic_power_coefficient: &std::collections::BTreeMap<usize, u32>,
+    vcpu_frequencies: &std::collections::BTreeMap<usize, Vec<u32>>,
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    normalized_cpu_ipc_ratio: &std::collections::BTreeMap<usize, u32>,
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    vcpu_domain: &std::collections::BTreeMap<usize, u32>,
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    vcpu_domain_path: &std::collections::BTreeMap<usize, std::path::PathBuf>,
+) -> std::collections::BTreeMap<usize, VcpuProperties> {
+    let mut vcpu_properties = std::collections::BTreeMap::new();
+    for vcpu_id in 0..vcpu_count {
+        let vcpu_prop_capacity = vcpu_capacity.get(&vcpu_id).copied();
+
+        vcpu_properties.insert(
+            vcpu_id,
+            VcpuProperties {
+                capacity: vcpu_prop_capacity,
+                frequencies: vcpu_frequencies.get(&vcpu_id).cloned().unwrap_or_default(),
+                dynamic_power_coefficient: dynamic_power_coefficient.get(&vcpu_id).copied(),
+                #[cfg(all(
+                    target_arch = "aarch64",
+                    any(target_os = "android", target_os = "linux")
+                ))]
+                normalized_cpu_ipc_ratio: normalized_cpu_ipc_ratio.get(&vcpu_id).copied(),
+                #[cfg(all(
+                    target_arch = "aarch64",
+                    any(target_os = "android", target_os = "linux")
+                ))]
+                vcpu_domain: vcpu_domain.get(&vcpu_id).copied(),
+                #[cfg(all(
+                    target_arch = "aarch64",
+                    any(target_os = "android", target_os = "linux")
+                ))]
+                vcpu_domain_path: vcpu_domain_path.get(&vcpu_id).cloned(),
+            },
+        );
+    }
+    vcpu_properties
+}
+
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
 /// create a `RunnableLinuxVm`.
 #[sorted]
@@ -413,7 +491,6 @@ pub struct VmComponents {
 
     pub delay_rt: bool,
     pub dev_pm: Option<DevicePowerManagerConfig>,
-    pub dynamic_power_coefficient: BTreeMap<usize, u32>,
     pub extra_kernel_params: Vec<String>,
     #[cfg(target_arch = "x86_64")]
     pub force_s2idle: bool,
@@ -428,11 +505,7 @@ pub struct VmComponents {
     pub no_i8042: bool,
     pub no_rtc: bool,
     pub no_smt: bool,
-    #[cfg(all(
-        target_arch = "aarch64",
-        any(target_os = "android", target_os = "linux")
-    ))]
-    pub normalized_cpu_ipc_ratios: BTreeMap<usize, u32>,
+
     pub pci_config: PciConfig,
     pub pflash_block_size: u32,
     pub pflash_image: Option<File>,
@@ -448,28 +521,9 @@ pub struct VmComponents {
     pub sve_config: SveConfig,
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
-    /// Map of vCPU ID->corresponding pCPU's capacity.
-    pub vcpu_capacity: BTreeMap<usize, u32>,
     /// List of vCPU clusters, mapped from pCPU clusters.
     pub vcpu_clusters: Vec<CpuSet>,
-    pub vcpu_count: usize,
-    #[cfg(all(
-        target_arch = "aarch64",
-        any(target_os = "android", target_os = "linux")
-    ))]
-    pub vcpu_domain_paths: BTreeMap<usize, PathBuf>,
-    #[cfg(all(
-        target_arch = "aarch64",
-        any(target_os = "android", target_os = "linux")
-    ))]
-    pub vcpu_domains: BTreeMap<usize, u32>,
-    #[cfg(all(
-        target_arch = "aarch64",
-        any(target_os = "android", target_os = "linux")
-    ))]
-    /// Maps vcpu -> the corresponding pcpu's frequency, based on the vcpu:pcpu mapping in
-    /// vcpu_affinity
-    pub vcpu_frequencies: BTreeMap<usize, Vec<u32>>,
+    pub vcpu_properties: BTreeMap<usize, VcpuProperties>,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub vfio_platform_pm: bool,
     #[cfg(all(
