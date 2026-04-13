@@ -13,7 +13,7 @@ directory in the same commit as changes to other crosvm source.
 A few links to relevant documentation needed to write recipes:
 
 - [Recipe Engine](https://chromium.googlesource.com/infra/luci/recipes-py.git/+/HEAD/README.recipes.md)
-- [Depot Tools Recipes](https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/HEAD/recipes/README.recipes.md))
+- [Depot Tools Recipes](https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/HEAD/recipes/README.recipes.md)
 - [ChromiumOS Recipes](https://chromium.googlesource.com/chromiumos/infra/recipes.git/+/HEAD/README.recipes.md)
 
 Luci also provides a
@@ -30,7 +30,7 @@ and
 
 Recipes must have 100% code coverage to have tests pass. Tests can be run with:
 
-```
+```shell
 cd infra && ./recipes.py test run
 ```
 
@@ -40,7 +40,7 @@ their changes.
 
 To regenerate the expectation files, run:
 
-```
+```shell
 cd infra && ./recipes.py test train
 ```
 
@@ -51,7 +51,7 @@ Then verify the `git diff` to make sure all changes to outcomes are intentional.
 We try to build our recipes to work well locally, so for example build_linux.py can be invoked in
 the recipe engine via:
 
-```
+```shell
 cd infra && ./recipes.py run build_linux
 ```
 
@@ -64,10 +64,13 @@ of cached files can be tested.
 
 ### Testing recipes on a bot (Googlers only)
 
-Note: See internal [crosvm/infra](http://go/crosvm/infra) documentation on access control.
+Note: The following led commands require crosvm-acl-luci-admin ACL group membership. See internal
+[crosvm/infra](http://go/crosvm/infra) for more access information.
 
-Some things cannot be tested locally and need to be run on one of our build bots. This can be done
-with the [led](http://go/luci-how-to-led) tool.
+A local run cannot faithfully reproduce the environment of the build bots. Constraints such as the
+OS, installed packages, and available hardware are not the same. Therefore, some things cannot be
+tested locally and need to be verified on one of our build bots. This can be done with the
+[led](http://go/luci-how-to-led) tool.
 
 Commonly used led commands are:
 
@@ -84,9 +87,9 @@ Important: Changes to recipes are applied separately from changes to crosvm code
 To test a local recipe change, you can launch a post-submit build using `led`. First `git commit`
 your recipe changes locally, then combine the led commands to:
 
-```
+```shell
 led get-builder luci.crosvm.ci:linux_x86_64
- | led-edit-recipe-bundle
+ | led edit-recipe-bundle
  | led launch
 ```
 
@@ -105,10 +108,10 @@ We can specify that gerrit change via `led edit-cr-cl`.
 So to test, first `git commit` and `./tools/cl upload` your local changes. Then build a job
 definition to run:
 
-```
+```shell
 led get-builder luci.crosvm.try:linux_x86_64
- | led-edit-recipe-bundle
- | led-edit-cr-cl $GERRIT_URL
+ | led edit-recipe-bundle
+ | led edit-cr-cl $GERRIT_URL
  | led launch
 ```
 
@@ -117,15 +120,27 @@ change at $GERRIT_URL.
 
 #### Testing a new recipe
 
-This is a little tricker, but you can change the recipe name that is launched by `led`. So you can:
+A new recipe can be tested by hijacking an existing builder to run the new recipe.
 
-```
-led get-builder luci.crosvm.ci:linux_x86_64 > job.json
+A job can be exported to a json file, edited, and then launched:
+
+```shell
+led get-builder luci.crosvm.ci:linux_x86_64
+ | led edit-recipe-bundle > job.json
+vim job.json  # edit the job definition to change the recipe used
+# run it on swarming with job.json as input.
+# Note that if the command is piped, like
+# `led edit-gerrit-cl <CL patch> | led launch`, then job.json should be input of
+# `led edit-gerrit-cl`, instead of `led launch`, so the command will be
+# `led edit-gerrit-cl <CL patch> < job.json | led launch`
+led launch < job.json
 ```
 
-Then edit the `job.json` file to use the newly added recipe, and launch the job using the local
-version of recipes.
+Alternatively, `led edit` can be used to override the recipe name and parameters:
 
-```
-cat job.json | led-edit-recipe-bundle | led launch
+```shell
+led get-builder luci.crosvm.ci:linux_x86_64
+ | led edit -r new_recipe -p new_recipe_parameters=value
+ | led edit-recipe-bundle
+ | led launch
 ```
