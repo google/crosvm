@@ -1407,6 +1407,15 @@ impl WlState {
         foreign_id: bool,
         reader: &mut Reader,
     ) -> WlResult<WlResp> {
+        // Validate vfd_count
+        if vfd_count > VIRTWL_SEND_MAX_ALLOCS {
+            warn!(
+                "attempt to send more vfd's than VIRTWL_SEND_MAX_ALLOCS: {}",
+                vfd_count
+            );
+            return Ok(WlResp::InvalidCommand);
+        }
+
         // First stage gathers and normalizes all id information from guest memory.
         let mut send_vfd_ids = [CtrlVfdSendVfdV2 {
             kind: Le32::from(0),
