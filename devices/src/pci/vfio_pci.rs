@@ -6,7 +6,6 @@ use std::cmp::max;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -1681,23 +1680,11 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn preferred_irq(&self) -> PreferredIrq {
-        // Is INTx configured?
-        let pin = match self.config.read_config::<u8>(PCI_INTERRUPT_PIN) {
-            1 => PciInterruptPin::IntA,
-            2 => PciInterruptPin::IntB,
-            3 => PciInterruptPin::IntC,
-            4 => PciInterruptPin::IntD,
-            _ => return PreferredIrq::None,
-        };
-
-        // TODO: replace sysfs/irq value parsing with vfio interface
-        //       reporting host allocated interrupt number and type.
-        let path = self.sysfs_path.join("irq");
-        let gsi = fs::read_to_string(path)
-            .map(|v| v.trim().parse::<u32>().unwrap_or(0))
-            .unwrap_or(0);
-
-        PreferredIrq::Fixed { pin, gsi }
+        // Do not use a fixed IRQ for VFIO devices. The sysfs "irq" file reports a host-assigned IRQ
+        // number that is not meaningful for the guest and can exceed the u8 range required by the
+        // MP table. Let the VMM allocate a guest IRQ instead; VFIO handles host/guest
+        // interrupt mapping regardless of the guest IRQ number chosen.
+        PreferredIrq::Any
     }
 
     fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {
