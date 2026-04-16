@@ -1539,12 +1539,12 @@ impl AArch64 {
         map_func: G,
     ) -> std::result::Result<BTreeMap<usize, T>, base::Error>
     where
-        F: Fn(usize) -> std::result::Result<bool, base::Error>,
+        F: Fn(usize) -> bool,
         G: Fn(usize) -> std::result::Result<T, base::Error>,
     {
         let mut cpu_map = BTreeMap::new();
         for cpu_id in 0..num_cpus {
-            if filter_func(cpu_id)? {
+            if filter_func(cpu_id) {
                 cpu_map.insert(cpu_id, map_func(cpu_id)?);
             }
         }
@@ -1648,7 +1648,7 @@ mod tests {
     #[test]
     fn collect_for_each_cpu_simple() {
         let num_cpus = 2;
-        let filter_func = |_cpu_id: usize| -> std::result::Result<bool, base::Error> { Ok(true) };
+        let filter_func = |_cpu_id: usize| -> bool { true };
         let map_func = |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id) };
         let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func).unwrap();
 
@@ -1660,8 +1660,7 @@ mod tests {
     #[test]
     fn collect_for_each_cpu_filter() {
         let num_cpus = 2;
-        let filter_func =
-            |cpu_id: usize| -> std::result::Result<bool, base::Error> { Ok(cpu_id % 2 == 0) };
+        let filter_func = |cpu_id: usize| -> bool { cpu_id % 2 == 0 };
         let map_func = |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id) };
         let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func).unwrap();
 
@@ -1672,7 +1671,7 @@ mod tests {
     #[test]
     fn collect_for_each_cpu_map() {
         let num_cpus = 4;
-        let filter_func = |_| -> std::result::Result<bool, base::Error> { Ok(true) };
+        let filter_func = |_| -> bool { true };
         let map_func =
             |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id * 2) };
         let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func).unwrap();
@@ -1683,20 +1682,9 @@ mod tests {
     }
 
     #[test]
-    fn collect_for_each_cpu_filter_error() {
-        let num_cpus = 1;
-        let filter_func =
-            |_| -> std::result::Result<bool, base::Error> { Err(base::Error::new(libc::EINVAL)) };
-        let map_func = |cpu_id: usize| -> std::result::Result<usize, base::Error> { Ok(cpu_id) };
-        let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().errno(), libc::EINVAL);
-    }
-
-    #[test]
     fn collect_for_each_cpu_map_error() {
         let num_cpus = 1;
-        let filter_func = |_| -> std::result::Result<bool, base::Error> { Ok(true) };
+        let filter_func = |_| -> bool { true };
         let map_func =
             |_| -> std::result::Result<usize, base::Error> { Err(base::Error::new(libc::EINVAL)) };
         let result = AArch64::collect_for_each_cpu(num_cpus, filter_func, map_func);

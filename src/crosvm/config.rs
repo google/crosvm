@@ -1248,12 +1248,12 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 fn default_vcpu_affinity_map(
     vcpu_count: usize,
     max_cores: usize,
-    is_cpu_online: impl Fn(usize) -> base::Result<bool>,
+    is_cpu_online: impl Fn(usize) -> bool,
 ) -> BTreeMap<usize, CpuSet> {
     let mut affinity_map = BTreeMap::new();
     let mut vcpu_id = 0;
     for cpu_id in 0..max_cores {
-        if is_cpu_online(cpu_id).expect("Couldn't check if cpu is online") {
+        if is_cpu_online(cpu_id) {
             affinity_map.insert(vcpu_id, CpuSet::new([cpu_id]));
             vcpu_id += 1;
         }
@@ -2409,7 +2409,7 @@ mod tests {
     #[test]
     fn test_default_vcpu_affinity_map() {
         // Simple 1:1 mapping of vcpu:cpu.
-        let affinity = default_vcpu_affinity_map(4, 4, |_| Ok(true));
+        let affinity = default_vcpu_affinity_map(4, 4, |_| true);
         assert_eq!(affinity.len(), 4);
         assert_eq!(affinity.get(&0), Some(&CpuSet::new([0])));
         assert_eq!(affinity.get(&1), Some(&CpuSet::new([1])));
@@ -2417,7 +2417,7 @@ mod tests {
         assert_eq!(affinity.get(&3), Some(&CpuSet::new([3])));
 
         // cpu 1 is offline, so skip it when assigning vcpu's.
-        let affinity = default_vcpu_affinity_map(3, 4, |id| Ok(id != 1));
+        let affinity = default_vcpu_affinity_map(3, 4, |id| id != 1);
         assert_eq!(affinity.len(), 3);
         assert_eq!(affinity.get(&0), Some(&CpuSet::new([0])));
         assert_eq!(affinity.get(&1), Some(&CpuSet::new([2])));

@@ -724,23 +724,65 @@ pub fn logical_core_max_freq_khz(cpu_id: usize) -> Result<u32> {
     parse_sysfs_cpu_info(cpu_id, "cpufreq/cpuinfo_max_freq")
 }
 
-/// Returns a bool if the CPU is online, or an error if there was an issue reading the system
-/// properties.
-pub fn is_cpu_online(cpu_id: usize) -> Result<bool> {
-    let result = parse_sysfs_cpu_info(cpu_id, "online");
-    match result {
-        Err(e) => {
-            if e.errno() == libc::ENOENT {
-                // Some systems don't have a file for CPU 0 if the system considers CPU 0 to be
-                // always-online. Or if CONFIG_HOTPLUG_CPU=n, then the "online" property/file will
-                // never be created in drivers/base/cpu.c.
-                Ok(true)
-            } else {
-                Err(e)
+/// Parses a string of comma separated CPU ranges, e.g. "0-2,4,6-8" into a BTreeSet of CPU IDs.
+fn parse_online_cpu_range(content: &str) -> std::collections::BTreeSet<usize> {
+    let mut cpus = std::collections::BTreeSet::new();
+    for part in content.trim().split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if let Some((start_str, end_str)) = part.split_once('-') {
+            if let (Ok(start), Ok(end)) = (start_str.parse::<usize>(), end_str.parse::<usize>()) {
+                for i in start..=end {
+                    cpus.insert(i);
+                }
+            }
+        } else if let Ok(cpu) = part.parse::<usize>() {
+            cpus.insert(cpu);
+        }
+    }
+    cpus
+}
+
+/// Returns a bool if the CPU is online. The online status is cached on the first call.
+pub fn is_cpu_online(cpu_id: usize) -> bool {
+    static ONLINE_CPUS: OnceLock<std::collections::BTreeSet<usize>> = OnceLock::new();
+
+    let online_cpus = ONLINE_CPUS.get_or_init(|| {
+        let mut cpus = std::collections::BTreeSet::new();
+        let path = Path::new(CPU_DIR).join("online");
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                cpus = parse_online_cpu_range(&content);
+            }
+            Err(_) => {
+                // If we hit an error trying to access cpuX/online files, assume the CPU is online.
+                // This prevents permission/EACCES errors on individual files from crashing crosvm.
+                if let Ok(total_cores) = crate::number_of_logical_cores() {
+                    for id in 0..total_cores {
+                        match parse_sysfs_cpu_info(id, "online") {
+                            Ok(1) => {
+                                cpus.insert(id);
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                // Assume online on error to avoid crashes.
+                                warn!(
+                                    "Assuming CPU {} is online because we couldn't read the sys file: {}",
+                                    id, e
+                                );
+                                cpus.insert(id);
+                            }
+                        }
+                    }
+                }
             }
         }
-        Ok(online) => Ok(online == 1),
-    }
+        cpus
+    });
+
+    online_cpus.contains(&cpu_id)
 }
 
 #[repr(C)]
@@ -813,6 +855,39 @@ mod tests {
         }
         let mut file = File::create(path).unwrap();
         file.write_all(content.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn test_parse_online_cpu_range() {
+        let set = parse_online_cpu_range("0-3,5-7");
+        assert_eq!(set.len(), 7);
+        assert!(set.contains(&0));
+        assert!(set.contains(&1));
+        assert!(set.contains(&2));
+        assert!(set.contains(&3));
+        assert!(!set.contains(&4));
+        assert!(set.contains(&5));
+        assert!(set.contains(&6));
+        assert!(set.contains(&7));
+
+        let set = parse_online_cpu_range("0");
+        assert_eq!(set.len(), 1);
+        assert!(set.contains(&0));
+
+        let set = parse_online_cpu_range("0,2,4");
+        assert_eq!(set.len(), 3);
+        assert!(set.contains(&0));
+        assert!(set.contains(&2));
+        assert!(set.contains(&4));
+
+        let set = parse_online_cpu_range("  0-1,  3  ");
+        assert_eq!(set.len(), 3);
+        assert!(set.contains(&0));
+        assert!(set.contains(&1));
+        assert!(set.contains(&3));
+
+        let set = parse_online_cpu_range("");
+        assert!(set.is_empty());
     }
 
     #[test]

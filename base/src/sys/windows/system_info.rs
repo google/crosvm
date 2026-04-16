@@ -73,9 +73,8 @@ pub fn set_thread_name(_name: &str) -> Result<()> {
     todo!();
 }
 
-/// Returns a bool if the CPU is online, or an error if there was an issue reading the system
-/// properties.
-pub fn is_cpu_online(_cpu_id: usize) -> Result<bool> {
+/// Returns a bool if the CPU is online.
+pub fn is_cpu_online(_cpu_id: usize) -> bool {
     // See SYSTEM_INFO.number_of_online_cores for more context.
-    Ok(true)
+    true
 }
