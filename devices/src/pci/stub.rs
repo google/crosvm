@@ -13,6 +13,7 @@
 //! something to the guest on function 0.
 
 use base::RawDescriptor;
+use base::SharedMemory;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -169,6 +170,18 @@ impl PciDevice for StubPciDevice {
         }
         self.assigned_address
             .ok_or(PciDeviceError::PciAllocationFailed)
+    }
+
+    fn setup_pci_config_mapping(
+        &mut self,
+        shmem: &SharedMemory,
+        base: usize,
+        len: usize,
+    ) -> Result<bool> {
+        self.config_regs
+            .setup_mapping(shmem, base, len)
+            .map(|_| true)
+            .map_err(PciDeviceError::MmioSetup)
     }
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
