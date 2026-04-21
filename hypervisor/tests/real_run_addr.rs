@@ -82,7 +82,7 @@ where
     let mem = GuestMemory::new(&[(load_addr, mem_size)]).unwrap();
 
     let (_hyp, vm) = create_vm(mem);
-    let mut vcpu = vm.create_vcpu(0).expect("new vcpu failed");
+    let vcpu = vm.create_vcpu(0).expect("new vcpu failed");
 
     vm.get_memory()
         .write_at_addr(&code, load_addr)

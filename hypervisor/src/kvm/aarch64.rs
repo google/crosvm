@@ -135,7 +135,7 @@ impl KvmVm {
         }
     }
 
-    pub(super) fn enable_smccc_forwarding(&mut self, base: u32, nr_functions: u32) -> Result<()> {
+    pub(super) fn enable_smccc_forwarding(&self, base: u32, nr_functions: u32) -> Result<()> {
         let smccc_filter = kvm_smccc_filter {
             base,
             nr_functions,
@@ -229,11 +229,7 @@ impl VmAArch64 for KvmVm {
         &self.kvm
     }
 
-    fn load_protected_vm_firmware(
-        &mut self,
-        fw_addr: GuestAddress,
-        fw_max_size: u64,
-    ) -> Result<()> {
+    fn load_protected_vm_firmware(&self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()> {
         let info = self.get_protected_vm_info()?;
         if info.firmware_size == 0 {
             Err(Error::new(ENOENT))

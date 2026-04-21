@@ -282,7 +282,7 @@ impl Vcpu for HaxmVcpu {
     #[allow(clippy::cast_ptr_alignment)]
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
-    fn run(&mut self) -> Result<VcpuExit> {
+    fn run(&self) -> Result<VcpuExit> {
         // TODO(b/315998194): Add safety comment
         #[allow(clippy::undocumented_unsafe_blocks)]
         let ret = unsafe { ioctl(self, HAX_VCPU_IOCTL_RUN) };
@@ -539,7 +539,7 @@ impl VcpuX86_64 for HaxmVcpu {
     /// should represent the result of emulating the CPUID instruction. The `handle_cpuid` function
     /// will then set the appropriate registers on the vcpu.
     /// HAXM does not support the VcpuExit::Cpuid exit type.
-    fn handle_cpuid(&mut self, _entry: &CpuIdEntry) -> Result<()> {
+    fn handle_cpuid(&self, _entry: &CpuIdEntry) -> Result<()> {
         Err(Error::new(ENXIO))
     }
 

@@ -105,7 +105,7 @@ where
     let mem_clone = guest_mem.clone();
 
     let (_, vm) = create_vm(guest_mem);
-    let mut vcpu = vm.create_vcpu(0).expect("new vcpu failed");
+    let vcpu = vm.create_vcpu(0).expect("new vcpu failed");
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");
     vcpu_sregs.cs.base = 0;
     vcpu_sregs.cs.selector = 0;
@@ -116,7 +116,7 @@ where
     // SAFETY: trivially safe
     let tsc_now = unsafe { _rdtsc() };
     test_tsc_offset_run(
-        &mut vcpu,
+        &*vcpu,
         &mem_clone,
         load_addr,
         Some(0),
@@ -127,13 +127,13 @@ where
     // set offset to 0
     // SAFETY: trivially safe
     let tsc_now = unsafe { _rdtsc() };
-    test_tsc_offset_run(&mut vcpu, &mem_clone, load_addr, None, Some(0), 0, tsc_now);
+    test_tsc_offset_run(&*vcpu, &mem_clone, load_addr, None, Some(0), 0, tsc_now);
     // some moderately sized offset
     // SAFETY: trivially safe
     let tsc_now = unsafe { _rdtsc() };
     let ten_seconds = 2_500_000_000 * 10;
     test_tsc_offset_run(
-        &mut vcpu,
+        &*vcpu,
         &mem_clone,
         load_addr,
         None,
@@ -145,7 +145,7 @@ where
     // SAFETY: trivially safe
     let tsc_now = unsafe { _rdtsc() };
     test_tsc_offset_run(
-        &mut vcpu,
+        &*vcpu,
         &mem_clone,
         load_addr,
         None,
@@ -156,7 +156,7 @@ where
 }
 
 fn test_tsc_offset_run(
-    vcpu: &mut Box<dyn hypervisor::VcpuX86_64>,
+    vcpu: &dyn hypervisor::VcpuX86_64,
     mem_clone: &GuestMemory,
     load_addr: GuestAddress,
     set_msr: Option<u64>,

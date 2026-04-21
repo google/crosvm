@@ -70,8 +70,7 @@ pub trait VmX86_64: Vm {
     /// Load pVM firmware for the VM, creating a memslot for it as needed.
     ///
     /// Only works on protected VMs (i.e. those with vm_type == KVM_X86_PKVM_PROTECTED_VM).
-    fn load_protected_vm_firmware(&mut self, fw_addr: GuestAddress, fw_max_size: u64)
-        -> Result<()>;
+    fn load_protected_vm_firmware(&self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()>;
 }
 
 /// A wrapper around creating and using a VCPU on x86_64.
@@ -162,7 +161,7 @@ pub trait VcpuX86_64: Vcpu {
     /// This function should be called after `Vcpu::run` returns `VcpuExit::Cpuid`, and `entry`
     /// should represent the result of emulating the CPUID instruction. The `handle_cpuid` function
     /// will then set the appropriate registers on the vcpu.
-    fn handle_cpuid(&mut self, entry: &CpuIdEntry) -> Result<()>;
+    fn handle_cpuid(&self, entry: &CpuIdEntry) -> Result<()>;
 
     /// Gets the guest->host TSC offset.
     ///
@@ -243,7 +242,7 @@ pub trait VcpuX86_64: Vcpu {
     }
 
     fn restore(
-        &mut self,
+        &self,
         snapshot: &VcpuSnapshot,
         host_tsc_reference_moment: u64,
     ) -> anyhow::Result<()> {

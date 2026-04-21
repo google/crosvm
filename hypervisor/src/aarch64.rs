@@ -74,8 +74,7 @@ pub trait VmAArch64: Vm {
     /// Load pVM firmware for the VM, creating a memslot for it as needed.
     ///
     /// Only works on protected VMs (i.e. those that support `VmCap::Protected`).
-    fn load_protected_vm_firmware(&mut self, fw_addr: GuestAddress, fw_max_size: u64)
-        -> Result<()>;
+    fn load_protected_vm_firmware(&self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()>;
 
     /// Create a Vcpu with the specified Vcpu ID.
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>>;

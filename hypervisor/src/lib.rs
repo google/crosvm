@@ -168,7 +168,7 @@ pub trait Vm: Send {
     /// access. Setting this attribute would allow hypervisor to adjust guest mem control to ensure
     /// synchronized guest access in noncoherent DMA case.
     fn add_memory_region(
-        &mut self,
+        &self,
         guest_addr: GuestAddress,
         mem_region: Box<dyn MappedRegion>,
         read_only: bool,
@@ -178,14 +178,14 @@ pub trait Vm: Send {
 
     /// Does a synchronous msync of the memory mapped at `slot`, syncing `size` bytes starting at
     /// `offset` from the start of the region.  `offset` must be page aligned.
-    fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()>;
+    fn msync_memory_region(&self, slot: MemSlot, offset: usize, size: usize) -> Result<()>;
 
     /// Gives a MADV_PAGEOUT advice to the memory region mapped at `slot`, with the address range
     /// starting at `offset` from the start of the region, and with size `size`. `offset`
     /// must be page aligned.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn madvise_pageout_memory_region(
-        &mut self,
+        &self,
         slot: MemSlot,
         offset: usize,
         size: usize,
@@ -195,15 +195,11 @@ pub trait Vm: Send {
     /// starting at `offset` from the start of the region, and with size `size`. `offset`
     /// must be page aligned.
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn madvise_remove_memory_region(
-        &mut self,
-        slot: MemSlot,
-        offset: usize,
-        size: usize,
-    ) -> Result<()>;
+    fn madvise_remove_memory_region(&self, slot: MemSlot, offset: usize, size: usize)
+        -> Result<()>;
 
     /// Removes and drops the `UserMemoryRegion` that was previously added at the given slot.
-    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>>;
+    fn remove_memory_region(&self, slot: MemSlot) -> Result<Box<dyn MappedRegion>>;
 
     /// Creates an emulated device.
     fn create_device(&self, kind: DeviceKind) -> Result<SafeDescriptor>;
@@ -225,7 +221,7 @@ pub trait Vm: Send {
     /// In all cases where `evt` is signaled, the ordinary vmexit to userspace that would be
     /// triggered is prevented.
     fn register_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -236,7 +232,7 @@ pub trait Vm: Send {
     /// The `evt`, `addr`, and `datamatch` set must be the same as the ones passed into
     /// `register_ioevent`.
     fn unregister_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -267,7 +263,7 @@ pub trait Vm: Send {
     /// * `fd_offset` - Offset in bytes from the beginning of `fd` to start the mmap.
     /// * `prot` - Protection (e.g. readable/writable) of the memory region.
     fn add_fd_mapping(
-        &mut self,
+        &self,
         slot: u32,
         offset: usize,
         size: usize,
@@ -277,16 +273,16 @@ pub trait Vm: Send {
     ) -> Result<()>;
 
     /// Remove `size`-byte mapping starting at `offset`.
-    fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()>;
+    fn remove_mapping(&self, slot: u32, offset: usize, size: usize) -> Result<()>;
 
     /// Events from virtio-balloon that affect the state for guest memory and host memory.
-    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()>;
+    fn handle_balloon_event(&self, event: BalloonEvent) -> Result<()>;
 
     /// Registers with the hypervisor for CrosVM to handle any guest hypercall in the range.
-    fn enable_hypercalls(&mut self, nr: u64, count: usize) -> Result<()>;
+    fn enable_hypercalls(&self, nr: u64, count: usize) -> Result<()>;
 
     /// Registers with the hypervisor for CrosVM to handle the guest hypercall.
-    fn enable_hypercall(&mut self, nr: u64) -> Result<()> {
+    fn enable_hypercall(&self, nr: u64) -> Result<()> {
         self.enable_hypercalls(nr, 1)
     }
 }
@@ -391,7 +387,7 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     fn as_vcpu(&self) -> &dyn Vcpu;
 
     /// Runs the VCPU until it exits, returning the reason for the exit.
-    fn run(&mut self) -> Result<VcpuExit>;
+    fn run(&self) -> Result<VcpuExit>;
 
     /// Returns the vcpu id.
     fn id(&self) -> usize;

@@ -340,7 +340,7 @@ impl WhpxVcpu {
     }
 
     /// Handle reading the MSR with id `id`. If MSR `id` is not supported, inject a GP fault.
-    fn handle_msr_read(&mut self, id: u32) -> Result<()> {
+    fn handle_msr_read(&self, id: u32) -> Result<()> {
         // Verify that we're only being called in a situation where the last exit reason was
         // ExitReasonX64MsrAccess
         if self.last_exit_context.ExitReason
@@ -393,7 +393,7 @@ impl WhpxVcpu {
     }
 
     /// Handle writing the MSR with id `id`. If MSR `id` is not supported, inject a GP fault.
-    fn handle_msr_write(&mut self, id: u32, _value: u64) -> Result<()> {
+    fn handle_msr_write(&self, id: u32, _value: u64) -> Result<()> {
         // Verify that we're only being called in a situation where the last exit reason was
         // ExitReasonX64MsrAccess
         if self.last_exit_context.ExitReason
@@ -601,7 +601,7 @@ impl Vcpu for WhpxVcpu {
     }
 
     #[allow(non_upper_case_globals)]
-    fn run(&mut self) -> Result<VcpuExit> {
+    fn run(&self) -> Result<VcpuExit> {
         // safe because we own this whpx virtual processor index, and assume the vm partition is
         // still valid
         let exit_context_ptr = Arc::as_ptr(&self.last_exit_context);
@@ -1182,7 +1182,7 @@ impl VcpuX86_64 for WhpxVcpu {
     /// This function should be called after `Vcpu::run` returns `VcpuExit::Cpuid`, and `entry`
     /// should represent the result of emulating the CPUID instruction. The `handle_cpuid` function
     /// will then set the appropriate registers on the vcpu.
-    fn handle_cpuid(&mut self, entry: &CpuIdEntry) -> Result<()> {
+    fn handle_cpuid(&self, entry: &CpuIdEntry) -> Result<()> {
         // Verify that we're only being called in a situation where the last exit reason was
         // ExitReasonX64Cpuid
         if self.last_exit_context.ExitReason != WHV_RUN_VP_EXIT_REASON_WHvRunVpExitReasonX64Cpuid {

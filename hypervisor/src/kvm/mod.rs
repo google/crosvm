@@ -586,7 +586,7 @@ impl KvmVm {
         }
     }
 
-    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+    fn handle_inflate(&self, guest_address: GuestAddress, size: u64) -> Result<()> {
         match self.guest_mem.remove_range(guest_address, size) {
             Ok(_) => Ok(()),
             Err(vm_memory::Error::MemoryAccess(_, MmapError::SystemCallFailed(e))) => Err(e),
@@ -594,7 +594,7 @@ impl KvmVm {
         }
     }
 
-    fn handle_deflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
+    fn handle_deflate(&self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
         // No-op, when the guest attempts to access the pages again, Linux/KVM will provide them.
         Ok(())
     }
@@ -672,7 +672,7 @@ impl Vm for KvmVm {
     }
 
     fn add_memory_region(
-        &mut self,
+        &self,
         guest_addr: GuestAddress,
         mem: Box<dyn MappedRegion>,
         read_only: bool,
@@ -723,7 +723,7 @@ impl Vm for KvmVm {
         Ok(slot)
     }
 
-    fn enable_hypercalls(&mut self, nr: u64, count: usize) -> Result<()> {
+    fn enable_hypercalls(&self, nr: u64, count: usize) -> Result<()> {
         cfg_if! {
             if #[cfg(target_arch = "aarch64")] {
                 let base = u32::try_from(nr).unwrap();
@@ -737,7 +737,7 @@ impl Vm for KvmVm {
         }
     }
 
-    fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
+    fn msync_memory_region(&self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let mem = regions.get_mut(&slot).ok_or_else(|| Error::new(ENOENT))?;
 
@@ -750,7 +750,7 @@ impl Vm for KvmVm {
     }
 
     fn madvise_pageout_memory_region(
-        &mut self,
+        &self,
         slot: MemSlot,
         offset: usize,
         size: usize,
@@ -768,7 +768,7 @@ impl Vm for KvmVm {
     }
 
     fn madvise_remove_memory_region(
-        &mut self,
+        &self,
         slot: MemSlot,
         offset: usize,
         size: usize,
@@ -785,7 +785,7 @@ impl Vm for KvmVm {
             })
     }
 
-    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
+    fn remove_memory_region(&self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         let mut regions = self.mem_regions.lock();
         if !regions.contains_key(&slot) {
             return Err(Error::new(ENOENT));
@@ -866,7 +866,7 @@ impl Vm for KvmVm {
     }
 
     fn register_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -875,7 +875,7 @@ impl Vm for KvmVm {
     }
 
     fn unregister_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -897,7 +897,7 @@ impl Vm for KvmVm {
     }
 
     fn add_fd_mapping(
-        &mut self,
+        &self,
         slot: u32,
         offset: usize,
         size: usize,
@@ -915,7 +915,7 @@ impl Vm for KvmVm {
         }
     }
 
-    fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+    fn remove_mapping(&self, slot: u32, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let region = regions.get_mut(&slot).ok_or_else(|| Error::new(EINVAL))?;
 
@@ -926,7 +926,7 @@ impl Vm for KvmVm {
         }
     }
 
-    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()> {
+    fn handle_balloon_event(&self, event: BalloonEvent) -> Result<()> {
         match event {
             BalloonEvent::Inflate(m) => self.handle_inflate(m.guest_address, m.size),
             BalloonEvent::Deflate(m) => self.handle_deflate(m.guest_address, m.size),
@@ -1047,7 +1047,7 @@ impl Vcpu for KvmVcpu {
     #[allow(clippy::cast_ptr_alignment)]
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
-    fn run(&mut self) -> Result<VcpuExit> {
+    fn run(&self) -> Result<VcpuExit> {
         // SAFETY:
         // Safe because we know that our file is a VCPU fd and we verify the return result.
         let ret = unsafe { ioctl(self, KVM_RUN) };

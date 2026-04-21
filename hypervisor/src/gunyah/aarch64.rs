@@ -59,11 +59,7 @@ impl VmAArch64 for GunyahVm {
         &self.gh
     }
 
-    fn load_protected_vm_firmware(
-        &mut self,
-        fw_addr: GuestAddress,
-        fw_max_size: u64,
-    ) -> Result<()> {
+    fn load_protected_vm_firmware(&self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()> {
         self.set_protected_vm_firmware_ipa(fw_addr, fw_max_size)
     }
 

@@ -664,7 +664,7 @@ impl Vcpu for FakeVcpu {
         self
     }
 
-    fn run(&mut self) -> Result<VcpuExit> {
+    fn run(&self) -> Result<VcpuExit> {
         unimplemented!()
     }
 
@@ -761,7 +761,7 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_cpuid(&self, _cpuid: &CpuId) -> Result<()> {
         unimplemented!()
     }
-    fn handle_cpuid(&mut self, _entry: &CpuIdEntry) -> Result<()> {
+    fn handle_cpuid(&self, _entry: &CpuIdEntry) -> Result<()> {
         unimplemented!()
     }
     fn set_guest_debug(&self, _addrs: &[GuestAddress], _enable_singlestep: bool) -> Result<()> {
@@ -771,7 +771,7 @@ impl VcpuX86_64 for FakeVcpu {
         unimplemented!()
     }
     fn restore(
-        &mut self,
+        &self,
         _snapshot: &VcpuSnapshot,
         _host_tsc_reference_moment: u64,
     ) -> anyhow::Result<()> {

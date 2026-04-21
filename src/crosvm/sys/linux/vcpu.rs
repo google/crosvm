@@ -221,7 +221,7 @@ pub fn remove_vcpu_signal_handler() -> Result<()> {
 fn vcpu_loop<V>(
     mut run_mode: VmRunMode,
     cpu_id: usize,
-    mut vcpu: V,
+    vcpu: V,
     irq_chip: Box<dyn IrqChipArch + 'static>,
     run_rt: bool,
     delay_rt: bool,

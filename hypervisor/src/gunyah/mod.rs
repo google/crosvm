@@ -610,7 +610,7 @@ impl Vm for GunyahVm {
     }
 
     fn add_memory_region(
-        &mut self,
+        &self,
         guest_addr: GuestAddress,
         mem_region: Box<dyn MappedRegion>,
         read_only: bool,
@@ -655,7 +655,7 @@ impl Vm for GunyahVm {
         Ok(slot)
     }
 
-    fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
+    fn msync_memory_region(&self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let (mem, _) = regions.get_mut(&slot).ok_or_else(|| Error::new(ENOENT))?;
 
@@ -668,7 +668,7 @@ impl Vm for GunyahVm {
     }
 
     fn madvise_pageout_memory_region(
-        &mut self,
+        &self,
         _slot: MemSlot,
         _offset: usize,
         _size: usize,
@@ -677,7 +677,7 @@ impl Vm for GunyahVm {
     }
 
     fn madvise_remove_memory_region(
-        &mut self,
+        &self,
         _slot: MemSlot,
         _offset: usize,
         _size: usize,
@@ -685,7 +685,7 @@ impl Vm for GunyahVm {
         Err(Error::new(ENOTSUP))
     }
 
-    fn remove_memory_region(&mut self, _slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
+    fn remove_memory_region(&self, _slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         unimplemented!()
     }
 
@@ -698,7 +698,7 @@ impl Vm for GunyahVm {
     }
 
     fn register_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -759,7 +759,7 @@ impl Vm for GunyahVm {
     }
 
     fn unregister_ioevent(
-        &mut self,
+        &self,
         _evt: &Event,
         addr: IoEventAddress,
         _datamatch: Datamatch,
@@ -794,7 +794,7 @@ impl Vm for GunyahVm {
         Ok(())
     }
 
-    fn enable_hypercalls(&mut self, _nr: u64, _count: usize) -> Result<()> {
+    fn enable_hypercalls(&self, _nr: u64, _count: usize) -> Result<()> {
         unimplemented!()
     }
 
@@ -807,7 +807,7 @@ impl Vm for GunyahVm {
     }
 
     fn add_fd_mapping(
-        &mut self,
+        &self,
         slot: u32,
         offset: usize,
         size: usize,
@@ -825,7 +825,7 @@ impl Vm for GunyahVm {
         }
     }
 
-    fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+    fn remove_mapping(&self, slot: u32, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let (region, _) = regions.get_mut(&slot).ok_or_else(|| Error::new(EINVAL))?;
 
@@ -836,7 +836,7 @@ impl Vm for GunyahVm {
         }
     }
 
-    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()> {
+    fn handle_balloon_event(&self, event: BalloonEvent) -> Result<()> {
         match event {
             BalloonEvent::Inflate(m) => self.handle_inflate(m.guest_address, m.size),
             BalloonEvent::Deflate(_) => Ok(()),
@@ -901,7 +901,7 @@ impl Vcpu for GunyahVcpu {
         self
     }
 
-    fn run(&mut self) -> Result<VcpuExit> {
+    fn run(&self) -> Result<VcpuExit> {
         // SAFETY:
         // Safe because we know our file is a VCPU fd and we verify the return result.
         let ret = unsafe { ioctl(self, GH_VCPU_RUN) };

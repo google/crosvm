@@ -88,7 +88,7 @@ where
         .expect("failed to write to guest memory");
 
     let (_, vm) = create_vm(guest_mem);
-    let mut vcpu = vm.create_vcpu(0).expect("new vcpu failed");
+    let vcpu = vm.create_vcpu(0).expect("new vcpu failed");
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");
     vcpu_sregs.cs.base = 0;
     vcpu_sregs.cs.selector = 0;
@@ -249,7 +249,7 @@ where
         .expect("failed to write to guest memory");
 
     let (_, vm) = create_vm(guest_mem);
-    let mut vcpu = vm.create_vcpu(0).expect("new vcpu failed");
+    let vcpu = vm.create_vcpu(0).expect("new vcpu failed");
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");
     vcpu_sregs.cs.base = 0;
     vcpu_sregs.cs.selector = 0;
@@ -387,7 +387,7 @@ where
         .expect("failed to write to guest memory");
 
     let (_, vm) = create_vm(guest_mem);
-    let mut vcpu = vm.create_vcpu(0).expect("new vcpu failed");
+    let vcpu = vm.create_vcpu(0).expect("new vcpu failed");
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");
     vcpu_sregs.cs.base = 0;
     vcpu_sregs.cs.selector = 0;

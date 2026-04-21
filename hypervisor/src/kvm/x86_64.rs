@@ -486,11 +486,7 @@ impl VmX86_64 for KvmVm {
         &self.kvm
     }
 
-    fn load_protected_vm_firmware(
-        &mut self,
-        fw_addr: GuestAddress,
-        fw_max_size: u64,
-    ) -> Result<()> {
+    fn load_protected_vm_firmware(&self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()> {
         let info = self.get_protected_vm_info()?;
         if info.firmware_size == 0 {
             Err(Error::new(EINVAL))
@@ -1122,7 +1118,7 @@ impl VcpuX86_64 for KvmVcpu {
     }
 
     /// KVM does not support the VcpuExit::Cpuid exit type.
-    fn handle_cpuid(&mut self, _entry: &CpuIdEntry) -> Result<()> {
+    fn handle_cpuid(&self, _entry: &CpuIdEntry) -> Result<()> {
         Err(Error::new(ENXIO))
     }
 

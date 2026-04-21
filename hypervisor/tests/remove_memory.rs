@@ -87,8 +87,8 @@ where
     mmap.write_slice(&code[..], load_addr.offset() as usize)
         .expect("Writing code to memory failed.");
 
-    let (_, mut vm) = create_vm(guest_mem);
-    let mut vcpu = vm.create_vcpu(0).expect("new vcpu failed");
+    let (_, vm) = create_vm(guest_mem);
+    let vcpu = vm.create_vcpu(0).expect("new vcpu failed");
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");
     vcpu_sregs.cs.base = 0;
     vcpu_sregs.cs.selector = 0;

@@ -123,7 +123,7 @@ fn add_memory() {
         (GuestAddress(pagesize() as u64 * 5), pagesize() as u64 * 5),
     ])
     .unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     vm.add_memory_region(
@@ -149,7 +149,7 @@ fn add_memory() {
 fn add_memory_ro() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     vm.add_memory_region(
@@ -166,7 +166,7 @@ fn add_memory_ro() {
 fn remove_memory() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 0x1000;
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     let mem_ptr = mem.as_ptr();
@@ -188,7 +188,7 @@ fn remove_memory() {
 fn remove_invalid_memory() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     assert!(vm.remove_memory_region(0).is_err());
 }
 
@@ -196,7 +196,7 @@ fn remove_invalid_memory() {
 fn overlap_memory() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10 * pagesize() as u64)]).unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = 2 * pagesize();
     let mem = MemoryMappingBuilder::new(mem_size).build().unwrap();
     assert!(vm
@@ -218,7 +218,7 @@ fn sync_memory() {
         (GuestAddress(5 * pagesize() as u64), 5 * pagesize() as u64),
     ])
     .unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let mem_size = pagesize();
     let mem = MemoryMappingArena::new(mem_size).unwrap();
     let slot = vm
@@ -292,7 +292,7 @@ fn irqfd_resample() {
 fn register_ioevent() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd = Event::new().unwrap();
     vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
         .unwrap();
@@ -328,7 +328,7 @@ fn register_ioevent() {
 fn unregister_ioevent() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-    let mut vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd = Event::new().unwrap();
     vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
         .unwrap();

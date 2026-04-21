@@ -245,7 +245,7 @@ impl Vm for HaxmVm {
     }
 
     fn add_memory_region(
-        &mut self,
+        &self,
         guest_addr: GuestAddress,
         mem: Box<dyn MappedRegion>,
         read_only: bool,
@@ -287,7 +287,7 @@ impl Vm for HaxmVm {
         Ok(slot)
     }
 
-    fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
+    fn msync_memory_region(&self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let (_, mem) = regions.get_mut(&slot).ok_or(Error::new(ENOENT))?;
 
@@ -299,7 +299,7 @@ impl Vm for HaxmVm {
         })
     }
 
-    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
+    fn remove_memory_region(&self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         let mut regions = self.mem_regions.lock();
 
         if let Some((guest_addr, mem)) = regions.get(&slot) {
@@ -332,7 +332,7 @@ impl Vm for HaxmVm {
     }
 
     fn register_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -357,7 +357,7 @@ impl Vm for HaxmVm {
     }
 
     fn unregister_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -393,7 +393,7 @@ impl Vm for HaxmVm {
         Ok(())
     }
 
-    fn enable_hypercalls(&mut self, _nr: u64, _count: usize) -> Result<()> {
+    fn enable_hypercalls(&self, _nr: u64, _count: usize) -> Result<()> {
         Err(Error::new(ENOTSUP))
     }
 
@@ -408,7 +408,7 @@ impl Vm for HaxmVm {
     }
 
     fn add_fd_mapping(
-        &mut self,
+        &self,
         slot: u32,
         offset: usize,
         size: usize,
@@ -426,7 +426,7 @@ impl Vm for HaxmVm {
         }
     }
 
-    fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+    fn remove_mapping(&self, slot: u32, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let (_, region) = regions.get_mut(&slot).ok_or(Error::new(EINVAL))?;
 
@@ -437,7 +437,7 @@ impl Vm for HaxmVm {
         }
     }
 
-    fn handle_balloon_event(&mut self, _event: crate::BalloonEvent) -> Result<()> {
+    fn handle_balloon_event(&self, _event: crate::BalloonEvent) -> Result<()> {
         // TODO(b/233773610): implement ballooning support in haxm
         warn!("Memory ballooning attempted but not supported on haxm hypervisor");
         // no-op
@@ -498,11 +498,7 @@ impl VmX86_64 for HaxmVm {
         Ok(())
     }
 
-    fn load_protected_vm_firmware(
-        &mut self,
-        _fw_addr: GuestAddress,
-        _fw_max_size: u64,
-    ) -> Result<()> {
+    fn load_protected_vm_firmware(&self, _fw_addr: GuestAddress, _fw_max_size: u64) -> Result<()> {
         // Haxm does not support protected VMs
         Err(Error::new(libc::ENXIO))
     }

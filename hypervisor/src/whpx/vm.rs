@@ -267,7 +267,7 @@ impl WhpxVm {
     }
 
     /// Set the current state of the specified VCPU's local APIC
-    pub fn set_vcpu_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()> {
+    pub fn set_vcpu_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()> {
         let buffer = WhpxLapicState::from(state);
         check_whpx!(unsafe {
             WHvSetVirtualProcessorInterruptControllerState(
@@ -344,7 +344,7 @@ impl WhpxVm {
     ///
     /// This will make crosvm unable to access the memory, and allow Windows to reclaim it for other
     /// uses when memory is in demand.
-    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+    fn handle_inflate(&self, guest_address: GuestAddress, size: u64) -> Result<()> {
         info!(
             "Balloon: Requested WHPX unmap of addr: {:?}, size: {:?}",
             guest_address, size
@@ -384,7 +384,7 @@ impl WhpxVm {
     /// To do this, reclaim the memory from Windows first, then remap it into the hypervisor
     /// partition. Remapped memory has no guarantee of content, and the guest should not expect
     /// it to.
-    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+    fn handle_deflate(&self, guest_address: GuestAddress, size: u64) -> Result<()> {
         info!(
             "Balloon: Requested WHPX unmap of addr: {:?}, size: {:?}",
             guest_address, size
@@ -532,7 +532,7 @@ impl Vm for WhpxVm {
     }
 
     fn add_memory_region(
-        &mut self,
+        &self,
         guest_addr: GuestAddress,
         mem: Box<dyn MappedRegion>,
         read_only: bool,
@@ -574,7 +574,7 @@ impl Vm for WhpxVm {
         Ok(slot)
     }
 
-    fn msync_memory_region(&mut self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
+    fn msync_memory_region(&self, slot: MemSlot, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let (_, mem) = regions.get_mut(&slot).ok_or(Error::new(ENOENT))?;
 
@@ -586,7 +586,7 @@ impl Vm for WhpxVm {
         })
     }
 
-    fn remove_memory_region(&mut self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
+    fn remove_memory_region(&self, slot: MemSlot) -> Result<Box<dyn MappedRegion>> {
         let mut regions = self.mem_regions.lock();
         if !regions.contains_key(&slot) {
             return Err(Error::new(ENOENT));
@@ -646,7 +646,7 @@ impl Vm for WhpxVm {
     }
 
     fn register_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -671,7 +671,7 @@ impl Vm for WhpxVm {
     }
 
     fn unregister_ioevent(
-        &mut self,
+        &self,
         evt: &Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
@@ -711,7 +711,7 @@ impl Vm for WhpxVm {
         Ok(())
     }
 
-    fn enable_hypercalls(&mut self, _nr: u64, _count: usize) -> Result<()> {
+    fn enable_hypercalls(&self, _nr: u64, _count: usize) -> Result<()> {
         Err(Error::new(ENOTSUP))
     }
 
@@ -724,7 +724,7 @@ impl Vm for WhpxVm {
     }
 
     fn add_fd_mapping(
-        &mut self,
+        &self,
         slot: u32,
         offset: usize,
         size: usize,
@@ -742,7 +742,7 @@ impl Vm for WhpxVm {
         }
     }
 
-    fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()> {
+    fn remove_mapping(&self, slot: u32, offset: usize, size: usize) -> Result<()> {
         let mut regions = self.mem_regions.lock();
         let (_, region) = regions.get_mut(&slot).ok_or(Error::new(EINVAL))?;
 
@@ -753,7 +753,7 @@ impl Vm for WhpxVm {
         }
     }
 
-    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()> {
+    fn handle_balloon_event(&self, event: BalloonEvent) -> Result<()> {
         match event {
             BalloonEvent::Inflate(m) => self.handle_inflate(m.guest_address, m.size),
             BalloonEvent::Deflate(m) => self.handle_deflate(m.guest_address, m.size),
@@ -793,11 +793,7 @@ impl VmX86_64 for WhpxVm {
         Ok(())
     }
 
-    fn load_protected_vm_firmware(
-        &mut self,
-        _fw_addr: GuestAddress,
-        _fw_max_size: u64,
-    ) -> Result<()> {
+    fn load_protected_vm_firmware(&self, _fw_addr: GuestAddress, _fw_max_size: u64) -> Result<()> {
         // WHPX does not support protected VMs
         Err(Error::new(libc::ENXIO))
     }
@@ -913,7 +909,7 @@ mod tests {
         let cpu_count = 1;
         let mem =
             GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let mut vm = new_vm(cpu_count, mem);
+        let vm = new_vm(cpu_count, mem);
         let evt = Event::new().expect("failed to create event");
         let otherevt = Event::new().expect("failed to create event");
         vm.register_ioevent(&evt, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
@@ -968,7 +964,7 @@ mod tests {
         let cpu_count = 1;
         let mem =
             GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let mut vm = new_vm(cpu_count, mem);
+        let vm = new_vm(cpu_count, mem);
         let evt = Event::new().expect("failed to create event");
         let evt2 = Event::new().expect("failed to create event");
         vm.register_ioevent(&evt, IoEventAddress::Pio(0x1000), Datamatch::AnyLength)
@@ -1026,7 +1022,7 @@ mod tests {
         let cpu_count = 1;
         let mem =
             GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let mut vm = new_vm(cpu_count, mem);
+        let vm = new_vm(cpu_count, mem);
         let mem_size = 0x1000;
         let shm = SharedMemory::new("test", mem_size as u64).unwrap();
         let mem = MemoryMappingBuilder::new(mem_size)
@@ -1051,7 +1047,7 @@ mod tests {
         let cpu_count = 1;
         let mem =
             GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let mut vm = new_vm(cpu_count, mem);
+        let vm = new_vm(cpu_count, mem);
         let mem_size = 0x1000;
         let shm = SharedMemory::new("test", mem_size as u64).unwrap();
         let mem = MemoryMappingBuilder::new(mem_size)
@@ -1081,7 +1077,7 @@ mod tests {
         let cpu_count = 1;
         let mem =
             GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let mut vm = new_vm(cpu_count, mem);
+        let vm = new_vm(cpu_count, mem);
         assert!(vm.remove_memory_region(0).is_err());
     }
 
@@ -1093,7 +1089,7 @@ mod tests {
         let cpu_count = 1;
         let mem =
             GuestMemory::new(&[(GuestAddress(0), 0x10000)]).expect("failed to create guest memory");
-        let mut vm = new_vm(cpu_count, mem);
+        let vm = new_vm(cpu_count, mem);
         let mem_size = 0x2000;
         let shm = SharedMemory::new("test", mem_size as u64).unwrap();
         let mem = MemoryMappingBuilder::new(mem_size)
@@ -1119,7 +1115,7 @@ mod tests {
         let cpu_count = 1;
         let mem =
             GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let mut vm = new_vm(cpu_count, mem);
+        let vm = new_vm(cpu_count, mem);
         let mem_size = 0x1000;
         let shm = SharedMemory::new("test", mem_size as u64).unwrap();
         let mem = MemoryMappingBuilder::new(mem_size)
