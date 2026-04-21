@@ -4,6 +4,8 @@
 
 #![cfg(target_arch = "x86_64")]
 
+use std::sync::Arc;
+
 use base::EventWaitResult;
 use base::Tube;
 use devices::Bus;
@@ -24,7 +26,6 @@ use hypervisor::IrqSource;
 use hypervisor::PicSelect;
 use hypervisor::PitRWMode;
 use hypervisor::TriggerMode;
-use hypervisor::Vm;
 use hypervisor::VmX86_64;
 use resources::AddressRange;
 use resources::SystemAllocator;
@@ -47,10 +48,11 @@ use crate::x86_64::test_set_pit;
 fn get_kernel_chip() -> KvmKernelIrqChip {
     let kvm = Kvm::new().expect("failed to instantiate Kvm");
     let mem = GuestMemory::new(&[]).unwrap();
-    let vm = KvmVm::new(&kvm, mem, Default::default()).expect("failed tso instantiate vm");
+    let vm =
+        Arc::new(KvmVm::new(&kvm, mem, Default::default()).expect("failed tso instantiate vm"));
 
-    let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
-        .expect("failed to instantiate KvmKernelIrqChip");
+    let mut chip =
+        KvmKernelIrqChip::new(vm.clone(), 1).expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
     chip.add_vcpu(0, vcpu.as_vcpu())
@@ -63,17 +65,13 @@ fn get_kernel_chip() -> KvmKernelIrqChip {
 fn get_split_chip() -> KvmSplitIrqChip {
     let kvm = Kvm::new().expect("failed to instantiate Kvm");
     let mem = GuestMemory::new(&[]).unwrap();
-    let vm = KvmVm::new(&kvm, mem, Default::default()).expect("failed tso instantiate vm");
+    let vm =
+        Arc::new(KvmVm::new(&kvm, mem, Default::default()).expect("failed tso instantiate vm"));
 
     let (_, device_tube) = Tube::pair().expect("failed to create irq tube");
 
-    let mut chip = KvmSplitIrqChip::new(
-        vm.try_clone().expect("failed to clone vm"),
-        1,
-        device_tube,
-        None,
-    )
-    .expect("failed to instantiate KvmKernelIrqChip");
+    let mut chip = KvmSplitIrqChip::new(vm.clone(), 1, device_tube, None)
+        .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
     chip.add_vcpu(0, vcpu.as_vcpu())

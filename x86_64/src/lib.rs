@@ -1048,7 +1048,7 @@ impl arch::LinuxArch for X8664arch {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         battery: (Option<BatteryType>, Option<Minijail>),
-        mut vm: V,
+        vm: Arc<V>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
@@ -1121,7 +1121,7 @@ impl arch::LinuxArch for X8664arch {
             12,
             io_bus.clone(),
             system_allocator,
-            &mut vm,
+            &*vm,
             4, // Share the four pin interrupts (INTx#)
             Some(pcie_vcfg_range.start),
             #[cfg(feature = "swap")]
@@ -1460,7 +1460,7 @@ impl arch::LinuxArch for X8664arch {
                     }
                 }
 
-                regs::set_mtrr_msrs(&mut msrs, &vm, pci_start);
+                regs::set_mtrr_msrs(&mut msrs, &*vm, pci_start);
             }
         }
 

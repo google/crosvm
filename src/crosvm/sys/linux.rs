@@ -221,7 +221,7 @@ const HALLA_PATH: &str = "/dev/halla";
 
 fn create_virtio_devices(
     cfg: &Config,
-    vm: &mut impl VmArch,
+    vm: &impl VmArch,
     resources: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] vm_evt_wrtube: &SendTube,
@@ -911,7 +911,7 @@ fn create_virtio_devices(
 
 fn create_devices(
     cfg: &Config,
-    vm: &mut impl VmArch,
+    vm: &impl VmArch,
     resources: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     vm_evt_wrtube: &SendTube,
@@ -1137,7 +1137,7 @@ fn create_devices(
 
 fn create_mmio_file_backed_mappings(
     cfg: &Config,
-    vm: &mut impl Vm,
+    vm: &impl Vm,
     resources: &mut SystemAllocator,
 ) -> Result<()> {
     for mapping in &cfg.file_backed_mappings_mmio {
@@ -1833,14 +1833,14 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
         None
     };
 
-    let vm =
-        GeniezoneVm::new(&gzvm, guest_mem, components.hv_cfg).context("failed to create vm")?;
+    let vm = Arc::new(
+        GeniezoneVm::new(&gzvm, guest_mem, components.hv_cfg).context("failed to create vm")?,
+    );
 
     // Check that the VM was actually created in protected mode as expected.
     if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
         bail!("Failed to create protected VM");
     }
-    let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     let ioapic_host_tube;
     let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
@@ -1848,7 +1848,7 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
         IrqChipKind::Userspace => bail!("Geniezone does not support userspace irqchip mode"),
         IrqChipKind::Kernel { allow_vgic_its: _ } => {
             ioapic_host_tube = None;
-            GeniezoneKernelIrqChip::new(vm_clone, components.vcpu_properties.len())
+            GeniezoneKernelIrqChip::new(vm.clone(), components.vcpu_properties.len())
                 .context("failed to create IRQ chip")?
         }
     };
@@ -1894,13 +1894,13 @@ fn run_halla(
         None
     };
 
-    let vm = HallaVm::new(&hvm, guest_mem, components.hv_cfg).context("failed to create vm")?;
+    let vm =
+        Arc::new(HallaVm::new(&hvm, guest_mem, components.hv_cfg).context("failed to create vm")?);
 
     // Check that the VM was actually created in protected mode as expected.
     if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
         bail!("Failed to create protected VM");
     }
-    let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     let ioapic_host_tube;
     let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
@@ -1908,7 +1908,7 @@ fn run_halla(
         IrqChipKind::Userspace => bail!("Halla does not support userspace irqchip mode"),
         IrqChipKind::Kernel { allow_vgic_its: _ } => {
             ioapic_host_tube = None;
-            HallaKernelIrqChip::new(vm_clone, components.vcpu_properties.len())
+            HallaKernelIrqChip::new(vm.clone(), components.vcpu_properties.len())
                 .context("failed to create IRQ chip")?
         }
     };
@@ -1951,7 +1951,8 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
         None
     };
 
-    let vm = KvmVm::new(&kvm, guest_mem, components.hv_cfg).context("failed to create vm")?;
+    let vm =
+        Arc::new(KvmVm::new(&kvm, guest_mem, components.hv_cfg).context("failed to create vm")?);
 
     #[cfg(target_arch = "x86_64")]
     if cfg.itmt {
@@ -1966,7 +1967,6 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
         bail!("Failed to create protected VM");
     }
-    let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     enum KvmIrqChip {
         #[cfg(target_arch = "x86_64")]
@@ -1999,7 +1999,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
                 ioapic_host_tube = Some(host_tube);
                 KvmIrqChip::Split(
                     KvmSplitIrqChip::new(
-                        vm_clone,
+                        vm.clone(),
                         components.vcpu_properties.len(),
                         ioapic_device_tube,
                         Some(24),
@@ -2015,7 +2015,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
             ioapic_host_tube = None;
             KvmIrqChip::Kernel(
                 KvmKernelIrqChip::new(
-                    vm_clone,
+                    vm.clone(),
                     components.vcpu_properties.len(),
                     #[cfg(target_arch = "aarch64")]
                     allow_vgic_its,
@@ -2068,28 +2068,28 @@ fn run_gunyah(
         None
     };
 
-    let vm = GunyahVm::new(
-        &gunyah,
-        qcom_trusted_vm_id,
-        qcom_trusted_vm_pas_id,
-        guest_mem,
-        components.hv_cfg,
-    )
-    .context("failed to create vm")?;
+    let vm = Arc::new(
+        GunyahVm::new(
+            &gunyah,
+            qcom_trusted_vm_id,
+            qcom_trusted_vm_pas_id,
+            guest_mem,
+            components.hv_cfg,
+        )
+        .context("failed to create vm")?,
+    );
 
     // Check that the VM was actually created in protected mode as expected.
     if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
         bail!("Failed to create protected VM");
     }
 
-    let vm_clone = vm.try_clone()?;
-
     run_vm::<GunyahVcpu, GunyahVm>(
         cfg,
         components,
         &arch_memory_layout,
-        vm,
-        &mut GunyahIrqChip::new(vm_clone)?,
+        vm.clone(),
+        &mut GunyahIrqChip::new(vm)?,
         None,
         #[cfg(feature = "swap")]
         swap_controller,
@@ -2178,7 +2178,7 @@ fn run_vm<Vcpu, V>(
     cfg: Config,
     #[allow(unused_mut)] mut components: VmComponents,
     arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
-    mut vm: V,
+    vm: Arc<V>,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
     #[cfg(feature = "swap")] mut swap_controller: Option<SwapController>,
@@ -2280,7 +2280,7 @@ where
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
     let mut sys_allocator = SystemAllocator::new(
-        Arch::get_system_allocator_config(&vm, arch_memory_layout),
+        Arch::get_system_allocator_config(&*vm, arch_memory_layout),
         pstore_size,
         &cfg.mmio_address_ranges,
     )
@@ -2289,7 +2289,7 @@ where
     let ramoops_region = match &components.pstore {
         Some(pstore) => Some(
             arch::pstore::create_memory_region(
-                &mut vm,
+                &*vm,
                 sys_allocator.reserved_region().unwrap(),
                 pstore,
             )
@@ -2298,7 +2298,7 @@ where
         None => None,
     };
 
-    create_mmio_file_backed_mappings(&cfg, &mut vm, &mut sys_allocator)?;
+    create_mmio_file_backed_mappings(&cfg, &*vm, &mut sys_allocator)?;
 
     #[cfg(feature = "gpu")]
     // Hold on to the render server jail so it keeps running until we exit run_vm()
@@ -2324,7 +2324,7 @@ where
 
     let mut devices = create_devices(
         &cfg,
-        &mut vm,
+        &*vm,
         &mut sys_allocator,
         &mut add_control_tube,
         &vm_evt_wrtube,
@@ -2581,7 +2581,7 @@ where
             .into(),
         );
 
-        let supports_readonly_mapping = linux.vm.supports_readonly_mapping();
+        let supports_readonly_mapping = linux.vm.as_ref().supports_readonly_mapping();
         let pci_root = linux.root_config.clone();
         std::thread::Builder::new()
             .name("pci_root".to_string())
@@ -2798,7 +2798,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
             let hotplug_key = HotPlugKey::HostVfio { host_addr };
             let (vfio_device, jail, viommu_mapper) = create_vfio_device(
                 cfg.jail_config.as_ref(),
-                &linux.vm,
+                &*linux.vm,
                 sys_allocator,
                 add_control_tube,
                 &device.path,
@@ -3512,7 +3512,7 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 vcpu::kick_all_vcpus(state.vcpu_handles, state.linux.irq_chip.as_irq_chip(), msg);
             };
             let response = request.execute(
-                &state.linux.vm,
+                &*state.linux.vm,
                 state.disk_host_tubes,
                 #[cfg(feature = "audio")]
                 state.snd_host_tubes,
@@ -3646,7 +3646,7 @@ fn process_vm_control_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         },
         TaggedControlTube::VmMsync(tube) => match tube.recv::<VmMemoryMappingRequest>() {
             Ok(request) => {
-                let response = request.execute(&mut state.linux.vm);
+                let response = request.execute(&*state.linux.vm);
                 if let Err(e) = tube.send(&response) {
                     error!("failed to send VmMsyncResponse: {}", e);
                 }
@@ -3661,8 +3661,7 @@ fn process_vm_control_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         },
         TaggedControlTube::Fs(tube) => match tube.recv::<FsMappingRequest>() {
             Ok(request) => {
-                let response =
-                    request.execute(&mut state.linux.vm, &mut state.sys_allocator.lock());
+                let response = request.execute(&*state.linux.vm, &mut state.sys_allocator.lock());
                 if let Err(e) = tube.send(&response) {
                     error!("failed to send VmResponse: {}", e);
                 }
@@ -4084,7 +4083,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vcpu_ids[cpu_id],
             vcpu,
             vcpu_init,
-            linux.vm.try_clone().context("failed to clone vm")?,
+            linux.vm.clone(),
             linux
                 .irq_chip
                 .try_box_clone()
@@ -4180,7 +4179,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let vm_memory_handler_thread = std::thread::Builder::new()
         .name("vm_memory_handler_thread".into())
         .spawn({
-            let vm = linux.vm.try_clone().context("failed to clone Vm")?;
+            let vm = linux.vm.clone();
             let sys_allocator_mutex = sys_allocator_mutex.clone();
             let iommu_client = iommu_host_tube
                 .as_ref()
@@ -4223,7 +4222,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             },
             /* require_encrypted= */ false,
             &mut suspended_pvclock_state,
-            &linux.vm,
+            &*linux.vm,
         )?;
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(
@@ -4906,7 +4905,7 @@ pub enum VmMemoryHandlerRequest {
 
 fn vm_memory_handler_thread(
     control_tubes: Vec<VmMemoryTube>,
-    mut vm: impl Vm,
+    vm: Arc<impl Vm>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
     mut gralloc: RutabagaGralloc,
     mut iommu_client: Option<VmMemoryRequestIommuClient>,
@@ -4979,7 +4978,7 @@ fn vm_memory_handler_thread(
                             Ok(request) => {
                                 let response = request.execute(
                                     tube,
-                                    &mut vm,
+                                    &*vm,
                                     &mut sys_allocator_mutex.lock(),
                                     &mut gralloc,
                                     if *expose_with_viommu {

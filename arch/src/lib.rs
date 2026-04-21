@@ -561,7 +561,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
     /// If it's Some, then `build_vm` already created the vcpus.
     pub vcpus: Option<Vec<Vcpu>>,
-    pub vm: V,
+    pub vm: Arc<V>,
     pub vm_request_tubes: Vec<Tube>,
 }
 
@@ -637,7 +637,7 @@ pub trait LinuxArch {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         battery: (Option<BatteryType>, Option<Minijail>),
-        vm: V,
+        vm: Arc<V>,
         ramoops_region: Option<pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
@@ -1077,7 +1077,7 @@ pub fn generate_pci_root(
     mmio_register_bit_num: usize,
     io_bus: Arc<Bus>,
     resources: &mut SystemAllocator,
-    vm: &mut impl Vm,
+    mut vm: &impl Vm,
     max_irqs: usize,
     vcfg_base: Option<u64>,
     #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
@@ -1278,7 +1278,7 @@ pub fn generate_pci_root(
             device.on_sandboxed();
             Arc::new(Mutex::new(device))
         };
-        root.add_device(address, arced_dev.clone(), vm)
+        root.add_device(address, arced_dev.clone(), &mut vm)
             .map_err(DeviceRegistrationError::PciRootAddDevice)?;
         for range in &ranges {
             mmio_bus

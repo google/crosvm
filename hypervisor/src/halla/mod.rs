@@ -879,16 +879,6 @@ impl HallaVm {
 }
 
 impl Vm for HallaVm {
-    fn try_clone(&self) -> Result<Self> {
-        Ok(HallaVm {
-            halla: self.halla.try_clone()?,
-            vm: self.vm.try_clone()?,
-            guest_mem: self.guest_mem.clone(),
-            mem_regions: self.mem_regions.clone(),
-            mem_slot_gaps: self.mem_slot_gaps.clone(),
-        })
-    }
-
     fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
         error!("try_clone_descriptor hasn't been tested on Halla, returning -ENOTSUP");
         Err(Error::new(ENOTSUP))

@@ -208,18 +208,6 @@ unsafe fn set_user_memory_region(
 }
 
 impl Vm for HaxmVm {
-    fn try_clone(&self) -> Result<Self> {
-        Ok(HaxmVm {
-            vm_id: self.vm_id,
-            haxm: self.haxm.try_clone()?,
-            descriptor: self.descriptor.try_clone()?,
-            guest_mem: self.guest_mem.clone(),
-            mem_regions: self.mem_regions.clone(),
-            mem_slot_gaps: self.mem_slot_gaps.clone(),
-            ioevents: self.ioevents.clone(),
-        })
-    }
-
     fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
         Err(Error::new(ENOTSUP))
     }

@@ -29,7 +29,6 @@ use hypervisor::PicState;
 use hypervisor::PitState;
 use hypervisor::Vcpu;
 use hypervisor::VcpuX86_64;
-use hypervisor::Vm;
 use kvm_sys::*;
 use resources::SystemAllocator;
 use serde::Deserialize;
@@ -81,7 +80,7 @@ fn kvm_default_irq_routing_table(ioapic_pins: usize) -> Vec<IrqRoute> {
 ///
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
-    pub(super) vm: KvmVm,
+    pub(super) vm: Arc<KvmVm>,
     pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
@@ -98,7 +97,7 @@ struct KvmKernelIrqChipSnapshot {
 
 impl KvmKernelIrqChip {
     /// Construct a new KvmKernelIrqchip.
-    pub fn new(vm: KvmVm, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
+    pub fn new(vm: Arc<KvmVm>, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
         vm.create_irq_chip()?;
         vm.create_pit()?;
         let ioapic_pins = vm.get_ioapic_num_pins()?;
@@ -109,10 +108,11 @@ impl KvmKernelIrqChip {
             routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(ioapic_pins))),
         })
     }
+
     /// Attempt to create a shallow clone of this x86_64 KvmKernelIrqChip instance.
     pub(super) fn arch_try_clone(&self) -> Result<Self> {
         Ok(KvmKernelIrqChip {
-            vm: self.vm.try_clone()?,
+            vm: self.vm.clone(),
             vcpus: self.vcpus.clone(),
             routes: self.routes.clone(),
         })
@@ -234,7 +234,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
 /// The SPLIT_IRQCHIP feature only supports x86/x86_64 so we only define this IrqChip in crosvm
 /// for x86/x86_64.
 pub struct KvmSplitIrqChip {
-    vm: KvmVm,
+    vm: Arc<KvmVm>,
     vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
     routes: Arc<Mutex<Vec<IrqRoute>>>,
     pit: Arc<Mutex<Pit>>,
@@ -272,7 +272,7 @@ fn kvm_dummy_msi_routes(ioapic_pins: usize) -> Vec<IrqRoute> {
 impl KvmSplitIrqChip {
     /// Construct a new KvmSplitIrqChip.
     pub fn new(
-        vm: KvmVm,
+        vm: Arc<KvmVm>,
         num_vcpus: usize,
         irq_tube: Tube,
         ioapic_pins: Option<usize>,
@@ -652,7 +652,7 @@ impl IrqChip for KvmSplitIrqChip {
     /// Attempt to clone this IrqChip instance.
     fn try_clone(&self) -> Result<Self> {
         Ok(KvmSplitIrqChip {
-            vm: self.vm.try_clone()?,
+            vm: self.vm.clone(),
             vcpus: self.vcpus.clone(),
             routes: self.routes.clone(),
             pit: self.pit.clone(),

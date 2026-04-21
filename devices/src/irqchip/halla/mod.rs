@@ -15,7 +15,6 @@ use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
 use hypervisor::Vcpu;
-use hypervisor::Vm;
 use resources::SystemAllocator;
 use sync::Mutex;
 
@@ -44,7 +43,7 @@ fn default_irq_routing_table() -> Vec<IrqRoute> {
 ///
 /// This implementation will use the HVM API to create and configure the in-kernel irqchip.
 pub struct HallaKernelIrqChip {
-    pub(super) vm: HallaVm,
+    pub(super) vm: Arc<HallaVm>,
     pub(super) vcpus: Arc<Mutex<Vec<Option<HallaVcpu>>>>,
     device_kind: DeviceKind,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
@@ -66,7 +65,7 @@ pub const AARCH64_GIC_NR_SPIS: u32 = 32;
 
 impl HallaKernelIrqChip {
     /// Construct a new HallaKernelIrqchip.
-    pub fn new(vm: HallaVm, num_vcpus: usize) -> Result<HallaKernelIrqChip> {
+    pub fn new(vm: Arc<HallaVm>, num_vcpus: usize) -> Result<HallaKernelIrqChip> {
         let dist_if_addr: u64 = AARCH64_GIC_DIST_BASE;
         let redist_addr: u64 = dist_if_addr - (AARCH64_GIC_REDIST_SIZE * num_vcpus as u64);
         let device_kind = DeviceKind::ArmVgicV3;
@@ -118,7 +117,7 @@ impl HallaKernelIrqChip {
     /// Attempt to create a shallow clone of this aarch64 HallaKernelIrqChip instance.
     pub(super) fn arch_try_clone(&self) -> Result<Self> {
         Ok(HallaKernelIrqChip {
-            vm: self.vm.try_clone()?,
+            vm: self.vm.clone(),
             vcpus: self.vcpus.clone(),
             device_kind: self.device_kind,
             routes: self.routes.clone(),

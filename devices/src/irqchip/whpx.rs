@@ -70,7 +70,7 @@ const WHPX_LOCAL_APIC_EMULATION_APIC_FREQUENCY: u32 = 100_000_000;
 
 /// The WhpxSplitIrqChip supports
 pub struct WhpxSplitIrqChip {
-    vm: WhpxVm,
+    vm: Arc<WhpxVm>,
     routes: Arc<Mutex<Routes>>,
     pit: Arc<Mutex<Pit>>,
     pic: Arc<Mutex<Pic>>,
@@ -92,7 +92,7 @@ pub struct WhpxSplitIrqChip {
 
 impl WhpxSplitIrqChip {
     /// Construct a new WhpxSplitIrqChip.
-    pub fn new(vm: WhpxVm, irq_tube: Tube, ioapic_pins: Option<usize>) -> Result<Self> {
+    pub fn new(vm: Arc<WhpxVm>, irq_tube: Tube, ioapic_pins: Option<usize>) -> Result<Self> {
         let pit_evt = IrqEdgeEvent::new()?;
         let pit = Pit::new(pit_evt.try_clone()?, Arc::new(Mutex::new(Clock::new()))).map_err(
             |e| match e {
@@ -432,7 +432,7 @@ impl IrqChip for WhpxSplitIrqChip {
         Self: Sized,
     {
         Ok(WhpxSplitIrqChip {
-            vm: self.vm.try_clone()?,
+            vm: self.vm.clone(),
             routes: self.routes.clone(),
             pit: self.pit.clone(),
             pic: self.pic.clone(),

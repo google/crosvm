@@ -127,7 +127,7 @@ impl VmMemoryMappingRequest {
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmMsyncResponse` with the intended purpose of sending the response back over the socket
     /// that received this `VmMsyncResponse`.
-    pub fn execute(&self, vm: &mut impl Vm) -> VmMemoryMappingResponse {
+    pub fn execute(&self, vm: &impl Vm) -> VmMemoryMappingResponse {
         use self::VmMemoryMappingRequest::*;
         match *self {
             MsyncArena { slot, offset, size } => match vm.msync_memory_region(slot, offset, size) {
@@ -183,7 +183,7 @@ pub enum FsMappingRequest {
 }
 
 pub fn prepare_shared_memory_region(
-    vm: &mut dyn Vm,
+    vm: &dyn Vm,
     allocator: &mut SystemAllocator,
     alloc: Alloc,
     cache: MemCacheType,
@@ -244,7 +244,7 @@ pub fn should_prepare_memory_region() -> bool {
 }
 
 impl FsMappingRequest {
-    pub fn execute(&self, vm: &mut dyn Vm, allocator: &mut SystemAllocator) -> VmResponse {
+    pub fn execute(&self, vm: &dyn Vm, allocator: &mut SystemAllocator) -> VmResponse {
         use self::FsMappingRequest::*;
         match *self {
             AllocateSharedMemoryRegion(alloc) => {

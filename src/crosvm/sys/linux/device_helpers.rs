@@ -1288,7 +1288,7 @@ pub fn create_9p_device(
 pub fn create_pmem_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,
-    vm: &mut impl Vm,
+    vm: &impl Vm,
     resources: &mut SystemAllocator,
     pmem: &PmemOption,
     index: usize,

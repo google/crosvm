@@ -216,7 +216,7 @@ impl arch::LinuxArch for Riscv64 {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         (_bat_type, _bat_jail): (Option<BatteryType>, Option<Minijail>),
-        mut vm: V,
+        vm: Arc<V>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipRiscv64,
@@ -276,7 +276,7 @@ impl arch::LinuxArch for Riscv64 {
                 8,
                 Arc::clone(&io_bus),
                 system_allocator,
-                &mut vm,
+                &*vm,
                 devices::IMSIC_MAX_INT_IDS as usize,
                 None,
                 #[cfg(feature = "swap")]
@@ -300,7 +300,7 @@ impl arch::LinuxArch for Riscv64 {
                 irq_chip.as_irq_chip_mut(),
                 &mmio_bus,
                 system_allocator,
-                &mut vm,
+                &*vm,
                 #[cfg(feature = "swap")]
                 swap_controller,
                 &mut None,

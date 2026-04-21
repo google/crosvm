@@ -4,6 +4,8 @@
 
 #![cfg(target_arch = "x86_64")]
 
+use std::sync::Arc;
+
 use base::EventWaitResult;
 use base::Tube;
 use devices::Bus;
@@ -25,7 +27,6 @@ use hypervisor::IrqSource;
 use hypervisor::PicSelect;
 use hypervisor::PitRWMode;
 use hypervisor::TriggerMode;
-use hypervisor::Vm;
 use hypervisor::VmX86_64;
 use resources::AddressRange;
 use resources::SystemAllocator;
@@ -50,14 +51,15 @@ fn split_supported() -> bool {
 fn get_chip(num_vcpus: usize) -> WhpxSplitIrqChip {
     let whpx = Whpx::new().expect("failed to instantiate Whpx");
     let mem = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-    let vm = WhpxVm::new(&whpx, num_vcpus, mem, CpuId::new(0), true, None)
-        .expect("failed to instantiate vm");
+    let vm = Arc::new(
+        WhpxVm::new(&whpx, num_vcpus, mem, CpuId::new(0), true, None)
+            .expect("failed to instantiate vm"),
+    );
 
     let (_, irq_tube) = Tube::pair().expect("failed to create irq tube");
 
-    let mut chip =
-        WhpxSplitIrqChip::new(vm.try_clone().expect("failed to clone vm"), irq_tube, None)
-            .expect("failed to instantiate WhpxSplitIrqChip");
+    let mut chip = WhpxSplitIrqChip::new(vm.clone(), irq_tube, None)
+        .expect("failed to instantiate WhpxSplitIrqChip");
 
     for i in 0..num_vcpus {
         let vcpu = vm.create_vcpu(i).expect("failed to instantiate vcpu");

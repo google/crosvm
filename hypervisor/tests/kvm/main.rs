@@ -68,14 +68,6 @@ fn create_vm() {
 }
 
 #[test]
-fn clone_vm() {
-    let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
-    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
-    vm.try_clone().unwrap();
-}
-
-#[test]
 fn send_vm() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();

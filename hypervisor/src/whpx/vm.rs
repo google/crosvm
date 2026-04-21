@@ -69,8 +69,7 @@ use crate::VmX86_64;
 
 pub struct WhpxVm {
     whpx: Whpx,
-    // reference counted, since we need to implement try_clone or some variation.
-    // There is only ever 1 create/1 delete partition unlike dup/close handle variations.
+    // reference counted, since it is shared with WhpxVcpu.
     vm_partition: Arc<SafePartition>,
     guest_mem: GuestMemory,
     mem_regions: Arc<Mutex<BTreeMap<MemSlot, (GuestAddress, Box<dyn MappedRegion>)>>>,
@@ -81,8 +80,6 @@ pub struct WhpxVm {
     //      will make this faster.
     //   2. We only ever register one eventfd to each address. This simplifies our data structure.
     ioevents: Arc<RwLock<FnvHashMap<IoEventAddress, Event>>>,
-    // Tube to send events to control.
-    vm_evt_wrtube: Option<SendTube>,
 }
 
 impl WhpxVm {
@@ -92,7 +89,7 @@ impl WhpxVm {
         guest_mem: GuestMemory,
         cpuid: CpuId,
         apic_emulation: bool,
-        vm_evt_wrtube: Option<SendTube>,
+        _vm_evt_wrtube: Option<SendTube>,
     ) -> WhpxResult<WhpxVm> {
         let partition = SafePartition::new()?;
         // setup partition defaults.
@@ -243,7 +240,6 @@ impl WhpxVm {
             mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
             mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
             ioevents: Default::default(),
-            vm_evt_wrtube,
         })
     }
 
@@ -480,22 +476,6 @@ pub fn dirty_log_bitmap_size(size: usize) -> usize {
 }
 
 impl Vm for WhpxVm {
-    /// Makes a shallow clone of this `Vm`.
-    fn try_clone(&self) -> Result<Self> {
-        Ok(WhpxVm {
-            whpx: self.whpx.try_clone()?,
-            vm_partition: self.vm_partition.clone(),
-            guest_mem: self.guest_mem.clone(),
-            mem_regions: self.mem_regions.clone(),
-            mem_slot_gaps: self.mem_slot_gaps.clone(),
-            ioevents: self.ioevents.clone(),
-            vm_evt_wrtube: self
-                .vm_evt_wrtube
-                .as_ref()
-                .map(|t| t.try_clone().expect("could not clone vm_evt_wrtube")),
-        })
-    }
-
     fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
         Err(Error::new(ENOTSUP))
     }
@@ -848,18 +828,6 @@ mod tests {
             GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
         let vm = new_vm(cpu_count, mem);
         vm.create_vcpu(0).expect("failed to create vcpu");
-    }
-
-    #[test]
-    fn try_clone() {
-        if !Whpx::is_enabled() {
-            return;
-        }
-        let cpu_count = 1;
-        let mem =
-            GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let vm = new_vm(cpu_count, mem);
-        let _vm_clone = vm.try_clone().expect("failed to clone whpx vm");
     }
 
     #[test]

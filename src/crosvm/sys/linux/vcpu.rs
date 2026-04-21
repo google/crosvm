@@ -129,7 +129,7 @@ pub fn runnable_vcpu<V>(
     vcpu_id: usize,
     vcpu: Option<V>,
     vcpu_init: VcpuInitArch,
-    vm: impl VmArch,
+    vm: Arc<impl VmArch>,
     irq_chip: &mut dyn IrqChipArch,
     vcpu_count: usize,
     cpu_config: Option<CpuConfigArch>,
@@ -158,7 +158,7 @@ where
         .context("failed to add vcpu to irq chip")?;
 
     Arch::configure_vcpu(
-        &vm,
+        &*vm,
         vm.get_hypervisor(),
         irq_chip,
         &mut vcpu,
@@ -530,7 +530,7 @@ pub fn run_vcpu<V>(
     vcpu_id: usize,
     vcpu: Option<V>,
     vcpu_init: VcpuInitArch,
-    vm: impl VmArch + 'static,
+    vm: Arc<impl VmArch + 'static>,
     mut irq_chip: Box<dyn IrqChipArch + 'static>,
     vcpu_count: usize,
     run_rt: bool,

@@ -44,7 +44,7 @@ fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
 ///
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
-    pub(super) vm: KvmVm,
+    pub(super) vm: Arc<KvmVm>,
     pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
     vgic: SafeDescriptor,
     vgic_its: Option<SafeDescriptor>,
@@ -71,7 +71,7 @@ pub const AARCH64_GIC_NR_SPIS: u32 = 32;
 
 impl KvmKernelIrqChip {
     /// Construct a new KvmKernelIrqchip.
-    pub fn new(vm: KvmVm, num_vcpus: usize, allow_vgic_its: bool) -> Result<KvmKernelIrqChip> {
+    pub fn new(vm: Arc<KvmVm>, num_vcpus: usize, allow_vgic_its: bool) -> Result<KvmKernelIrqChip> {
         let cpu_if_addr: u64 = AARCH64_GIC_CPUI_BASE;
         let dist_if_addr: u64 = AARCH64_GIC_DIST_BASE;
         let redist_addr: u64 = dist_if_addr - (AARCH64_GIC_REDIST_SIZE * num_vcpus as u64);
@@ -184,7 +184,7 @@ impl KvmKernelIrqChip {
     /// Attempt to create a shallow clone of this aarch64 KvmKernelIrqChip instance.
     pub(super) fn arch_try_clone(&self) -> Result<Self> {
         Ok(KvmKernelIrqChip {
-            vm: self.vm.try_clone()?,
+            vm: self.vm.clone(),
             vcpus: self.vcpus.clone(),
             vgic: self.vgic.try_clone()?,
             vgic_its: self

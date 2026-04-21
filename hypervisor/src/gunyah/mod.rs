@@ -448,23 +448,6 @@ impl GunyahVm {
         }
     }
 
-    pub fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(GunyahVm {
-            gh: self.gh.try_clone()?,
-            vm: self.vm.try_clone()?,
-            vm_id: self.vm_id,
-            pas_id: self.pas_id,
-            guest_mem: self.guest_mem.clone(),
-            mem_regions: self.mem_regions.clone(),
-            mem_slot_gaps: self.mem_slot_gaps.clone(),
-            routes: self.routes.clone(),
-            hv_cfg: self.hv_cfg,
-        })
-    }
-
     fn set_dtb_config(&self, fdt_address: GuestAddress, fdt_size: usize) -> Result<()> {
         let dtb_config = gh_vm_dtb_config {
             guest_phys_addr: fdt_address.offset(),
@@ -557,23 +540,6 @@ impl GunyahVm {
 }
 
 impl Vm for GunyahVm {
-    fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(GunyahVm {
-            gh: self.gh.try_clone()?,
-            vm: self.vm.try_clone()?,
-            vm_id: self.vm_id,
-            pas_id: self.pas_id,
-            guest_mem: self.guest_mem.clone(),
-            mem_regions: self.mem_regions.clone(),
-            mem_slot_gaps: self.mem_slot_gaps.clone(),
-            routes: self.routes.clone(),
-            hv_cfg: self.hv_cfg,
-        })
-    }
-
     fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
         error!("try_clone_descriptor hasn't been tested on gunyah, returning -ENOTSUP");
         Err(Error::new(ENOTSUP))

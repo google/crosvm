@@ -868,16 +868,6 @@ impl GeniezoneVm {
 }
 
 impl Vm for GeniezoneVm {
-    fn try_clone(&self) -> Result<Self> {
-        Ok(GeniezoneVm {
-            geniezone: self.geniezone.try_clone()?,
-            vm: self.vm.try_clone()?,
-            guest_mem: self.guest_mem.clone(),
-            mem_regions: self.mem_regions.clone(),
-            mem_slot_gaps: self.mem_slot_gaps.clone(),
-        })
-    }
-
     fn try_clone_descriptor(&self) -> Result<SafeDescriptor> {
         error!("try_clone_descriptor hasn't been tested on geniezone, returning -ENOTSUP");
         Err(Error::new(ENOTSUP))

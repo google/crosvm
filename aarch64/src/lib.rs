@@ -535,7 +535,7 @@ impl arch::LinuxArch for AArch64 {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         (bat_type, bat_jail): (Option<BatteryType>, Option<Minijail>),
-        mut vm: V,
+        vm: Arc<V>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
@@ -752,7 +752,7 @@ impl arch::LinuxArch for AArch64 {
                 8,
                 io_bus.clone(),
                 system_allocator,
-                &mut vm,
+                &*vm,
                 (devices::AARCH64_GIC_NR_SPIS - AARCH64_IRQ_BASE) as usize,
                 None,
                 #[cfg(feature = "swap")]
@@ -778,7 +778,7 @@ impl arch::LinuxArch for AArch64 {
                 irq_chip.as_irq_chip_mut(),
                 &mmio_bus,
                 system_allocator,
-                &mut vm,
+                &*vm,
                 #[cfg(feature = "swap")]
                 swap_controller,
                 &mut dev_pm,

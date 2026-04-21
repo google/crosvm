@@ -175,7 +175,7 @@ struct PciRootSerializable {
 impl PciRoot {
     /// Create an empty PCI root bus.
     pub fn new(
-        vm: &mut impl Vm,
+        mut vm: &impl Vm,
         mmio_bus: Weak<Bus>,
         mmio_base: GuestAddress,
         mmio_register_bit_num: usize,
@@ -191,7 +191,7 @@ impl PciRoot {
             .setup_mapping(
                 &PciAddress::new(0, 0, 0, 0).unwrap(),
                 &mut root.root_configuration,
-                vm,
+                &mut vm,
             )
             .context("failed to set up root configuration mapping")?;
         Ok(root)
@@ -583,7 +583,13 @@ pub trait PciMmioMapper {
     fn add_mapping(&mut self, addr: GuestAddress, shmem: &SharedMemory) -> anyhow::Result<u32>;
 }
 
-impl<T: Vm> PciMmioMapper for T {
+// The type here is a little awkward. No one can provide a `&mut` of a `Vm` for `add_mapping`
+// because it mainly exists in practice as an `Arc<dyn Vm>`, but the `add_mapping` implementation
+// for `T: Vm` doesn't actually need `&mut`. So, just add a layer of indirection: We implement the
+// trait for `&T` and so `add_mapping` ends up with `&mut &T`.
+// TODO: Consider changing `PciMmioMapper::add_mapping`'s argument to `&self`. Other users can add
+// a lock if they need `&mut`.
+impl<T: Vm> PciMmioMapper for &T {
     fn supports_readonly_mapping(&self) -> bool {
         self.check_capability(hypervisor::VmCap::ReadOnlyMemoryRegion)
     }

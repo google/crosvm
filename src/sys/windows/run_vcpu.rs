@@ -252,7 +252,7 @@ impl VcpuRunThread {
         vcpu: Option<V>,
         vcpu_init: VcpuInitX86_64,
         vcpus: Arc<Mutex<Vec<Box<dyn VcpuArch>>>>,
-        vm: impl VmArch + 'static,
+        vm: Arc<impl VmArch + 'static>,
         mut irq_chip: Box<dyn IrqChipArch + 'static>,
         vcpu_count: usize,
         run_rt: bool,
@@ -287,7 +287,7 @@ impl VcpuRunThread {
                         context.cpu_id,
                         vcpu,
                         vcpu_init,
-                        &vm,
+                        &*vm,
                         irq_chip.as_mut(),
                         vcpu_count,
                         run_rt && !delay_rt,
@@ -606,10 +606,7 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vcpu,
             vcpu_init.clone(),
             vcpu_boxes.clone(),
-            guest_os
-                .vm
-                .try_clone()
-                .exit_context(Exit::CloneEvent, "failed to clone vm")?,
+            guest_os.vm.clone(),
             guest_os
                 .irq_chip
                 .try_box_clone()
@@ -655,7 +652,7 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 fn vcpu_loop<V>(
     context: &VcpuRunThread,
     mut vcpu: V,
-    vm: impl VmArch + 'static,
+    vm: Arc<impl VmArch + 'static>,
     irq_chip: Box<dyn IrqChipArch + 'static>,
     io_bus: Bus,
     mmio_bus: Bus,

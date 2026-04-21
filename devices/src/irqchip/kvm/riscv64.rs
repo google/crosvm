@@ -206,7 +206,7 @@ impl AsRawDescriptor for AiaDescriptor {
 ///
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
-    pub(super) vm: KvmVm,
+    pub(super) vm: Arc<KvmVm>,
     pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
     num_vcpus: usize,
     num_ids: usize,     // number of imsics ids
@@ -218,7 +218,7 @@ pub struct KvmKernelIrqChip {
 
 impl KvmKernelIrqChip {
     /// Construct a new KvmKernelIrqchip.
-    pub fn new(vm: KvmVm, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
+    pub fn new(vm: Arc<KvmVm>, num_vcpus: usize) -> Result<KvmKernelIrqChip> {
         let aia = AiaDescriptor(vm.create_device(DeviceKind::RiscvAia)?);
 
         let aia_mode = aia.get_aia_mode()?;
@@ -257,7 +257,7 @@ impl KvmKernelIrqChip {
     /// This is the arch-specific impl used by `KvmKernelIrqChip::clone()`.
     pub(super) fn arch_try_clone(&self) -> Result<Self> {
         Ok(KvmKernelIrqChip {
-            vm: self.vm.try_clone()?,
+            vm: self.vm.clone(),
             vcpus: self.vcpus.clone(),
             num_vcpus: self.num_vcpus,
             num_ids: self.num_ids,

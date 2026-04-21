@@ -930,7 +930,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
         let vcpu_size = vcpu_boxes.lock().len();
         let resp = request.execute(
-            &guest_os.vm,
+            &*guest_os.vm,
             disk_host_tubes,
             &[],
             &mut guest_os.pm,
@@ -1186,7 +1186,7 @@ pub enum VmMemoryHandlerRequest {
 
 fn vm_memory_handler_thread(
     control_tubes: Vec<Tube>,
-    mut vm: impl Vm,
+    vm: Arc<impl Vm>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
     mut gralloc: RutabagaGralloc,
     handler_control: Tube,
@@ -1241,7 +1241,7 @@ fn vm_memory_handler_thread(
                         match tube.recv::<VmMemoryRequest>() {
                             Ok(request) => {
                                 let response = request.execute(
-                                    &mut vm,
+                                    &*vm,
                                     &mut sys_allocator_mutex.lock(),
                                     &mut gralloc,
                                     None,
@@ -1382,7 +1382,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let vm_memory_handler_thread_join_handle = std::thread::Builder::new()
         .name("vm_memory_handler_thread".into())
         .spawn({
-            let vm = guest_os.vm.try_clone().context("failed to clone Vm")?;
+            let vm = guest_os.vm.clone();
             let sys_allocator_mutex = sys_allocator_mutex.clone();
             move || {
                 vm_memory_handler_thread(
@@ -1528,7 +1528,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             },
             /* require_encrypted= */ false,
             &mut suspended_pvclock_state,
-            &guest_os.vm,
+            &*guest_os.vm,
         )?;
         // Allow the vCPUs to start for real.
         kick_all_vcpus(
@@ -1953,7 +1953,7 @@ fn create_whpx_vm(
     apic_emulation: bool,
     force_calibrated_tsc_leaf: bool,
     vm_evt_wrtube: SendTube,
-) -> Result<WhpxVm> {
+) -> Result<Arc<WhpxVm>> {
     let cpu_config = hypervisor::CpuConfigX86_64::new(
         force_calibrated_tsc_leaf,
         false, /* host_cpu_topology */
@@ -1992,7 +1992,7 @@ fn create_whpx_vm(
     )
     .exit_context(Exit::WhpxSetupError, "failed to create WHPX vm")?;
 
-    Ok(vm)
+    Ok(Arc::new(vm))
 }
 
 #[cfg(feature = "gvm")]
@@ -2005,12 +2005,12 @@ fn create_gvm_irq_chip(vm: &GvmVm, vcpu_count: usize) -> base::Result<GvmIrqChip
 #[cfg(feature = "whpx")]
 #[cfg(target_arch = "x86_64")]
 fn create_whpx_split_irq_chip(
-    vm: &WhpxVm,
+    vm: Arc<WhpxVm>,
     ioapic_device_tube: Tube,
 ) -> base::Result<WhpxSplitIrqChip> {
     info!("Creating WHPX split irqchip");
     WhpxSplitIrqChip::new(
-        vm.try_clone()?,
+        vm,
         ioapic_device_tube,
         None, // ioapic_pins
     )
@@ -2389,7 +2389,7 @@ fn run_config_inner(
             info!("Creating HAXM ghaxm={}", get_use_ghaxm());
             let haxm = Haxm::new()?;
             let guest_mem = create_guest_memory(&components, &arch_memory_layout, &haxm)?;
-            let vm = create_haxm_vm(haxm, guest_mem, &cfg.kernel_log_file)?;
+            let vm = Arc::new(create_haxm_vm(haxm, guest_mem, &cfg.kernel_log_file)?);
             let (ioapic_host_tube, ioapic_device_tube) =
                 Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
             let irq_chip = create_userspace_irq_chip::<HaxmVcpu>(
@@ -2452,7 +2452,10 @@ fn run_config_inner(
                                local apic emulation"
                         );
                     }
-                    WindowsIrqChip::WhpxSplit(create_whpx_split_irq_chip(&vm, ioapic_device_tube)?)
+                    WindowsIrqChip::WhpxSplit(create_whpx_split_irq_chip(
+                        vm.clone(),
+                        ioapic_device_tube,
+                    )?)
                 }
                 IrqChipKind::Userspace => {
                     WindowsIrqChip::Userspace(create_userspace_irq_chip::<WhpxVcpu>(
@@ -2514,7 +2517,7 @@ fn run_vm<Vcpu, V>(
     #[allow(unused_mut)] mut cfg: Config,
     #[allow(unused_mut)] mut components: VmComponents,
     arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
-    mut vm: V,
+    vm: Arc<V>,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
     vm_evt_wrtube: SendTube,
@@ -2577,7 +2580,7 @@ where
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
     let mut sys_allocator = SystemAllocator::new(
-        Arch::get_system_allocator_config(&vm, arch_memory_layout),
+        Arch::get_system_allocator_config(&*vm, arch_memory_layout),
         pstore_size,
         &cfg.mmio_address_ranges,
     )
@@ -2587,7 +2590,7 @@ where
     let ramoops_region = match &components.pstore {
         Some(pstore) => Some(
             arch::pstore::create_memory_region(
-                &mut vm,
+                &*vm,
                 sys_allocator.reserved_region().unwrap(),
                 pstore,
             )

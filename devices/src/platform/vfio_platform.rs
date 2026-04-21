@@ -198,7 +198,7 @@ impl VfioPlatformDevice {
         Ok(ranges)
     }
 
-    fn region_mmap_early(&self, vm: &mut impl Vm, index: usize, start_addr: u64) {
+    fn region_mmap_early(&self, vm: &impl Vm, index: usize, start_addr: u64) {
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP == 0 {
             return;
         }
@@ -242,7 +242,7 @@ impl VfioPlatformDevice {
     /// By default, MMIO regions are mapped lazily when the guest first accesses them. Instead,
     /// this function maps them, even if the guest might end up not accessing them. It only runs in
     /// the current thread and can therefore be called before the VM is started.
-    pub fn regions_mmap_early(&mut self, vm: &mut impl Vm) {
+    pub fn regions_mmap_early(&mut self, vm: &impl Vm) {
         for mmio_info in self.mmio_regions.iter() {
             self.region_mmap_early(vm, mmio_info.index, mmio_info.start);
         }

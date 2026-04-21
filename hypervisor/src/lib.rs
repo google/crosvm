@@ -117,12 +117,7 @@ pub trait Hypervisor: Send {
 }
 
 /// A wrapper for using a VM and getting/setting its state.
-pub trait Vm: Send {
-    /// Makes a shallow clone of this `Vm`.
-    fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized;
-
+pub trait Vm: Send + Sync {
     /// Makes a shallow clone of the fd of this `Vm`.
     fn try_clone_descriptor(&self) -> Result<SafeDescriptor>;
 

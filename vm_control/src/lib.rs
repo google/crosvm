@@ -646,7 +646,7 @@ pub struct VmMemoryRegionState {
 }
 
 fn try_map_to_prepared_region(
-    vm: &mut impl Vm,
+    vm: &impl Vm,
     region_state: &mut VmMemoryRegionState,
     source: &VmMemorySource,
     dest: &VmMemoryDestination,
@@ -731,7 +731,7 @@ impl VmMemoryRequest {
     pub fn execute(
         self,
         #[cfg(any(target_os = "android", target_os = "linux"))] tube: &Tube,
-        vm: &mut impl Vm,
+        vm: &impl Vm,
         sys_allocator: &mut SystemAllocator,
         gralloc: &mut RutabagaGralloc,
         iommu_client: Option<&mut VmMemoryRequestIommuClient>,

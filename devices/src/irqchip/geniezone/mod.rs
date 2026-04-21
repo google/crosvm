@@ -14,7 +14,6 @@ use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
 use hypervisor::Vcpu;
-use hypervisor::Vm;
 use resources::SystemAllocator;
 use sync::Mutex;
 
@@ -43,7 +42,7 @@ fn default_irq_routing_table() -> Vec<IrqRoute> {
 ///
 /// This implementation will use the GZVM API to create and configure the in-kernel irqchip.
 pub struct GeniezoneKernelIrqChip {
-    pub(super) vm: GeniezoneVm,
+    pub(super) vm: Arc<GeniezoneVm>,
     device_kind: DeviceKind,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
@@ -64,7 +63,7 @@ pub const AARCH64_GIC_NR_SPIS: u32 = 32;
 
 impl GeniezoneKernelIrqChip {
     /// Construct a new GzvmKernelIrqchip.
-    pub fn new(vm: GeniezoneVm, num_vcpus: usize) -> Result<GeniezoneKernelIrqChip> {
+    pub fn new(vm: Arc<GeniezoneVm>, num_vcpus: usize) -> Result<GeniezoneKernelIrqChip> {
         let dist_if_addr: u64 = AARCH64_GIC_DIST_BASE;
         let redist_addr: u64 = dist_if_addr - (AARCH64_GIC_REDIST_SIZE * num_vcpus as u64);
         let device_kind = DeviceKind::ArmVgicV3;
@@ -115,7 +114,7 @@ impl GeniezoneKernelIrqChip {
     /// Attempt to create a shallow clone of this aarch64 GzvmKernelIrqChip instance.
     pub(super) fn arch_try_clone(&self) -> Result<Self> {
         Ok(GeniezoneKernelIrqChip {
-            vm: self.vm.try_clone()?,
+            vm: self.vm.clone(),
             device_kind: self.device_kind,
             routes: self.routes.clone(),
         })
