@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
 use std::convert::TryInto;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use base::error;
 use base::info;
@@ -76,13 +77,10 @@ pub struct WhpxVm {
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
     mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
     // WHPX's implementation of ioevents makes several assumptions about how crosvm uses ioevents:
-    //   1. All ioevents are registered during device setup, and thus can be cloned when the vm is
-    //      cloned instead of locked in an Arc<Mutex<>>. This will make handling ioevents in each
-    //      vcpu thread easier because no locks will need to be acquired.
-    //   2. All ioevents use Datamatch::AnyLength. We don't bother checking the datamatch, which
+    //   1. All ioevents use Datamatch::AnyLength. We don't bother checking the datamatch, which
     //      will make this faster.
-    //   3. We only ever register one eventfd to each address. This simplifies our data structure.
-    ioevents: FnvHashMap<IoEventAddress, Event>,
+    //   2. We only ever register one eventfd to each address. This simplifies our data structure.
+    ioevents: Arc<RwLock<FnvHashMap<IoEventAddress, Event>>>,
     // Tube to send events to control.
     vm_evt_wrtube: Option<SendTube>,
 }
@@ -244,7 +242,7 @@ impl WhpxVm {
             guest_mem,
             mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
             mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
-            ioevents: FnvHashMap::default(),
+            ioevents: Default::default(),
             vm_evt_wrtube,
         })
     }
@@ -484,17 +482,13 @@ pub fn dirty_log_bitmap_size(size: usize) -> usize {
 impl Vm for WhpxVm {
     /// Makes a shallow clone of this `Vm`.
     fn try_clone(&self) -> Result<Self> {
-        let mut ioevents = FnvHashMap::default();
-        for (addr, evt) in self.ioevents.iter() {
-            ioevents.insert(*addr, evt.try_clone()?);
-        }
         Ok(WhpxVm {
             whpx: self.whpx.try_clone()?,
             vm_partition: self.vm_partition.clone(),
             guest_mem: self.guest_mem.clone(),
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
-            ioevents,
+            ioevents: self.ioevents.clone(),
             vm_evt_wrtube: self
                 .vm_evt_wrtube
                 .as_ref()
@@ -662,12 +656,16 @@ impl Vm for WhpxVm {
             return Err(Error::new(ENOTSUP));
         }
 
-        if self.ioevents.contains_key(&addr) {
+        let evt = evt.try_clone()?;
+
+        let mut ioevents = self.ioevents.write().unwrap();
+
+        if ioevents.contains_key(&addr) {
             error!("WHPX does not support multiple ioevents for the same address");
             return Err(Error::new(EEXIST));
         }
 
-        self.ioevents.insert(addr, evt.try_clone()?);
+        ioevents.insert(addr, evt);
 
         Ok(())
     }
@@ -683,13 +681,15 @@ impl Vm for WhpxVm {
             return Err(Error::new(ENOTSUP));
         }
 
-        match self.ioevents.get(&addr) {
+        let mut ioevents = self.ioevents.write().unwrap();
+
+        match ioevents.get(&addr) {
             Some(existing_evt) => {
                 // evt should match the existing evt associated with addr
                 if evt != existing_evt {
                     return Err(Error::new(ENOENT));
                 }
-                self.ioevents.remove(&addr);
+                ioevents.remove(&addr);
             }
 
             None => {
@@ -702,7 +702,7 @@ impl Vm for WhpxVm {
     /// Trigger any io events based on the memory mapped IO at `addr`.  If the hypervisor does
     /// in-kernel IO event delivery, this is a no-op.
     fn handle_io_events(&self, addr: IoEventAddress, _data: &[u8]) -> Result<()> {
-        match self.ioevents.get(&addr) {
+        match self.ioevents.read().unwrap().get(&addr) {
             None => {}
             Some(evt) => {
                 evt.signal()?;
