@@ -216,10 +216,10 @@ pub struct GunyahVm {
     vm_id: Option<u16>,
     pas_id: Option<u32>,
     guest_mem: GuestMemory,
-    mem_regions: Arc<Mutex<BTreeMap<MemSlot, (Box<dyn MappedRegion>, GuestAddress)>>>,
+    mem_regions: Mutex<BTreeMap<MemSlot, (Box<dyn MappedRegion>, GuestAddress)>>,
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
-    mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
-    routes: Arc<Mutex<HashSet<GunyahIrqRoute>>>,
+    mem_slot_gaps: Mutex<BinaryHeap<Reverse<MemSlot>>>,
+    routes: Mutex<HashSet<GunyahIrqRoute>>,
     hv_cfg: crate::Config,
 }
 
@@ -319,9 +319,9 @@ impl GunyahVm {
             vm_id,
             pas_id,
             guest_mem,
-            mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
-            mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
-            routes: Arc::new(Mutex::new(HashSet::new())),
+            mem_regions: Default::default(),
+            mem_slot_gaps: Default::default(),
+            routes: Default::default(),
             hv_cfg: cfg,
         })
     }

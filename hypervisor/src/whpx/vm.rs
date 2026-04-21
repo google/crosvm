@@ -72,14 +72,14 @@ pub struct WhpxVm {
     // reference counted, since it is shared with WhpxVcpu.
     vm_partition: Arc<SafePartition>,
     guest_mem: GuestMemory,
-    mem_regions: Arc<Mutex<BTreeMap<MemSlot, (GuestAddress, Box<dyn MappedRegion>)>>>,
+    mem_regions: Mutex<BTreeMap<MemSlot, (GuestAddress, Box<dyn MappedRegion>)>>,
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
-    mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
+    mem_slot_gaps: Mutex<BinaryHeap<Reverse<MemSlot>>>,
     // WHPX's implementation of ioevents makes several assumptions about how crosvm uses ioevents:
     //   1. All ioevents use Datamatch::AnyLength. We don't bother checking the datamatch, which
     //      will make this faster.
     //   2. We only ever register one eventfd to each address. This simplifies our data structure.
-    ioevents: Arc<RwLock<FnvHashMap<IoEventAddress, Event>>>,
+    ioevents: RwLock<FnvHashMap<IoEventAddress, Event>>,
 }
 
 impl WhpxVm {
@@ -237,8 +237,8 @@ impl WhpxVm {
             whpx: whpx.clone(),
             vm_partition: Arc::new(partition),
             guest_mem,
-            mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
-            mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
+            mem_regions: Default::default(),
+            mem_slot_gaps: Default::default(),
             ioevents: Default::default(),
         })
     }

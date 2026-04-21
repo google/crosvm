@@ -274,9 +274,9 @@ pub struct KvmVm {
     kvm: Kvm,
     vm: SafeDescriptor,
     guest_mem: GuestMemory,
-    mem_regions: Arc<Mutex<BTreeMap<MemSlot, Box<dyn MappedRegion>>>>,
+    mem_regions: Mutex<BTreeMap<MemSlot, Box<dyn MappedRegion>>>,
     /// A min heap of MemSlot numbers that were used and then removed and can now be re-used
-    mem_slot_gaps: Arc<Mutex<BinaryHeap<Reverse<MemSlot>>>>,
+    mem_slot_gaps: Mutex<BinaryHeap<Reverse<MemSlot>>>,
     caps: KvmVmCaps,
     force_disable_readonly_mem: bool,
 }
@@ -304,8 +304,8 @@ impl KvmVm {
             kvm: kvm.try_clone()?,
             vm: vm_descriptor,
             guest_mem,
-            mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
-            mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
+            mem_regions: Default::default(),
+            mem_slot_gaps: Default::default(),
             caps: Default::default(),
             force_disable_readonly_mem: cfg.force_disable_readonly_mem,
         };
