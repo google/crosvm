@@ -161,13 +161,14 @@ def check_crosvm_build(
     return check
 
 
-def check_clippy(platform: Union[Platform, ClippyOnlyPlatform]):
+def check_clippy(platform: Union[Platform, ClippyOnlyPlatform], features: Optional[str] = None):
     def check(context: CheckContext):
         if not platform_is_supported(platform):
             return None
         return cmd(
             "./tools/clippy --platform",
             platform,
+            f"--features={features}" if features is not None else None,
             "--fix" if context.fix else None,
         ).with_color_flag()
 
@@ -300,6 +301,13 @@ CHECKS: List[Check] = [
         for platform in (*PLATFORMS, *CLIPPY_ONLY_PLATFORMS)
     ),
     Check(
+        check_clippy("mingw64", features="whpx"),
+        custom_name=f"clippy_mingw64_with_whpx",
+        files=["**.rs"],
+        can_fix=True,
+        priority=True,
+    ),
+    Check(
         custom_check("check-copyright-header"),
         files=["**.rs", "**.py", "**.c", "**.h", "**.policy", "**.sh"],
         exclude=[
@@ -376,13 +384,15 @@ GROUPS: List[Group] = [
             "health_checks",
             *(f"linux_{platform}" for platform in PLATFORMS),
             *(f"clippy_{platform}" for platform in CLIPPY_ONLY_PLATFORMS),
+            "clippy_mingw64_with_whpx",
         ],
     ),
     # Convenience groups for local usage:
     Group(
         name="clippy",
         doc="Runs clippy for all platforms",
-        checks=[f"clippy_{platform}" for platform in PLATFORMS + CLIPPY_ONLY_PLATFORMS],
+        checks=[f"clippy_{platform}" for platform in PLATFORMS + CLIPPY_ONLY_PLATFORMS]
+        + ["clippy_mingw64_with_whpx"],
     ),
     Group(
         name="unit_tests",

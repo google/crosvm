@@ -13,7 +13,6 @@ use devices::IrqChipX86_64;
 use devices::IrqEdgeEvent;
 use devices::IrqEventSource;
 use devices::IrqLevelEvent;
-use devices::PlatformDeviceId;
 use devices::WhpxSplitIrqChip;
 use devices::IOAPIC_BASE_ADDRESS;
 use hypervisor::whpx::Whpx;
@@ -32,6 +31,7 @@ use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
 use vm_control::DeviceId;
+use vm_control::PlatformDeviceId;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 

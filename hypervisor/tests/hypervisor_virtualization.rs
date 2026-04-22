@@ -3483,7 +3483,7 @@ fn test_xsaves() {
             false
         }
         VcpuExit::MsrAccess => false, // MsrAccess handled by hypervisor impl
-        r => panic!("unexpected exit reason: {:?}", r),
+        r => panic!("unexpected exit reason: {r:?}"),
     };
 
     run_tests!(setup, regs_matcher, exit_matcher);

@@ -21,6 +21,7 @@ def main(
     json: bool = False,
     locked: bool = False,
     platform: Optional[str] = None,
+    features: Optional[str] = None,
 ):
     try:
         triple: Triple = Triple.from_shorthand(platform) if platform else Triple.host_default()
@@ -53,7 +54,7 @@ def main(
 
     print("Clippy crosvm workspace")
     clippy(
-        f"--features={triple.feature_flag}",
+        f"--features={triple.feature_flag}" + (f",{features}" if features is not None else ""),
         *args,
     ).with_envs(triple.get_cargo_env()).fg()
 

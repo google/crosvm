@@ -4,6 +4,8 @@
 
 //! Implementation for WHPX hypervisor aka Windows Hyper-V platform.
 
+#![allow(clippy::undocumented_unsafe_blocks)] // FIXME
+
 use core::ffi::c_void;
 use std::arch::x86_64::__cpuid_count;
 use std::sync::LazyLock;

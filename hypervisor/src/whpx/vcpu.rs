@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![allow(clippy::undocumented_unsafe_blocks)] // FIXME
+
 use core::ffi::c_void;
 use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
@@ -364,7 +366,7 @@ impl WhpxVcpu {
                 WHV_REGISTER_NAME_WHvX64RegisterRdx,
             ];
 
-            let values = vec![
+            let values = [
                 WHV_REGISTER_VALUE { Reg64: rip },
                 // RDMSR instruction puts lower 32 bits in EAX and upper 32 bits in EDX
                 WHV_REGISTER_VALUE {
@@ -382,7 +384,7 @@ impl WhpxVcpu {
                     self.index,
                     &REG_NAMES as *const WHV_REGISTER_NAME,
                     REG_NAMES.len() as u32,
-                    values.as_ptr() as *const WHV_REGISTER_VALUE,
+                    values.as_ptr(),
                 )
             })
         } else {
@@ -413,7 +415,7 @@ impl WhpxVcpu {
 
         const REG_NAMES: [WHV_REGISTER_NAME; 1] = [WHV_REGISTER_NAME_WHvX64RegisterRip];
 
-        let values = vec![WHV_REGISTER_VALUE { Reg64: rip }];
+        let values = [WHV_REGISTER_VALUE { Reg64: rip }];
 
         // safe because we have enough space for all the registers
         check_whpx!(unsafe {
@@ -422,7 +424,7 @@ impl WhpxVcpu {
                 self.index,
                 &REG_NAMES as *const WHV_REGISTER_NAME,
                 REG_NAMES.len() as u32,
-                values.as_ptr() as *const WHV_REGISTER_VALUE,
+                values.as_ptr(),
             )
         })
     }
@@ -710,7 +712,7 @@ impl Vcpu for WhpxVcpu {
             }
             // exit caused by host cancellation thorugh WHvCancelRunVirtualProcessor,
             WHV_RUN_VP_EXIT_REASON_WHvRunVpExitReasonCanceled => Ok(VcpuExit::Canceled),
-            r => panic!("unknown exit reason: {}", r),
+            r => panic!("unknown exit reason: {r}"),
         }
     }
 }
@@ -1199,7 +1201,7 @@ impl VcpuX86_64 for WhpxVcpu {
             WHV_REGISTER_NAME_WHvX64RegisterRdx,
         ];
 
-        let values = vec![
+        let values = [
             WHV_REGISTER_VALUE { Reg64: rip },
             WHV_REGISTER_VALUE {
                 Reg64: entry.cpuid.eax as u64,
@@ -1222,7 +1224,7 @@ impl VcpuX86_64 for WhpxVcpu {
                 self.index,
                 &REG_NAMES as *const WHV_REGISTER_NAME,
                 REG_NAMES.len() as u32,
-                values.as_ptr() as *const WHV_REGISTER_VALUE,
+                values.as_ptr(),
             )
         })
     }

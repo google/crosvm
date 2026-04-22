@@ -59,7 +59,7 @@ fn test_whpx_mmio_fetch_memory() {
     vcpu.set_sregs(&vcpu_sregs).expect("set sregs failed");
 
     let vcpu_regs = Regs {
-        rip: load_addr.offset() as u64,
+        rip: load_addr.offset(),
         rflags: 2,
         rax: 0x33,
         rbx: 0x3000,
@@ -127,7 +127,7 @@ fn test_whpx_mmio_fetch_memory() {
             }
             // Continue on external interrupt or signal
             VcpuExit::Intr => continue,
-            r => panic!("unexpected exit reason: {:?}", r),
+            r => panic!("unexpected exit reason: {r:?}"),
         }
     }
 

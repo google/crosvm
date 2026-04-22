@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![allow(clippy::undocumented_unsafe_blocks)] // FIXME
+#![allow(clippy::manual_div_ceil)] // FIXME
+
 use core::ffi::c_void;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -633,7 +636,7 @@ impl Vm for WhpxVm {
                     self.vm_partition.partition,
                     guest_addr.offset(),
                     mem.size() as u64,
-                    bitmap.as_mut_ptr() as *mut u64,
+                    bitmap.as_mut_ptr(),
                     (bitmap.len() * 8) as u32,
                 )
             })?;

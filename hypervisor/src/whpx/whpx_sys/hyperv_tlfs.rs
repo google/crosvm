@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-/// Constants from Hyper-V Top Level Functional Specification.
-/// This comes from the document published here:
-/// <https://github.com/MicrosoftDocs/Virtualization-Documentation/raw/live/tlfs/Hypervisor%20Top%20Level%20Functional%20Specification%20v6.0b.pdf>
+//! Constants from Hyper-V Top Level Functional Specification.
+//! This comes from the document published here:
+//! <https://github.com/MicrosoftDocs/Virtualization-Documentation/raw/live/tlfs/Hypervisor%20Top%20Level%20Functional%20Specification%20v6.0b.pdf>
 
 /// CPUID Leaf Range Register.
 pub const HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS: u32 = 0x40000000;
@@ -16,7 +16,7 @@ pub const HYPERV_CPUID_FEATURES: u32 = 0x40000003;
 /// Feature for Frequency MSR availability.
 pub const HV_FEATURE_FREQUENCY_MSRS_AVAILABLE: u32 = 1 << 8;
 
-/// Group A features.
+// Group A features.
 
 /// Privilege bit for partition reference TSC register.
 pub const HV_MSR_REFERENCE_TSC_AVAILABLE: u32 = 1 << 9;
