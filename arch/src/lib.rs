@@ -526,7 +526,7 @@ pub struct VmComponents {
 
 /// Holds the elements needed to run a Linux VM. Created by `build_vm`.
 #[sorted]
-pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
+pub struct RunnableLinuxVm {
     pub bat_control: Option<BatControl>,
     pub delay_rt: bool,
     pub devices_thread: Option<std::thread::JoinHandle<()>>,
@@ -550,8 +550,8 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub vcpu_init: Vec<VcpuInitArch>,
     /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
     /// If it's Some, then `build_vm` already created the vcpus.
-    pub vcpus: Option<Vec<Arc<Vcpu>>>,
-    pub vm: Arc<V>,
+    pub vcpus: Option<Vec<Arc<dyn VcpuArch>>>,
+    pub vm: Arc<dyn VmArch>,
     pub vm_request_tubes: Vec<Tube>,
 }
 
@@ -594,8 +594,8 @@ pub trait LinuxArch {
     /// # Arguments
     ///
     /// * `vm` - The virtual machine to be used as a template for the `SystemAllocator`.
-    fn get_system_allocator_config<V: Vm>(
-        vm: &V,
+    fn get_system_allocator_config(
+        vm: &dyn Vm,
         arch_memory_layout: &Self::ArchMemoryLayout,
     ) -> SystemAllocatorConfig;
 
@@ -619,7 +619,7 @@ pub trait LinuxArch {
     /// * `pflash_jail` - Jail used for pflash device created here.
     /// * `fw_cfg_jail` - Jail used for fw_cfg device created here.
     /// * `device_tree_overlays` - Device tree overlay binaries
-    fn build_vm<V, Vcpu>(
+    fn build_vm(
         components: VmComponents,
         arch_memory_layout: &Self::ArchMemoryLayout,
         vm_evt_wrtube: &SendTube,
@@ -627,7 +627,7 @@ pub trait LinuxArch {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         battery: (Option<BatteryType>, Option<Minijail>),
-        vm: Arc<V>,
+        vm: Arc<dyn VmArch>,
         ramoops_region: Option<pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
@@ -641,10 +641,7 @@ pub trait LinuxArch {
         device_tree_overlays: Vec<DtbOverlay>,
         fdt_position: Option<FdtPosition>,
         no_pmu: bool,
-    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
-    where
-        V: VmArch,
-        Vcpu: VcpuArch;
+    ) -> std::result::Result<RunnableLinuxVm, Self::Error>;
 
     /// Configures the vcpu and should be called once per vcpu from the vcpu's thread.
     ///
@@ -658,8 +655,8 @@ pub trait LinuxArch {
     /// * `vcpu_id` - The id of the given `vcpu`.
     /// * `num_vcpus` - Number of virtual CPUs the guest will have.
     /// * `cpu_config` - CPU feature configurations.
-    fn configure_vcpu<V: Vm>(
-        vm: &V,
+    fn configure_vcpu(
+        vm: &dyn Vm,
         hypervisor: &dyn HypervisorArch,
         irq_chip: &mut dyn IrqChipArch,
         vcpu: &dyn VcpuArch,
@@ -670,8 +667,8 @@ pub trait LinuxArch {
     ) -> Result<(), Self::Error>;
 
     /// Configures and add a pci device into vm
-    fn register_pci_device<V: VmArch, Vcpu: VcpuArch>(
-        linux: &mut RunnableLinuxVm<V, Vcpu>,
+    fn register_pci_device(
+        linux: &mut RunnableLinuxVm,
         device: Box<dyn PciDevice>,
         #[cfg(any(target_os = "android", target_os = "linux"))] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
@@ -693,18 +690,21 @@ pub trait LinuxArch {
 }
 
 #[cfg(feature = "gdb")]
-pub trait GdbOps<T: VcpuArch> {
+pub trait GdbOps {
     type Error: StdError;
 
     /// Reads vCPU's registers.
-    fn read_registers(vcpu: &T) -> Result<<GdbArch as Arch>::Registers, Self::Error>;
+    fn read_registers(vcpu: &dyn VcpuArch) -> Result<<GdbArch as Arch>::Registers, Self::Error>;
 
     /// Writes vCPU's registers.
-    fn write_registers(vcpu: &T, regs: &<GdbArch as Arch>::Registers) -> Result<(), Self::Error>;
+    fn write_registers(
+        vcpu: &dyn VcpuArch,
+        regs: &<GdbArch as Arch>::Registers,
+    ) -> Result<(), Self::Error>;
 
     /// Reads bytes from the guest memory.
     fn read_memory(
-        vcpu: &T,
+        vcpu: &dyn VcpuArch,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         len: usize,
@@ -712,7 +712,7 @@ pub trait GdbOps<T: VcpuArch> {
 
     /// Writes bytes to the specified guest memory.
     fn write_memory(
-        vcpu: &T,
+        vcpu: &dyn VcpuArch,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         buf: &[u8],
@@ -721,23 +721,29 @@ pub trait GdbOps<T: VcpuArch> {
     /// Reads bytes from the guest register.
     ///
     /// Returns an empty vector if `reg_id` is valid but the register is not available.
-    fn read_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>, Self::Error>;
+    fn read_register(
+        vcpu: &dyn VcpuArch,
+        reg_id: <GdbArch as Arch>::RegId,
+    ) -> Result<Vec<u8>, Self::Error>;
 
     /// Writes bytes to the specified guest register.
     fn write_register(
-        vcpu: &T,
+        vcpu: &dyn VcpuArch,
         reg_id: <GdbArch as Arch>::RegId,
         data: &[u8],
     ) -> Result<(), Self::Error>;
 
     /// Make the next vCPU's run single-step.
-    fn enable_singlestep(vcpu: &T) -> Result<(), Self::Error>;
+    fn enable_singlestep(vcpu: &dyn VcpuArch) -> Result<(), Self::Error>;
 
     /// Get maximum number of hardware breakpoints.
-    fn get_max_hw_breakpoints(vcpu: &T) -> Result<usize, Self::Error>;
+    fn get_max_hw_breakpoints(vcpu: &dyn VcpuArch) -> Result<usize, Self::Error>;
 
     /// Set hardware breakpoints at the given addresses.
-    fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<(), Self::Error>;
+    fn set_hw_breakpoints(
+        vcpu: &dyn VcpuArch,
+        breakpoints: &[GuestAddress],
+    ) -> Result<(), Self::Error>;
 }
 
 /// Errors for device manager.
@@ -840,8 +846,8 @@ pub enum DeviceRegistrationError {
 }
 
 /// Config a PCI device for used by this vm.
-pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+pub fn configure_pci_device(
+    linux: &mut RunnableLinuxVm,
     mut device: Box<dyn PciDevice>,
     #[cfg(any(target_os = "android", target_os = "linux"))] jail: Option<Minijail>,
     resources: &mut SystemAllocator,
@@ -1067,7 +1073,7 @@ pub fn generate_pci_root(
     mmio_register_bit_num: usize,
     io_bus: Arc<Bus>,
     resources: &mut SystemAllocator,
-    mut vm: &impl Vm,
+    mut vm: &dyn Vm,
     max_irqs: usize,
     vcfg_base: Option<u64>,
     #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,

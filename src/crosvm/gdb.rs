@@ -549,59 +549,56 @@ pub fn vcpu_exit_debug(
 }
 
 /// Handle a `VcpuDebug` request for a given `vcpu`.
-pub fn vcpu_control_debug<V>(
+pub fn vcpu_control_debug(
     cpu_id: usize,
-    vcpu: &V,
+    vcpu: &dyn VcpuArch,
     guest_mem: &GuestMemory,
     d: VcpuDebug,
     reply_tube: Option<&mpsc::Sender<VcpuDebugStatusMessage>>,
-) -> anyhow::Result<()>
-where
-    V: VcpuArch + 'static,
-{
+) -> anyhow::Result<()> {
     let reply_tube = reply_tube
         .as_ref()
         .context("VcpuControl::Debug received while debugger not connected")?;
 
     let debug_status = match d {
         VcpuDebug::ReadRegs => VcpuDebugStatus::RegValues(
-            <CrosvmArch as arch::GdbOps<V>>::read_registers(vcpu as &V)
+            <CrosvmArch as arch::GdbOps>::read_registers(vcpu)
                 .context("failed to handle a gdb ReadRegs command")?,
         ),
         VcpuDebug::WriteRegs(regs) => {
-            <CrosvmArch as arch::GdbOps<V>>::write_registers(vcpu as &V, &regs)
+            <CrosvmArch as arch::GdbOps>::write_registers(vcpu, &regs)
                 .context("failed to handle a gdb WriteRegs command")?;
             VcpuDebugStatus::CommandComplete
         }
         VcpuDebug::ReadReg(reg) => VcpuDebugStatus::RegValue(
-            <CrosvmArch as arch::GdbOps<V>>::read_register(vcpu as &V, reg)
+            <CrosvmArch as arch::GdbOps>::read_register(vcpu, reg)
                 .context("failed to handle a gdb ReadReg command")?,
         ),
         VcpuDebug::WriteReg(reg, buf) => {
-            <CrosvmArch as arch::GdbOps<V>>::write_register(vcpu as &V, reg, &buf)
+            <CrosvmArch as arch::GdbOps>::write_register(vcpu, reg, &buf)
                 .context("failed to handle a gdb WriteReg command")?;
             VcpuDebugStatus::CommandComplete
         }
         VcpuDebug::ReadMem(vaddr, len) => VcpuDebugStatus::MemoryRegion(
-            <CrosvmArch as arch::GdbOps<V>>::read_memory(vcpu as &V, guest_mem, vaddr, len)
+            <CrosvmArch as arch::GdbOps>::read_memory(vcpu, guest_mem, vaddr, len)
                 .unwrap_or_default(),
         ),
         VcpuDebug::WriteMem(vaddr, buf) => {
-            <CrosvmArch as arch::GdbOps<V>>::write_memory(vcpu as &V, guest_mem, vaddr, &buf)
+            <CrosvmArch as arch::GdbOps>::write_memory(vcpu, guest_mem, vaddr, &buf)
                 .context("failed to handle a gdb WriteMem command")?;
             VcpuDebugStatus::CommandComplete
         }
         VcpuDebug::EnableSinglestep => {
-            <CrosvmArch as arch::GdbOps<V>>::enable_singlestep(vcpu as &V)
+            <CrosvmArch as arch::GdbOps>::enable_singlestep(vcpu)
                 .context("failed to handle a gdb EnableSingleStep command")?;
             VcpuDebugStatus::CommandComplete
         }
         VcpuDebug::GetHwBreakPointCount => VcpuDebugStatus::HwBreakPointCount(
-            <CrosvmArch as arch::GdbOps<V>>::get_max_hw_breakpoints(vcpu as &V)
+            <CrosvmArch as arch::GdbOps>::get_max_hw_breakpoints(vcpu)
                 .context("failed to get max number of HW breakpoints")?,
         ),
         VcpuDebug::SetHwBreakPoint(addrs) => {
-            <CrosvmArch as arch::GdbOps<V>>::set_hw_breakpoints(vcpu as &V, &addrs)
+            <CrosvmArch as arch::GdbOps>::set_hw_breakpoints(vcpu, &addrs)
                 .context("failed to handle a gdb SetHwBreakPoint command")?;
             VcpuDebugStatus::CommandComplete
         }

@@ -395,7 +395,7 @@ fn get_block_size() -> u64 {
     block_size as u64
 }
 
-fn get_vcpu_mpidr_aff<Vcpu: VcpuAArch64>(vcpus: &[Arc<Vcpu>], index: usize) -> Option<u64> {
+fn get_vcpu_mpidr_aff(vcpus: &[Arc<dyn VcpuAArch64>], index: usize) -> Option<u64> {
     const MPIDR_AFF_MASK: u64 = 0xff_00ff_ffff;
 
     Some(vcpus.get(index)?.get_mpidr().ok()? & MPIDR_AFF_MASK)
@@ -499,8 +499,8 @@ impl arch::LinuxArch for AArch64 {
         Ok(memory_regions)
     }
 
-    fn get_system_allocator_config<V: Vm>(
-        vm: &V,
+    fn get_system_allocator_config(
+        vm: &dyn Vm,
         arch_memory_layout: &Self::ArchMemoryLayout,
     ) -> SystemAllocatorConfig {
         let guest_phys_end = 1u64 << vm.get_guest_phys_addr_bits();
@@ -527,7 +527,7 @@ impl arch::LinuxArch for AArch64 {
         }
     }
 
-    fn build_vm<V, Vcpu>(
+    fn build_vm(
         mut components: VmComponents,
         arch_memory_layout: &Self::ArchMemoryLayout,
         _vm_evt_wrtube: &SendTube,
@@ -535,7 +535,7 @@ impl arch::LinuxArch for AArch64 {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         (bat_type, bat_jail): (Option<BatteryType>, Option<Minijail>),
-        vm: Arc<V>,
+        vm: Arc<dyn VmAArch64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
@@ -547,11 +547,7 @@ impl arch::LinuxArch for AArch64 {
         device_tree_overlays: Vec<DtbOverlay>,
         fdt_position: Option<FdtPosition>,
         no_pmu: bool,
-    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
-    where
-        V: VmAArch64,
-        Vcpu: VcpuAArch64,
-    {
+    ) -> std::result::Result<RunnableLinuxVm, Self::Error> {
         let has_bios = matches!(components.vm_image, VmImage::Bios(_));
         let mem = vm.get_memory().clone();
 
@@ -660,9 +656,7 @@ impl arch::LinuxArch for AArch64 {
         let mut vcpus = Vec::with_capacity(vcpu_count);
         let mut vcpu_init = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
-            let vcpu: Arc<Vcpu> =
-                Arc::downcast(vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?)
-                    .map_err(|_| Error::DowncastVcpu)?;
+            let vcpu = vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?;
             let per_vcpu_init = if vm
                 .get_hypervisor()
                 .check_capability(HypervisorCap::HypervisorInitializedBootContext)
@@ -1091,8 +1085,8 @@ impl arch::LinuxArch for AArch64 {
         })
     }
 
-    fn configure_vcpu<V: Vm>(
-        _vm: &V,
+    fn configure_vcpu(
+        _vm: &dyn Vm,
         _hypervisor: &dyn Hypervisor,
         _irq_chip: &mut dyn IrqChipAArch64,
         vcpu: &dyn VcpuAArch64,
@@ -1107,8 +1101,8 @@ impl arch::LinuxArch for AArch64 {
         Ok(())
     }
 
-    fn register_pci_device<V: VmAArch64, Vcpu: VcpuAArch64>(
-        _linux: &mut RunnableLinuxVm<V, Vcpu>,
+    fn register_pci_device(
+        _linux: &mut RunnableLinuxVm,
         _device: Box<dyn PciDevice>,
         _minijail: Option<Minijail>,
         _resources: &mut SystemAllocator,
@@ -1166,11 +1160,11 @@ fn get_host_cpu_clusters_for_cluster_ids(
 }
 
 #[cfg(feature = "gdb")]
-impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
+impl arch::GdbOps for AArch64 {
     type Error = Error;
 
     fn read_memory(
-        _vcpu: &T,
+        _vcpu: &dyn VcpuAArch64,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         len: usize,
@@ -1185,7 +1179,7 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
     }
 
     fn write_memory(
-        _vcpu: &T,
+        _vcpu: &dyn VcpuAArch64,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         buf: &[u8],
@@ -1195,7 +1189,7 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
             .map_err(Error::WriteGuestMemory)
     }
 
-    fn read_registers(vcpu: &T) -> Result<<GdbArch as Arch>::Registers> {
+    fn read_registers(vcpu: &dyn VcpuAArch64) -> Result<<GdbArch as Arch>::Registers> {
         let mut regs: <GdbArch as Arch>::Registers = Default::default();
         assert!(
             regs.x.len() == 31,
@@ -1231,7 +1225,7 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
         Ok(regs)
     }
 
-    fn write_registers(vcpu: &T, regs: &<GdbArch as Arch>::Registers) -> Result<()> {
+    fn write_registers(vcpu: &dyn VcpuAArch64, regs: &<GdbArch as Arch>::Registers) -> Result<()> {
         assert!(
             regs.x.len() == 31,
             "unexpected number of Xn general purpose registers"
@@ -1270,7 +1264,7 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
         Ok(())
     }
 
-    fn read_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>> {
+    fn read_register(vcpu: &dyn VcpuAArch64, reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>> {
         let result = match reg_id {
             AArch64RegId::X(n) => vcpu
                 .get_one_reg(VcpuRegAArch64::X(n))
@@ -1302,7 +1296,11 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
         }
     }
 
-    fn write_register(vcpu: &T, reg_id: <GdbArch as Arch>::RegId, data: &[u8]) -> Result<()> {
+    fn write_register(
+        vcpu: &dyn VcpuAArch64,
+        reg_id: <GdbArch as Arch>::RegId,
+        data: &[u8],
+    ) -> Result<()> {
         fn try_into_u32(data: &[u8]) -> Result<u32> {
             let s = data
                 .get(..4)
@@ -1353,17 +1351,17 @@ impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
         .map_err(Error::WriteReg)
     }
 
-    fn enable_singlestep(vcpu: &T) -> Result<()> {
+    fn enable_singlestep(vcpu: &dyn VcpuAArch64) -> Result<()> {
         const SINGLE_STEP: bool = true;
         vcpu.set_guest_debug(&[], SINGLE_STEP)
             .map_err(Error::EnableSinglestep)
     }
 
-    fn get_max_hw_breakpoints(vcpu: &T) -> Result<usize> {
+    fn get_max_hw_breakpoints(vcpu: &dyn VcpuAArch64) -> Result<usize> {
         vcpu.get_max_hw_bps().map_err(Error::GetMaxHwBreakPoint)
     }
 
-    fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<()> {
+    fn set_hw_breakpoints(vcpu: &dyn VcpuAArch64, breakpoints: &[GuestAddress]) -> Result<()> {
         const SINGLE_STEP: bool = false;
         vcpu.set_guest_debug(breakpoints, SINGLE_STEP)
             .map_err(Error::SetHwBreakpoint)

@@ -105,8 +105,8 @@ impl VcpuRunMode {
     }
 }
 
-struct RunnableVcpuInfo<V> {
-    vcpu: Arc<V>,
+struct RunnableVcpuInfo {
+    vcpu: Arc<dyn VcpuArch>,
     thread_priority_handle: Option<SafeMultimediaHandle>,
 }
 
@@ -157,11 +157,11 @@ impl VcpuRunThread {
     }
 
     // Sets up a vcpu and converts it into a runnable vcpu.
-    fn runnable_vcpu<V>(
+    fn runnable_vcpu(
         cpu_id: usize,
-        vcpu: Option<Arc<V>>,
+        vcpu: Option<Arc<dyn VcpuArch>>,
         vcpu_init: VcpuInitX86_64,
-        vm: &impl VmArch,
+        vm: &dyn VmArch,
         irq_chip: &mut dyn IrqChipArch,
         vcpu_count: usize,
         run_rt: bool,
@@ -169,20 +169,14 @@ impl VcpuRunThread {
         no_smt: bool,
         host_cpu_topology: bool,
         force_calibrated_tsc_leaf: bool,
-    ) -> Result<RunnableVcpuInfo<V>>
-    where
-        V: VcpuArch,
-    {
+    ) -> Result<RunnableVcpuInfo> {
         let vcpu = match vcpu {
             Some(v) => v,
             None => {
                 // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called
                 // from the vcpu thread.
-                Arc::downcast(
-                    vm.create_vcpu(cpu_id)
-                        .exit_context(Exit::CreateVcpu, "failed to create vcpu")?,
-                )
-                .unwrap_or_else(|_| panic!("VM created wrong type of VCPU"))
+                vm.create_vcpu(cpu_id)
+                    .exit_context(Exit::CreateVcpu, "failed to create vcpu")?
             }
         };
 
@@ -244,12 +238,12 @@ impl VcpuRunThread {
         })
     }
 
-    pub fn run<V>(
+    pub fn run(
         &self,
-        vcpu: Option<Arc<V>>,
+        vcpu: Option<Arc<dyn VcpuArch>>,
         vcpu_init: VcpuInitX86_64,
         vcpus: Arc<Mutex<Vec<Arc<dyn VcpuArch>>>>,
-        vm: Arc<impl VmArch + 'static>,
+        vm: Arc<dyn VmArch>,
         mut irq_chip: Box<dyn IrqChipArch + 'static>,
         vcpu_count: usize,
         run_rt: bool,
@@ -268,10 +262,7 @@ impl VcpuRunThread {
         tsc_offset: Option<u64>,
         force_calibrated_tsc_leaf: bool,
         vcpu_control: mpsc::Receiver<VcpuControl>,
-    ) -> Result<JoinHandle<Result<()>>>
-    where
-        V: VcpuArch + 'static,
-    {
+    ) -> Result<JoinHandle<Result<()>>> {
         let context = self.clone();
         thread::Builder::new()
             .name(format!("crosvm_vcpu{}", self.cpu_id))
@@ -538,10 +529,10 @@ fn setup_vcpu_signal_handler() -> Result<()> {
     Ok(())
 }
 
-pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
-    vcpus: Vec<Option<Arc<Vcpu>>>,
+pub fn run_all_vcpus(
+    vcpus: Vec<Option<Arc<dyn VcpuArch>>>,
     vcpu_boxes: Arc<Mutex<Vec<Arc<dyn VcpuArch>>>>,
-    guest_os: &RunnableLinuxVm<V, Vcpu>,
+    guest_os: &RunnableLinuxVm,
     exit_evt: &Event,
     vm_evt_wrtube: &SendTube,
     #[cfg(feature = "stats")] stats: &Option<Arc<Mutex<StatisticsCollector>>>,
@@ -644,10 +635,10 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     Ok((vcpu_threads, vcpu_control_channels))
 }
 
-fn vcpu_loop<V>(
+fn vcpu_loop(
     context: &VcpuRunThread,
-    vcpu: Arc<V>,
-    vm: Arc<impl VmArch + 'static>,
+    vcpu: Arc<dyn VcpuArch>,
+    vm: Arc<dyn VmArch>,
     irq_chip: Box<dyn IrqChipArch + 'static>,
     io_bus: Bus,
     mmio_bus: Bus,
@@ -656,10 +647,7 @@ fn vcpu_loop<V>(
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
     #[cfg(target_arch = "x86_64")] cpuid_context: CpuIdContext,
     vcpu_control: mpsc::Receiver<VcpuControl>,
-) -> Result<ExitState>
-where
-    V: VcpuArch + 'static,
-{
+) -> Result<ExitState> {
     #[cfg(feature = "stats")]
     let mut exit_stats = VmExitStatistics::new();
 
@@ -944,13 +932,11 @@ where
     }
 }
 
-fn process_vcpu_control_messages<V>(
-    vcpu: &V,
+fn process_vcpu_control_messages(
+    vcpu: &dyn VcpuArch,
     run_mode: VmRunMode,
     vcpu_control: &mpsc::Receiver<VcpuControl>,
-) where
-    V: VcpuArch + 'static,
-{
+) {
     let control_messages: Vec<VcpuControl> = vcpu_control.try_iter().collect();
 
     for msg in control_messages {

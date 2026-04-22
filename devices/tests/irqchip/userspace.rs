@@ -74,13 +74,13 @@ const EOI: u64 = 0xB0;
 const TEST_SLEEP_DURATION: Duration = Duration::from_millis(50);
 
 /// Helper function for setting up a UserspaceIrqChip.
-fn get_chip(num_vcpus: usize) -> UserspaceIrqChip<FakeVcpu> {
+fn get_chip(num_vcpus: usize) -> UserspaceIrqChip {
     get_chip_with_clock(num_vcpus, Arc::new(Mutex::new(Clock::new())))
 }
 
-fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceIrqChip<FakeVcpu> {
+fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceIrqChip {
     let (_, irq_tube) = Tube::pair().unwrap();
-    let mut chip = UserspaceIrqChip::<FakeVcpu>::new_with_clock(num_vcpus, irq_tube, None, clock)
+    let mut chip = UserspaceIrqChip::new_with_clock(num_vcpus, irq_tube, None, clock)
         .expect("failed to instantiate UserspaceIrqChip");
 
     for i in 0..num_vcpus {
@@ -99,11 +99,15 @@ fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceI
 }
 
 /// Helper function for cloning vcpus from a UserspaceIrqChip.
-fn get_vcpus(chip: &UserspaceIrqChip<FakeVcpu>) -> Vec<Arc<FakeVcpu>> {
+fn get_vcpus(chip: &UserspaceIrqChip) -> Vec<Arc<FakeVcpu>> {
     chip.vcpus
         .lock()
         .iter()
-        .map(|v| v.as_ref().unwrap().clone())
+        .map(|v| {
+            Arc::downcast(v.as_ref().unwrap().clone())
+                .map_err(|_| ())
+                .unwrap()
+        })
         .collect()
 }
 

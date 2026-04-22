@@ -175,7 +175,7 @@ struct PciRootSerializable {
 impl PciRoot {
     /// Create an empty PCI root bus.
     pub fn new(
-        mut vm: &impl Vm,
+        mut vm: &dyn Vm,
         mmio_bus: Weak<Bus>,
         mmio_base: GuestAddress,
         mmio_register_bit_num: usize,
@@ -277,15 +277,12 @@ impl PciRoot {
     }
 
     /// Add a `device` to this root PCI bus.
-    pub fn add_device<T>(
+    pub fn add_device(
         &mut self,
         address: PciAddress,
         device: Arc<Mutex<dyn BusDevice>>,
-        mapper: &mut T,
-    ) -> Result<(), Error>
-    where
-        T: PciMmioMapper,
-    {
+        mapper: &mut (impl PciMmioMapper + ?Sized),
+    ) -> Result<(), Error> {
         // Ignore attempt to replace PCI Root host bridge.
         if !address.is_root() {
             self.pci_mmio_state
@@ -480,15 +477,12 @@ impl PciRoot {
 }
 
 impl PciRootMmioState {
-    fn setup_mapping<T>(
+    fn setup_mapping(
         &mut self,
         address: &PciAddress,
         device: &mut dyn BusDevice,
-        mapper: &mut T,
-    ) -> anyhow::Result<()>
-    where
-        T: PciMmioMapper,
-    {
+        mapper: &mut (impl PciMmioMapper + ?Sized),
+    ) -> anyhow::Result<()> {
         // The PCI spec requires that config writes are non-posted. This requires uncached mappings
         // in the guest. The cache maintenance story for riscv is unclear, so that is not
         // implemented.
@@ -589,7 +583,7 @@ pub trait PciMmioMapper {
 // trait for `&T` and so `add_mapping` ends up with `&mut &T`.
 // TODO: Consider changing `PciMmioMapper::add_mapping`'s argument to `&self`. Other users can add
 // a lock if they need `&mut`.
-impl<T: Vm> PciMmioMapper for &T {
+impl<T: Vm + ?Sized> PciMmioMapper for &T {
     fn supports_readonly_mapping(&self) -> bool {
         self.check_capability(hypervisor::VmCap::ReadOnlyMemoryRegion)
     }

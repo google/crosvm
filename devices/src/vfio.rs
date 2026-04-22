@@ -145,7 +145,7 @@ fn get_error() -> Error {
 
 static KVM_VFIO_FILE: OnceLock<Option<SafeDescriptor>> = OnceLock::new();
 
-fn create_kvm_vfio_file(vm: &impl Vm) -> Option<&'static SafeDescriptor> {
+fn create_kvm_vfio_file(vm: &dyn Vm) -> Option<&'static SafeDescriptor> {
     KVM_VFIO_FILE
         .get_or_init(|| vm.create_device(DeviceKind::Vfio).ok())
         .as_ref()
@@ -175,7 +175,7 @@ pub struct KvmVfioPviommu {
 }
 
 impl KvmVfioPviommu {
-    pub fn new(vm: &impl Vm) -> Result<Self> {
+    pub fn new(vm: &dyn Vm) -> Result<Self> {
         cfg_if! {
             if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
                 let file = Self::ioctl_kvm_dev_vfio_pviommu_attach(vm)?;
@@ -207,7 +207,7 @@ impl KvmVfioPviommu {
         fd.try_into().unwrap()
     }
 
-    pub fn get_sid_count<T: AsRawDescriptor>(vm: &impl Vm, device: &T) -> Result<u32> {
+    pub fn get_sid_count<T: AsRawDescriptor>(vm: &dyn Vm, device: &T) -> Result<u32> {
         cfg_if! {
             if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
                 let info = Self::ioctl_kvm_dev_vfio_pviommu_get_info(vm, device)?;
@@ -222,7 +222,7 @@ impl KvmVfioPviommu {
     }
 
     #[cfg(all(target_os = "android", target_arch = "aarch64"))]
-    fn ioctl_kvm_dev_vfio_pviommu_attach(vm: &impl Vm) -> Result<File> {
+    fn ioctl_kvm_dev_vfio_pviommu_attach(vm: &dyn Vm) -> Result<File> {
         let kvm_vfio_file = create_kvm_vfio_file(vm).ok_or(VfioError::CreateVfioKvmDevice)?;
 
         let vfio_dev_attr = kvm_sys::kvm_device_attr {
@@ -274,7 +274,7 @@ impl KvmVfioPviommu {
 
     #[cfg(all(target_os = "android", target_arch = "aarch64"))]
     fn ioctl_kvm_dev_vfio_pviommu_get_info<T: AsRawDescriptor>(
-        vm: &impl Vm,
+        vm: &dyn Vm,
         device: &T,
     ) -> Result<kvm_sys::kvm_vfio_iommu_info> {
         let kvm_vfio_file = create_kvm_vfio_file(vm).ok_or(VfioError::CreateVfioKvmDevice)?;
@@ -621,7 +621,7 @@ impl VfioContainer {
     fn get_group_with_vm(
         &mut self,
         id: u32,
-        vm: &impl Vm,
+        vm: &dyn Vm,
         iommu_dev: IommuDevType,
     ) -> Result<Arc<Mutex<VfioGroup>>> {
         if let Some(group) = self.groups.get(&id) {
@@ -1016,7 +1016,7 @@ impl VfioDevice {
     /// sysfspath specify the vfio device path in sys file system.
     pub fn new_passthrough<P: AsRef<Path>>(
         sysfspath: &P,
-        vm: &impl Vm,
+        vm: &dyn Vm,
         container: Arc<Mutex<VfioContainer>>,
         iommu_dev: IommuDevType,
         dt_symbol: Option<String>,

@@ -1024,8 +1024,8 @@ impl arch::LinuxArch for X8664arch {
         ))
     }
 
-    fn get_system_allocator_config<V: Vm>(
-        vm: &V,
+    fn get_system_allocator_config(
+        vm: &dyn Vm,
         arch_memory_layout: &Self::ArchMemoryLayout,
     ) -> SystemAllocatorConfig {
         SystemAllocatorConfig {
@@ -1040,7 +1040,7 @@ impl arch::LinuxArch for X8664arch {
         }
     }
 
-    fn build_vm<V, Vcpu>(
+    fn build_vm(
         mut components: VmComponents,
         arch_memory_layout: &Self::ArchMemoryLayout,
         vm_evt_wrtube: &SendTube,
@@ -1048,7 +1048,7 @@ impl arch::LinuxArch for X8664arch {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         battery: (Option<BatteryType>, Option<Minijail>),
-        vm: Arc<V>,
+        vm: Arc<dyn VmX86_64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
@@ -1062,11 +1062,7 @@ impl arch::LinuxArch for X8664arch {
         device_tree_overlays: Vec<DtbOverlay>,
         _fdt_position: Option<FdtPosition>,
         _no_pmu: bool,
-    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
-    where
-        V: VmX86_64,
-        Vcpu: VcpuX86_64,
-    {
+    ) -> std::result::Result<RunnableLinuxVm, Self::Error> {
         let mem = vm.get_memory().clone();
 
         let vcpu_count = components.vcpu_properties.len();
@@ -1501,8 +1497,8 @@ impl arch::LinuxArch for X8664arch {
         })
     }
 
-    fn configure_vcpu<V: Vm>(
-        vm: &V,
+    fn configure_vcpu(
+        vm: &dyn Vm,
         hypervisor: &dyn HypervisorX86_64,
         irq_chip: &mut dyn IrqChipX86_64,
         vcpu: &dyn VcpuX86_64,
@@ -1554,8 +1550,8 @@ impl arch::LinuxArch for X8664arch {
         Ok(())
     }
 
-    fn register_pci_device<V: VmX86_64, Vcpu: VcpuX86_64>(
-        linux: &mut RunnableLinuxVm<V, Vcpu>,
+    fn register_pci_device(
+        linux: &mut RunnableLinuxVm,
         device: Box<dyn PciDevice>,
         #[cfg(any(target_os = "android", target_os = "linux"))] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
@@ -2001,7 +1997,7 @@ impl X8664arch {
     }
 
     /// Returns the high mmio range
-    fn get_high_mmio_range<V: Vm>(vm: &V, arch_memory_layout: &ArchMemoryLayout) -> AddressRange {
+    fn get_high_mmio_range(vm: &dyn Vm, arch_memory_layout: &ArchMemoryLayout) -> AddressRange {
         let mem = vm.get_memory();
         let start = Self::get_pcie_vcfg_mmio_range(mem, &arch_memory_layout.pcie_cfg_mmio).end + 1;
 

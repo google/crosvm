@@ -17,8 +17,6 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error;
 use arch::RunnableLinuxVm;
-use arch::VcpuArch;
-use arch::VmArch;
 use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
@@ -792,10 +790,10 @@ impl PciHotPlugManager {
     /// hotplugs up to 8 PCI devices as "functions of a device" (in PCI Bus Device Function sense).
     ///
     /// returns the bus number of the bus on success.
-    pub fn hotplug_device<V: VmArch, Vcpu: VcpuArch>(
+    pub fn hotplug_device(
         &mut self,
         resource_carriers: Vec<ResourceCarrier>,
-        linux: &mut RunnableLinuxVm<V, Vcpu>,
+        linux: &mut RunnableLinuxVm,
         resources: &mut SystemAllocator,
     ) -> Result<u8> {
         let worker_client = self
@@ -869,10 +867,10 @@ impl PciHotPlugManager {
     }
 
     /// Removes all hotplugged devices on the hotplug bus.
-    pub fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
+    pub fn remove_hotplug_device(
         &mut self,
         bus: u8,
-        linux: &mut RunnableLinuxVm<V, Vcpu>,
+        linux: &mut RunnableLinuxVm,
         resources: &mut SystemAllocator,
     ) -> Result<()> {
         let worker_client = self

@@ -166,7 +166,7 @@ pub fn generate_platform_bus(
     irq_chip: &mut dyn IrqChip,
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
-    vm: &impl Vm,
+    vm: &dyn Vm,
     #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     dev_pm: &mut Option<DevicePowerManager>,
     protection_type: ProtectionType,

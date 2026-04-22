@@ -127,7 +127,7 @@ impl VmMemoryMappingRequest {
     /// This does not return a result, instead encapsulating the success or failure in a
     /// `VmMsyncResponse` with the intended purpose of sending the response back over the socket
     /// that received this `VmMsyncResponse`.
-    pub fn execute(&self, vm: &impl Vm) -> VmMemoryMappingResponse {
+    pub fn execute(&self, vm: &dyn Vm) -> VmMemoryMappingResponse {
         use self::VmMemoryMappingRequest::*;
         match *self {
             MsyncArena { slot, offset, size } => match vm.msync_memory_region(slot, offset, size) {

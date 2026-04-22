@@ -24,7 +24,7 @@ pub struct RamoopsRegion {
 
 /// Creates a mmio memory region for pstore.
 pub fn create_memory_region(
-    vm: &impl Vm,
+    vm: &dyn Vm,
     region: AddressRange,
     pstore: &Pstore,
 ) -> Result<RamoopsRegion> {

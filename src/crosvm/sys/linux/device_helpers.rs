@@ -1288,7 +1288,7 @@ pub fn create_9p_device(
 pub fn create_pmem_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,
-    vm: &impl Vm,
+    vm: &dyn Vm,
     resources: &mut SystemAllocator,
     pmem: &PmemOption,
     index: usize,
@@ -1614,7 +1614,7 @@ pub enum VfioDeviceVariant {
 
 pub fn create_vfio_device(
     jail_config: Option<&JailConfig>,
-    vm: &impl Vm,
+    vm: &dyn Vm,
     resources: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     vfio_path: &Path,

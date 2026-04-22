@@ -92,8 +92,8 @@ const X86_CR0_INIT: u64 = X86_CR0_ET | X86_CR0_NW | X86_CR0_CD;
 
 /// An `IrqChip` with all interrupt devices emulated in userspace.  `UserspaceIrqChip` works with
 /// any hypervisor, but only supports x86.
-pub struct UserspaceIrqChip<V: VcpuX86_64> {
-    pub vcpus: Arc<Mutex<Vec<Option<Arc<V>>>>>,
+pub struct UserspaceIrqChip {
+    pub vcpus: Arc<Mutex<Vec<Option<Arc<dyn VcpuX86_64>>>>>,
     routes: Arc<Mutex<Routes>>,
     pit: Arc<Mutex<Pit>>,
     pic: Arc<Mutex<Pic>>,
@@ -128,7 +128,7 @@ struct Dropper {
     workers: Vec<WorkerThread<()>>,
 }
 
-impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
+impl UserspaceIrqChip {
     /// Constructs a new `UserspaceIrqChip`.
     pub fn new(num_vcpus: usize, irq_tube: Tube, ioapic_pins: Option<usize>) -> Result<Self> {
         let clock = Arc::new(Mutex::new(Clock::new()));
@@ -309,7 +309,7 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
     }
 
     /// Delivers a startup IPI to `vcpu`.
-    fn deliver_startup(&self, vcpu: &V, vector: u8) -> Result<()> {
+    fn deliver_startup(&self, vcpu: &dyn VcpuX86_64, vector: u8) -> Result<()> {
         // This comes from Intel SDM volume 3, chapter 8.4.  The vector specifies a page aligned
         // address where execution should start.  cs.base is the offset for the code segment with an
         // RIP of 0.  The cs.selector is just the base shifted right by 4 bits.
@@ -346,7 +346,7 @@ impl Dropper {
     }
 }
 
-impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
+impl UserspaceIrqChip {
     fn register_irq_event(
         &mut self,
         irq: u32,
@@ -384,11 +384,8 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
     }
 }
 
-impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
+impl IrqChip for UserspaceIrqChip {
     fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()> {
-        let vcpu = Arc::downcast(vcpu)
-            .map_err(|_| ())
-            .expect("UserspaceIrqChip::add_vcpu called with incorrect vcpu type");
         self.vcpus.lock()[vcpu_id] = Some(vcpu);
         Ok(())
     }
@@ -555,9 +552,6 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
     ///   * Handles APIC SIPIs
     ///   * Requests an interrupt window, if PIC or APIC still has pending interrupts for this vcpu
     fn inject_interrupts(&self, vcpu: &dyn VcpuArch) -> Result<()> {
-        let vcpu: &V = vcpu
-            .downcast_ref()
-            .expect("UserspaceIrqChip::add_vcpu called with incorrect vcpu type");
         let vcpu_id = vcpu.id();
         let mut vcpu_ready = vcpu.ready_for_interrupt();
 
@@ -830,7 +824,7 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
     }
 }
 
-impl<V: VcpuX86_64 + 'static> BusDevice for UserspaceIrqChip<V> {
+impl BusDevice for UserspaceIrqChip {
     fn debug_label(&self) -> String {
         "UserspaceIrqChip APIC".to_string()
     }
@@ -839,7 +833,7 @@ impl<V: VcpuX86_64 + 'static> BusDevice for UserspaceIrqChip<V> {
     }
 }
 
-impl<V: VcpuX86_64 + 'static> Suspendable for UserspaceIrqChip<V> {
+impl Suspendable for UserspaceIrqChip {
     fn sleep(&mut self) -> anyhow::Result<()> {
         let mut dropper = self.dropper.lock();
         dropper.sleep()
@@ -870,7 +864,7 @@ impl<V: VcpuX86_64 + 'static> Suspendable for UserspaceIrqChip<V> {
     }
 }
 
-impl<V: VcpuX86_64 + 'static> BusDeviceSync for UserspaceIrqChip<V> {
+impl BusDeviceSync for UserspaceIrqChip {
     fn read(&self, info: BusAccessInfo, data: &mut [u8]) {
         self.apics[info.id].lock().read(info.offset, data)
     }
@@ -882,7 +876,7 @@ impl<V: VcpuX86_64 + 'static> BusDeviceSync for UserspaceIrqChip<V> {
     }
 }
 
-impl<V: VcpuX86_64 + 'static> IrqChipX86_64 for UserspaceIrqChip<V> {
+impl IrqChipX86_64 for UserspaceIrqChip {
     fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
         Ok(Box::new(self.try_clone()?))
     }
@@ -976,15 +970,15 @@ impl Waiter {
 }
 
 /// Worker thread for polling timer events and sending them to an APIC.
-struct TimerWorker<V: VcpuX86_64> {
+struct TimerWorker {
     id: usize,
     apic: Arc<Mutex<Apic>>,
-    vcpus: Arc<Mutex<Vec<Option<Arc<V>>>>>,
+    vcpus: Arc<Mutex<Vec<Option<Arc<dyn VcpuX86_64>>>>>,
     descriptor: Descriptor,
     waiter: Arc<Waiter>,
 }
 
-impl<V: VcpuX86_64> TimerWorker<V> {
+impl TimerWorker {
     fn run(&mut self, kill_evt: Event) -> TimerWorkerResult<()> {
         #[derive(EventToken)]
         enum Token {

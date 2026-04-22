@@ -191,8 +191,8 @@ impl arch::LinuxArch for Riscv64 {
         )])
     }
 
-    fn get_system_allocator_config<V: Vm>(
-        vm: &V,
+    fn get_system_allocator_config(
+        vm: &dyn Vm,
         _arch_memory_layout: &Self::ArchMemoryLayout,
     ) -> SystemAllocatorConfig {
         let (high_mmio_base, high_mmio_size) =
@@ -208,7 +208,7 @@ impl arch::LinuxArch for Riscv64 {
         }
     }
 
-    fn build_vm<V, Vcpu>(
+    fn build_vm(
         mut components: VmComponents,
         _arch_memory_layout: &Self::ArchMemoryLayout,
         _vm_evt_wrtube: &SendTube,
@@ -216,7 +216,7 @@ impl arch::LinuxArch for Riscv64 {
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
         (_bat_type, _bat_jail): (Option<BatteryType>, Option<Minijail>),
-        vm: Arc<V>,
+        vm: Arc<dyn VmRiscv64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipRiscv64,
@@ -228,11 +228,7 @@ impl arch::LinuxArch for Riscv64 {
         device_tree_overlays: Vec<DtbOverlay>,
         fdt_position: Option<FdtPosition>,
         _no_pmu: bool,
-    ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
-    where
-        V: VmRiscv64,
-        Vcpu: VcpuRiscv64,
-    {
+    ) -> std::result::Result<RunnableLinuxVm, Self::Error> {
         if components.hv_cfg.protection_type == ProtectionType::Protected {
             return Err(Error::ProtectedVmUnsupported);
         }
@@ -367,9 +363,7 @@ impl arch::LinuxArch for Riscv64 {
         let vcpu_count = components.vcpu_properties.len();
         let mut vcpus = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
-            let vcpu: Arc<Vcpu> =
-                Arc::downcast(vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?)
-                    .map_err(|_| Error::DowncastVcpu)?;
+            let vcpu = vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?;
             vcpus.push(vcpu);
             vcpu_ids.push(vcpu_id);
         }
@@ -461,8 +455,8 @@ impl arch::LinuxArch for Riscv64 {
         })
     }
 
-    fn configure_vcpu<V: Vm>(
-        _vm: &V,
+    fn configure_vcpu(
+        _vm: &dyn Vm,
         _hypervisor: &dyn Hypervisor,
         _irq_chip: &mut dyn IrqChipRiscv64,
         vcpu: &dyn VcpuRiscv64,
@@ -484,8 +478,8 @@ impl arch::LinuxArch for Riscv64 {
         Ok(())
     }
 
-    fn register_pci_device<V: VmRiscv64, Vcpu: VcpuRiscv64>(
-        _linux: &mut RunnableLinuxVm<V, Vcpu>,
+    fn register_pci_device(
+        _linux: &mut RunnableLinuxVm,
         _device: Box<dyn PciDevice>,
         _minijail: Option<Minijail>,
         _resources: &mut SystemAllocator,
@@ -514,11 +508,11 @@ impl arch::LinuxArch for Riscv64 {
 }
 
 #[cfg(feature = "gdb")]
-impl<T: VcpuRiscv64> arch::GdbOps<T> for Riscv64 {
+impl arch::GdbOps for Riscv64 {
     type Error = Error;
 
     fn read_memory(
-        _vcpu: &T,
+        _vcpu: &dyn VcpuRiscv64,
         _guest_mem: &GuestMemory,
         _vaddr: GuestAddress,
         _len: usize,
@@ -527,7 +521,7 @@ impl<T: VcpuRiscv64> arch::GdbOps<T> for Riscv64 {
     }
 
     fn write_memory(
-        _vcpu: &T,
+        _vcpu: &dyn VcpuRiscv64,
         _guest_mem: &GuestMemory,
         _vaddr: GuestAddress,
         _buf: &[u8],
@@ -535,31 +529,41 @@ impl<T: VcpuRiscv64> arch::GdbOps<T> for Riscv64 {
         unimplemented!();
     }
 
-    fn read_registers(_vcpu: &T) -> Result<<GdbArch as Arch>::Registers> {
+    fn read_registers(_vcpu: &dyn VcpuRiscv64) -> Result<<GdbArch as Arch>::Registers> {
         unimplemented!();
     }
 
-    fn write_registers(_vcpu: &T, _regs: &<GdbArch as Arch>::Registers) -> Result<()> {
+    fn write_registers(
+        _vcpu: &dyn VcpuRiscv64,
+        _regs: &<GdbArch as Arch>::Registers,
+    ) -> Result<()> {
         unimplemented!();
     }
 
-    fn read_register(_vcpu: &T, _reg_id: <GdbArch as Arch>::RegId) -> Result<Vec<u8>> {
+    fn read_register(
+        _vcpu: &dyn VcpuRiscv64,
+        _reg_id: <GdbArch as Arch>::RegId,
+    ) -> Result<Vec<u8>> {
         unimplemented!();
     }
 
-    fn write_register(_vcpu: &T, _reg_id: <GdbArch as Arch>::RegId, _data: &[u8]) -> Result<()> {
+    fn write_register(
+        _vcpu: &dyn VcpuRiscv64,
+        _reg_id: <GdbArch as Arch>::RegId,
+        _data: &[u8],
+    ) -> Result<()> {
         unimplemented!();
     }
 
-    fn enable_singlestep(_vcpu: &T) -> Result<()> {
+    fn enable_singlestep(_vcpu: &dyn VcpuRiscv64) -> Result<()> {
         unimplemented!();
     }
 
-    fn get_max_hw_breakpoints(_vcpu: &T) -> Result<usize> {
+    fn get_max_hw_breakpoints(_vcpu: &dyn VcpuRiscv64) -> Result<usize> {
         unimplemented!();
     }
 
-    fn set_hw_breakpoints(_vcpu: &T, _breakpoints: &[GuestAddress]) -> Result<()> {
+    fn set_hw_breakpoints(_vcpu: &dyn VcpuRiscv64, _breakpoints: &[GuestAddress]) -> Result<()> {
         unimplemented!();
     }
 }

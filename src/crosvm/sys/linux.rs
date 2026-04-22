@@ -65,7 +65,6 @@ use arch::IrqChipArch;
 use arch::LinuxArch;
 use arch::RunnableLinuxVm;
 use arch::VcpuAffinity;
-use arch::VcpuArch;
 use arch::VirtioDeviceStub;
 use arch::VmArch;
 use arch::VmComponents;
@@ -221,7 +220,7 @@ const HALLA_PATH: &str = "/dev/halla";
 
 fn create_virtio_devices(
     cfg: &Config,
-    vm: &impl VmArch,
+    vm: &dyn VmArch,
     resources: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] vm_evt_wrtube: &SendTube,
@@ -911,7 +910,7 @@ fn create_virtio_devices(
 
 fn create_devices(
     cfg: &Config,
-    vm: &impl VmArch,
+    vm: &dyn VmArch,
     resources: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     vm_evt_wrtube: &SendTube,
@@ -1137,7 +1136,7 @@ fn create_devices(
 
 fn create_mmio_file_backed_mappings(
     cfg: &Config,
-    vm: &impl Vm,
+    vm: &dyn Vm,
     resources: &mut SystemAllocator,
 ) -> Result<()> {
     for mapping in &cfg.file_backed_mappings_mmio {
@@ -1812,7 +1811,6 @@ fn create_guest_memory(
 fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> Result<ExitState> {
     use devices::GeniezoneKernelIrqChip;
     use hypervisor::geniezone::Geniezone;
-    use hypervisor::geniezone::GeniezoneVcpu;
     use hypervisor::geniezone::GeniezoneVm;
 
     let device_path = device_path.unwrap_or(Path::new(GENIEZONE_PATH));
@@ -1853,7 +1851,7 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
         }
     };
 
-    run_vm::<GeniezoneVcpu, GeniezoneVm>(
+    run_vm(
         cfg,
         components,
         &arch_memory_layout,
@@ -1873,7 +1871,6 @@ fn run_halla(
 ) -> Result<ExitState> {
     use devices::HallaKernelIrqChip;
     use hypervisor::halla::Halla;
-    use hypervisor::halla::HallaVcpu;
     use hypervisor::halla::HallaVm;
 
     let device_path = device_path.unwrap_or(Path::new(HALLA_PATH));
@@ -1913,7 +1910,7 @@ fn run_halla(
         }
     };
 
-    run_vm::<HallaVcpu, HallaVm>(
+    run_vm(
         cfg,
         components,
         &arch_memory_layout,
@@ -1930,7 +1927,6 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     #[cfg(target_arch = "x86_64")]
     use devices::KvmSplitIrqChip;
     use hypervisor::kvm::Kvm;
-    use hypervisor::kvm::KvmVcpu;
     use hypervisor::kvm::KvmVm;
 
     let device_path = device_path.unwrap_or(Path::new(KVM_PATH));
@@ -2025,7 +2021,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
         }
     };
 
-    run_vm::<KvmVcpu, KvmVm>(
+    run_vm(
         cfg,
         components,
         &arch_memory_layout,
@@ -2047,7 +2043,6 @@ fn run_gunyah(
 ) -> Result<ExitState> {
     use devices::GunyahIrqChip;
     use hypervisor::gunyah::Gunyah;
-    use hypervisor::gunyah::GunyahVcpu;
     use hypervisor::gunyah::GunyahVm;
 
     let device_path = device_path.unwrap_or(Path::new(GUNYAH_PATH));
@@ -2084,7 +2079,7 @@ fn run_gunyah(
         bail!("Failed to create protected VM");
     }
 
-    run_vm::<GunyahVcpu, GunyahVm>(
+    run_vm(
         cfg,
         components,
         &arch_memory_layout,
@@ -2174,19 +2169,15 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
     }
 }
 
-fn run_vm<Vcpu, V>(
+fn run_vm(
     cfg: Config,
     #[allow(unused_mut)] mut components: VmComponents,
     arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
-    vm: Arc<V>,
+    vm: Arc<dyn VmArch>,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
     #[cfg(feature = "swap")] mut swap_controller: Option<SwapController>,
-) -> Result<ExitState>
-where
-    Vcpu: VcpuArch + 'static,
-    V: VmArch + 'static,
-{
+) -> Result<ExitState> {
     if cfg.jail_config.is_some() {
         // Printing something to the syslog before entering minijail so that libc's syslogger has a
         // chance to open files necessary for its operation, like `/etc/localtime`. After jailing,
@@ -2511,7 +2502,7 @@ where
         })
         .collect();
 
-    let mut linux = Arch::build_vm::<V, Vcpu>(
+    let mut linux = Arch::build_vm(
         components,
         arch_memory_layout,
         &vm_evt_wrtube,
@@ -2716,8 +2707,8 @@ fn start_pci_root_worker(
 }
 
 #[cfg(target_arch = "x86_64")]
-fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
-    linux: &RunnableLinuxVm<V, Vcpu>,
+fn get_hp_bus(
+    linux: &RunnableLinuxVm,
     host_addr: PciAddress,
 ) -> Result<Arc<Mutex<dyn HotPlugBus>>> {
     for (_, hp_bus) in linux.hotplug_bus.iter() {
@@ -2729,8 +2720,8 @@ fn get_hp_bus<V: VmArch, Vcpu: VcpuArch>(
 }
 
 #[cfg(target_arch = "x86_64")]
-fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+fn add_hotplug_device(
+    linux: &mut RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
     add_control_tube: &mut impl FnMut(AnyControlTube),
@@ -2860,8 +2851,8 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
 }
 
 #[cfg(feature = "pci-hotplug")]
-fn add_hotplug_net<V: VmArch, Vcpu: VcpuArch>(
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+fn add_hotplug_net(
+    linux: &mut RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     hotplug_manager: &mut PciHotPlugManager,
@@ -2894,9 +2885,9 @@ fn add_hotplug_net<V: VmArch, Vcpu: VcpuArch>(
 }
 
 #[cfg(feature = "pci-hotplug")]
-fn handle_hotplug_net_command<V: VmArch, Vcpu: VcpuArch>(
+fn handle_hotplug_net_command(
     net_cmd: NetControlCommand,
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    linux: &mut RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     hotplug_manager: &mut PciHotPlugManager,
@@ -2916,8 +2907,8 @@ fn handle_hotplug_net_command<V: VmArch, Vcpu: VcpuArch>(
 }
 
 #[cfg(feature = "pci-hotplug")]
-fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+fn handle_hotplug_net_add(
+    linux: &mut RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     add_control_tube: &mut impl FnMut(AnyControlTube),
     hotplug_manager: &mut PciHotPlugManager,
@@ -2950,8 +2941,8 @@ fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
 }
 
 #[cfg(feature = "pci-hotplug")]
-fn handle_hotplug_net_remove<V: VmArch, Vcpu: VcpuArch>(
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+fn handle_hotplug_net_remove(
+    linux: &mut RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     hotplug_manager: &mut PciHotPlugManager,
     bus: u8,
@@ -2963,8 +2954,8 @@ fn handle_hotplug_net_remove<V: VmArch, Vcpu: VcpuArch>(
 }
 
 #[cfg(target_arch = "x86_64")]
-fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
-    linux: &RunnableLinuxVm<V, Vcpu>,
+fn remove_hotplug_bridge(
+    linux: &RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     buses_to_remove: &mut Vec<u8>,
     hotplug_key: HotPlugKey,
@@ -2998,8 +2989,8 @@ fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
 }
 
 #[cfg(target_arch = "x86_64")]
-fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+fn remove_hotplug_device(
+    linux: &mut RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     iommu_host_tube: Option<&Tube>,
     device: &HotPlugDeviceInfo,
@@ -3200,8 +3191,8 @@ fn send_pvclock_cmd(tube: &Tube, command: PvClockCommand) -> Result<Option<PvClo
 }
 
 #[cfg(target_arch = "x86_64")]
-fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
-    linux: &mut RunnableLinuxVm<V, Vcpu>,
+fn handle_hotplug_command(
+    linux: &mut RunnableLinuxVm,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
     add_control_tube: &mut impl FnMut(AnyControlTube),
@@ -3244,8 +3235,8 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     }
 }
 
-struct ControlLoopState<'a, V: VmArch, Vcpu: VcpuArch> {
-    linux: &'a mut RunnableLinuxVm<V, Vcpu>,
+struct ControlLoopState<'a> {
+    linux: &'a mut RunnableLinuxVm,
     cfg: &'a Config,
     sys_allocator: &'a Arc<Mutex<SystemAllocator>>,
     control_tubes: &'a BTreeMap<usize, TaggedControlTube>,
@@ -3293,8 +3284,8 @@ impl VmRequestResult {
     }
 }
 
-fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
-    state: &mut ControlLoopState<V, Vcpu>,
+fn process_vm_request(
+    state: &mut ControlLoopState,
     id: usize,
     tube: &Tube,
     request: VmRequest,
@@ -3614,8 +3605,8 @@ fn process_vm_request<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     Ok(VmRequestResult::new(Some(response), false))
 }
 
-fn process_vm_control_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
-    state: &mut ControlLoopState<V, Vcpu>,
+fn process_vm_control_event(
+    state: &mut ControlLoopState,
     id: usize,
     socket: &TaggedControlTube,
 ) -> Result<(bool, Vec<usize>, Vec<TaggedControlTube>)> {
@@ -3757,8 +3748,8 @@ fn make_addr_tube_from_maybe_existing(
     }
 }
 
-fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
-    mut linux: RunnableLinuxVm<V, Vcpu>,
+fn run_control(
+    mut linux: RunnableLinuxVm,
     sys_allocator: SystemAllocator,
     cfg: Config,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
@@ -4905,7 +4896,7 @@ pub enum VmMemoryHandlerRequest {
 
 fn vm_memory_handler_thread(
     control_tubes: Vec<VmMemoryTube>,
-    vm: Arc<impl Vm>,
+    vm: Arc<dyn Vm>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
     mut gralloc: RutabagaGralloc,
     mut iommu_client: Option<VmMemoryRequestIommuClient>,

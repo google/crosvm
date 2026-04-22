@@ -18,10 +18,10 @@ use crate::Error;
 use crate::Result;
 use crate::X8664arch;
 
-impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
+impl arch::GdbOps for X8664arch {
     type Error = Error;
 
-    fn read_registers(vcpu: &T) -> Result<X86_64CoreRegs> {
+    fn read_registers(vcpu: &dyn VcpuX86_64) -> Result<X86_64CoreRegs> {
         // General registers: RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, r8-r15
         let gregs = vcpu.get_regs().map_err(Error::ReadRegs)?;
         let regs = [
@@ -81,7 +81,7 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
         Ok(regs)
     }
 
-    fn write_registers(vcpu: &T, regs: &X86_64CoreRegs) -> Result<()> {
+    fn write_registers(vcpu: &dyn VcpuX86_64, regs: &X86_64CoreRegs) -> Result<()> {
         // General purpose registers (RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, r8-r15) + RIP + rflags
         let orig_gregs = vcpu.get_regs().map_err(Error::ReadRegs)?;
         let gregs = Regs {
@@ -142,17 +142,17 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
     }
 
     #[inline]
-    fn read_register(_vcpu: &T, _reg: X86_64CoreRegId) -> Result<Vec<u8>> {
+    fn read_register(_vcpu: &dyn VcpuX86_64, _reg: X86_64CoreRegId) -> Result<Vec<u8>> {
         Err(Error::ReadRegIsUnsupported)
     }
 
     #[inline]
-    fn write_register(_vcpu: &T, _reg: X86_64CoreRegId, _buf: &[u8]) -> Result<()> {
+    fn write_register(_vcpu: &dyn VcpuX86_64, _reg: X86_64CoreRegId, _buf: &[u8]) -> Result<()> {
         Err(Error::WriteRegIsUnsupported)
     }
 
     fn read_memory(
-        vcpu: &T,
+        vcpu: &dyn VcpuX86_64,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         len: usize,
@@ -175,7 +175,7 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
     }
 
     fn write_memory(
-        vcpu: &T,
+        vcpu: &dyn VcpuX86_64,
         guest_mem: &GuestMemory,
         vaddr: GuestAddress,
         buf: &[u8],
@@ -201,16 +201,16 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
         Ok(())
     }
 
-    fn enable_singlestep(vcpu: &T) -> Result<()> {
+    fn enable_singlestep(vcpu: &dyn VcpuX86_64) -> Result<()> {
         vcpu.set_guest_debug(&[], true /* enable_singlestep */)
             .map_err(Error::EnableSinglestep)
     }
 
-    fn get_max_hw_breakpoints(_vcpu: &T) -> Result<usize> {
+    fn get_max_hw_breakpoints(_vcpu: &dyn VcpuX86_64) -> Result<usize> {
         Ok(4usize)
     }
 
-    fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<()> {
+    fn set_hw_breakpoints(vcpu: &dyn VcpuX86_64, breakpoints: &[GuestAddress]) -> Result<()> {
         vcpu.set_guest_debug(breakpoints, false /* enable_singlestep */)
             .map_err(Error::SetHwBreakpoint)
     }

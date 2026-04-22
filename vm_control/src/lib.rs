@@ -646,7 +646,7 @@ pub struct VmMemoryRegionState {
 }
 
 fn try_map_to_prepared_region(
-    vm: &impl Vm,
+    vm: &dyn Vm,
     region_state: &mut VmMemoryRegionState,
     source: &VmMemorySource,
     dest: &VmMemoryDestination,
@@ -731,7 +731,7 @@ impl VmMemoryRequest {
     pub fn execute(
         self,
         #[cfg(any(target_os = "android", target_os = "linux"))] tube: &Tube,
-        vm: &impl Vm,
+        vm: &dyn Vm,
         sys_allocator: &mut SystemAllocator,
         gralloc: &mut RutabagaGralloc,
         iommu_client: Option<&mut VmMemoryRequestIommuClient>,
@@ -1920,7 +1920,7 @@ impl VmRequest {
     #[allow(unused_variables)]
     pub fn execute(
         &self,
-        vm: &impl Vm,
+        vm: &dyn Vm,
         disk_host_tubes: &[Tube],
         snd_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource + Send>>>,
@@ -2410,7 +2410,7 @@ fn do_snapshot(
     compress_memory: bool,
     encrypt: bool,
     suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
-    vm: &impl Vm,
+    vm: &dyn Vm,
 ) -> anyhow::Result<()> {
     let snapshot_start = Instant::now();
 
@@ -2567,7 +2567,7 @@ pub fn do_restore(
     mut restore_irqchip: impl FnMut(AnySnapshot) -> anyhow::Result<()>,
     require_encrypted: bool,
     suspended_pvclock_state: &mut Option<hypervisor::ClockState>,
-    vm: &impl Vm,
+    vm: &dyn Vm,
 ) -> anyhow::Result<()> {
     let restore_start = Instant::now();
     let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size);

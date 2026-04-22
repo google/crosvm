@@ -179,12 +179,12 @@ pub(super) fn push_triggers<'a>(
     }
 }
 
-pub(super) fn handle_received_token<'a, V: VmArch + 'static, Vcpu: VcpuArch + 'static, F>(
+pub(super) fn handle_received_token<'a, F>(
     token: &Token,
     _anti_tamper_main_thread_tube: &Option<ProtoTube>,
     #[cfg(feature = "balloon")] _balloon_tube: Option<&mut BalloonTube>,
     _control_tubes: &BTreeMap<usize, SharedTaggedControlTube>,
-    _guest_os: &mut RunnableLinuxVm<V, Vcpu>,
+    _guest_os: &mut RunnableLinuxVm,
     _ipc_main_loop_tube: Option<&Tube>,
     _memory_size_mb: u64,
     _proto_main_loop_tube: Option<&ProtoTube>,
@@ -196,7 +196,7 @@ pub(super) fn handle_received_token<'a, V: VmArch + 'static, Vcpu: VcpuArch + 's
     _execute_vm_request: F,
 ) -> Option<VmRunMode>
 where
-    F: FnMut(VmRequest, &'a mut RunnableLinuxVm<V, Vcpu>) -> (VmResponse, Option<VmRunMode>),
+    F: FnMut(VmRequest, &'a mut RunnableLinuxVm) -> (VmResponse, Option<VmRunMode>),
 {
     panic!("Received an unrecognized shared token to product specific handler: {token:?}")
 }
