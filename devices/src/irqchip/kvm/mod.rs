@@ -2,13 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::sync::Arc;
+
 use base::error;
 use base::Error;
 use base::Event;
 use base::Result;
 #[cfg(target_arch = "x86_64")]
 use hypervisor::kvm::KvmCap;
-use hypervisor::kvm::KvmVcpu;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
 use hypervisor::Vcpu;
@@ -43,11 +44,12 @@ use crate::VcpuRunState;
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip for KvmKernelIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()> {
-        let vcpu: &KvmVcpu = vcpu
-            .downcast_ref()
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn Vcpu>) -> Result<()> {
+        let vcpu = vcpu
+            .downcast_arc()
+            .map_err(|_| ())
             .expect("KvmKernelIrqChip::add_vcpu called with non-KvmVcpu");
-        self.vcpus.lock()[vcpu_id] = Some(vcpu.try_clone()?);
+        self.vcpus.lock()[vcpu_id] = Some(vcpu);
         Ok(())
     }
 

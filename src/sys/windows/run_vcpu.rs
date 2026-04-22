@@ -106,7 +106,7 @@ impl VcpuRunMode {
 }
 
 struct RunnableVcpuInfo<V> {
-    vcpu: V,
+    vcpu: Arc<V>,
     thread_priority_handle: Option<SafeMultimediaHandle>,
 }
 
@@ -138,9 +138,9 @@ impl VcpuRunThread {
 
     /// Perform WHPX-specific vcpu configurations
     #[cfg(feature = "whpx")]
-    fn whpx_configure_vcpu(vcpu: &mut dyn VcpuArch, irq_chip: &mut dyn IrqChipArch) {
+    fn whpx_configure_vcpu(vcpu: &dyn VcpuArch, irq_chip: &mut dyn IrqChipArch) {
         // only apply to actual WhpxVcpu instances
-        if let Some(whpx_vcpu) = vcpu.downcast_mut::<WhpxVcpu>() {
+        if let Some(whpx_vcpu) = (vcpu as &dyn std::any::Any).downcast_ref::<WhpxVcpu>() {
             // WhpxVcpu instances need to know the TSC and Lapic frequencies to handle Hyper-V MSR
             // reads and writes.
             let tsc_freq = devices::tsc::tsc_frequency()
@@ -159,7 +159,7 @@ impl VcpuRunThread {
     // Sets up a vcpu and converts it into a runnable vcpu.
     fn runnable_vcpu<V>(
         cpu_id: usize,
-        vcpu: Option<V>,
+        vcpu: Option<Arc<V>>,
         vcpu_init: VcpuInitX86_64,
         vm: &impl VmArch,
         irq_chip: &mut dyn IrqChipArch,
@@ -173,24 +173,21 @@ impl VcpuRunThread {
     where
         V: VcpuArch,
     {
-        let mut vcpu = match vcpu {
+        let vcpu = match vcpu {
             Some(v) => v,
             None => {
                 // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called
                 // from the vcpu thread.
-                match vm
-                    .create_vcpu(cpu_id)
-                    .exit_context(Exit::CreateVcpu, "failed to create vcpu")?
-                    .downcast::<V>()
-                {
-                    Ok(v) => *v,
-                    Err(_) => panic!("VM created wrong type of VCPU"),
-                }
+                Arc::downcast(
+                    vm.create_vcpu(cpu_id)
+                        .exit_context(Exit::CreateVcpu, "failed to create vcpu")?,
+                )
+                .unwrap_or_else(|_| panic!("VM created wrong type of VCPU"))
             }
         };
 
         irq_chip
-            .add_vcpu(cpu_id, &vcpu)
+            .add_vcpu(cpu_id, vcpu.clone())
             .exit_context(Exit::AddIrqChipVcpu, "failed to add vcpu to irq chip")?;
 
         if let Some(affinity) = vcpu_affinity {
@@ -216,7 +213,7 @@ impl VcpuRunThread {
             vm,
             vm.get_hypervisor(),
             irq_chip,
-            &mut vcpu,
+            &*vcpu,
             vcpu_init,
             cpu_id,
             vcpu_count,
@@ -225,7 +222,7 @@ impl VcpuRunThread {
         .exit_context(Exit::ConfigureVcpu, "failed to configure vcpu")?;
 
         #[cfg(feature = "whpx")]
-        Self::whpx_configure_vcpu(&mut vcpu, irq_chip);
+        Self::whpx_configure_vcpu(&*vcpu, irq_chip);
 
         let mut thread_priority_handle = None;
         if run_rt {
@@ -249,9 +246,9 @@ impl VcpuRunThread {
 
     pub fn run<V>(
         &self,
-        vcpu: Option<V>,
+        vcpu: Option<Arc<V>>,
         vcpu_init: VcpuInitX86_64,
-        vcpus: Arc<Mutex<Vec<Box<dyn VcpuArch>>>>,
+        vcpus: Arc<Mutex<Vec<Arc<dyn VcpuArch>>>>,
         vm: Arc<impl VmArch + 'static>,
         mut irq_chip: Box<dyn IrqChipArch + 'static>,
         vcpu_count: usize,
@@ -341,9 +338,7 @@ impl VcpuRunThread {
                     }
 
                     // Clone vcpu so it can be used by the main thread to force a vcpu run to exit
-                    vcpus
-                        .lock()
-                        .push(Box::new(vcpu.try_clone().expect("Could not clone vcpu!")));
+                    vcpus.lock().push(vcpu.clone());
 
                     mmio_bus.set_access_id(context.cpu_id);
                     io_bus.set_access_id(context.cpu_id);
@@ -544,8 +539,8 @@ fn setup_vcpu_signal_handler() -> Result<()> {
 }
 
 pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
-    vcpus: Vec<Option<Vcpu>>,
-    vcpu_boxes: Arc<Mutex<Vec<Box<dyn VcpuArch>>>>,
+    vcpus: Vec<Option<Arc<Vcpu>>>,
+    vcpu_boxes: Arc<Mutex<Vec<Arc<dyn VcpuArch>>>>,
     guest_os: &RunnableLinuxVm<V, Vcpu>,
     exit_evt: &Event,
     vm_evt_wrtube: &SendTube,
@@ -651,7 +646,7 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
 fn vcpu_loop<V>(
     context: &VcpuRunThread,
-    mut vcpu: V,
+    vcpu: Arc<V>,
     vm: Arc<impl VmArch + 'static>,
     irq_chip: Box<dyn IrqChipArch + 'static>,
     io_bus: Bus,
@@ -682,7 +677,7 @@ where
         let _trace_event = trace_event!(crosvm, "vcpu loop");
         let mut check_vm_shutdown = run_mode_arc.get_mode() != VmRunMode::Running;
 
-        match irq_chip.wait_until_runnable(&vcpu).with_exit_context(
+        match irq_chip.wait_until_runnable(&*vcpu).with_exit_context(
             Exit::WaitUntilRunnable,
             || {
                 format!(
@@ -900,7 +895,7 @@ where
             loop {
                 match *run_mode_lock {
                     VmRunMode::Running => {
-                        process_vcpu_control_messages(&mut vcpu, *run_mode_lock, &vcpu_control);
+                        process_vcpu_control_messages(&*vcpu, *run_mode_lock, &vcpu_control);
                         break;
                     }
                     VmRunMode::Suspending => {
@@ -931,7 +926,7 @@ where
                 // our state has completely transitioned before we respond to the requestor. If
                 // we do this elsewhere, we might respond while in a partial state which could
                 // break features like snapshotting (e.g. by introducing a race condition).
-                process_vcpu_control_messages(&mut vcpu, *run_mode_lock, &vcpu_control);
+                process_vcpu_control_messages(&*vcpu, *run_mode_lock, &vcpu_control);
 
                 // Give ownership of our exclusive lock to the condition variable that
                 // will block. When the condition variable is notified, `wait` will
@@ -940,7 +935,7 @@ where
             }
         }
 
-        irq_chip.inject_interrupts(&vcpu).unwrap_or_else(|e| {
+        irq_chip.inject_interrupts(&*vcpu).unwrap_or_else(|e| {
             error!(
                 "failed to inject interrupts for vcpu {}: {}",
                 context.cpu_id, e
@@ -950,7 +945,7 @@ where
 }
 
 fn process_vcpu_control_messages<V>(
-    vcpu: &mut V,
+    vcpu: &V,
     run_mode: VmRunMode,
     vcpu_control: &mpsc::Receiver<VcpuControl>,
 ) where

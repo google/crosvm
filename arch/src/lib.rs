@@ -560,7 +560,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub vcpu_init: Vec<VcpuInitArch>,
     /// If vcpus is None, then it's the responsibility of the vcpu thread to create vcpus.
     /// If it's Some, then `build_vm` already created the vcpus.
-    pub vcpus: Option<Vec<Vcpu>>,
+    pub vcpus: Option<Vec<Arc<Vcpu>>>,
     pub vm: Arc<V>,
     pub vm_request_tubes: Vec<Tube>,
 }
@@ -672,7 +672,7 @@ pub trait LinuxArch {
         vm: &V,
         hypervisor: &dyn HypervisorArch,
         irq_chip: &mut dyn IrqChipArch,
-        vcpu: &mut dyn VcpuArch,
+        vcpu: &dyn VcpuArch,
         vcpu_init: VcpuInitArch,
         vcpu_id: usize,
         num_vcpus: usize,

@@ -129,16 +129,6 @@ impl HaxmVcpu {
 }
 
 impl Vcpu for HaxmVcpu {
-    /// Makes a shallow clone of this `Vcpu`.
-    fn try_clone(&self) -> Result<Self> {
-        Ok(HaxmVcpu {
-            descriptor: self.descriptor.try_clone()?,
-            id: self.id,
-            tunnel: self.tunnel,
-            io_buffer: self.io_buffer,
-        })
-    }
-
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
     }

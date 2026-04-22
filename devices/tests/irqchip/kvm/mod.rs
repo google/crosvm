@@ -37,8 +37,7 @@ fn create_kvm_kernel_irqchip() {
     .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-    chip.add_vcpu(0, vcpu.as_vcpu())
-        .expect("failed to add vcpu");
+    chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
 }
 
 #[test]
@@ -52,8 +51,7 @@ fn create_kvm_kernel_irqchip_with_its() {
         .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-    chip.add_vcpu(0, vcpu.as_vcpu())
-        .expect("failed to add vcpu");
+    chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
 }
 
 #[test]
@@ -72,8 +70,7 @@ fn mp_state() {
     .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-    chip.add_vcpu(0, vcpu.as_vcpu())
-        .expect("failed to add vcpu");
+    chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
 
     let state = chip.get_mp_state(0).expect("failed to get mp state");
     assert_eq!(state, MPState::Runnable);

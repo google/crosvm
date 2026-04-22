@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::sync::Arc;
+
 use base::errno_result;
 use base::error;
 use base::ioctl_with_ref;
@@ -84,10 +86,10 @@ impl VmRiscv64 for KvmVm {
         &self.kvm
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuRiscv64>> {
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuRiscv64>> {
         // create_vcpu is declared separately for each arch so it can return the arch-apropriate
         // vcpu type. But all use the same implementation in KvmVm::create_vcpu.
-        Ok(Box::new(self.create_kvm_vcpu(id)?))
+        Ok(Arc::new(self.create_kvm_vcpu(id)?))
     }
 }
 

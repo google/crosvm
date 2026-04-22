@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -190,7 +191,7 @@ pub(super) fn handle_received_token<'a, V: VmArch + 'static, Vcpu: VcpuArch + 's
     #[cfg(feature = "pvclock")] _pvclock_host_tube: &Option<Tube>,
     _run_mode_arc: &VcpuRunMode,
     _service_vm_state: &mut ServiceVmState,
-    _vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    _vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
     _virtio_snd_host_mute_tube: &mut [Tube],
     _execute_vm_request: F,
 ) -> Option<VmRunMode>

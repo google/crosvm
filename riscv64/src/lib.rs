@@ -367,11 +367,9 @@ impl arch::LinuxArch for Riscv64 {
         let vcpu_count = components.vcpu_properties.len();
         let mut vcpus = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
-            let vcpu: Vcpu = *vm
-                .create_vcpu(vcpu_id)
-                .map_err(Error::CreateVcpu)?
-                .downcast::<Vcpu>()
-                .map_err(|_| Error::DowncastVcpu)?;
+            let vcpu: Arc<Vcpu> =
+                Arc::downcast(vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?)
+                    .map_err(|_| Error::DowncastVcpu)?;
             vcpus.push(vcpu);
             vcpu_ids.push(vcpu_id);
         }
@@ -467,7 +465,7 @@ impl arch::LinuxArch for Riscv64 {
         _vm: &V,
         _hypervisor: &dyn Hypervisor,
         _irq_chip: &mut dyn IrqChipRiscv64,
-        vcpu: &mut dyn VcpuRiscv64,
+        vcpu: &dyn VcpuRiscv64,
         _vcpu_init: VcpuInitRiscv64,
         vcpu_id: usize,
         _num_vcpus: usize,

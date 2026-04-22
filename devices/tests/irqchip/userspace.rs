@@ -90,7 +90,8 @@ fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceI
             ready: Arc::new(Mutex::new(true)),
             injected: Arc::new(Mutex::new(None)),
         };
-        chip.add_vcpu(i, &vcpu).expect("failed to add vcpu");
+        chip.add_vcpu(i, Arc::new(vcpu))
+            .expect("failed to add vcpu");
         chip.apics[i].lock().set_enabled(true);
     }
 
@@ -98,11 +99,11 @@ fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceI
 }
 
 /// Helper function for cloning vcpus from a UserspaceIrqChip.
-fn get_vcpus(chip: &UserspaceIrqChip<FakeVcpu>) -> Vec<FakeVcpu> {
+fn get_vcpus(chip: &UserspaceIrqChip<FakeVcpu>) -> Vec<Arc<FakeVcpu>> {
     chip.vcpus
         .lock()
         .iter()
-        .map(|v| v.as_ref().unwrap().try_clone().unwrap())
+        .map(|v| v.as_ref().unwrap().clone())
         .collect()
 }
 
@@ -282,7 +283,7 @@ fn finalize_devices() {
         .expect("failed to service irq");
 
     let vcpu = get_vcpus(&chip).remove(0);
-    chip.inject_interrupts(&vcpu).unwrap();
+    chip.inject_interrupts(&*vcpu).unwrap();
     assert_eq!(
         vcpu.clear_injected(),
         // Vector is 9 because the interrupt vector base address is 0x08 and this is irq line 1
@@ -330,15 +331,15 @@ fn inject_pic_interrupt() {
     chip.service_irq(0, true).expect("failed to service irq");
 
     // Should not inject PIC interrupt for vcpu_id != 0.
-    chip.inject_interrupts(&vcpus[1]).unwrap();
+    chip.inject_interrupts(&*vcpus[1]).unwrap();
     assert_eq!(vcpus[1].clear_injected(), None);
 
     // Should inject Some interrupt.
-    chip.inject_interrupts(&vcpus[0]).unwrap();
+    chip.inject_interrupts(&*vcpus[0]).unwrap();
     assert_eq!(vcpus[0].clear_injected(), Some(0));
 
     // Interrupt is not injected twice.
-    chip.inject_interrupts(&vcpus[0]).unwrap();
+    chip.inject_interrupts(&*vcpus[0]).unwrap();
     assert_eq!(vcpus[0].clear_injected(), None);
 }
 
@@ -373,14 +374,14 @@ fn inject_msi() {
     assert!(!vcpus[0].window_requested());
     assert!(vcpus[1].window_requested());
 
-    chip.inject_interrupts(&vcpus[0]).unwrap();
+    chip.inject_interrupts(&*vcpus[0]).unwrap();
     assert_eq!(vcpus[0].clear_injected(), None);
 
     vcpus[1].set_ready(false);
-    chip.inject_interrupts(&vcpus[1]).unwrap();
+    chip.inject_interrupts(&*vcpus[1]).unwrap();
     assert_eq!(vcpus[1].clear_injected(), None);
     vcpus[1].set_ready(true);
-    chip.inject_interrupts(&vcpus[1]).unwrap();
+    chip.inject_interrupts(&*vcpus[1]).unwrap();
     assert_eq!(vcpus[1].clear_injected(), Some(0xF1));
     assert!(!vcpus[1].window_requested());
 }
@@ -413,8 +414,8 @@ fn lowest_priority_destination() {
             level: Level::Deassert,
         },
     });
-    chip.inject_interrupts(&vcpus[0]).unwrap();
-    chip.inject_interrupts(&vcpus[1]).unwrap();
+    chip.inject_interrupts(&*vcpus[0]).unwrap();
+    chip.inject_interrupts(&*vcpus[1]).unwrap();
     assert_eq!(vcpus[0].clear_injected(), None);
     assert_eq!(vcpus[1].clear_injected(), Some(111));
     chip.write(
@@ -449,8 +450,8 @@ fn lowest_priority_destination() {
             level: Level::Deassert,
         },
     });
-    chip.inject_interrupts(&vcpus[0]).unwrap();
-    chip.inject_interrupts(&vcpus[1]).unwrap();
+    chip.inject_interrupts(&*vcpus[0]).unwrap();
+    chip.inject_interrupts(&*vcpus[1]).unwrap();
     assert_eq!(vcpus[0].clear_injected(), Some(222));
     assert_eq!(vcpus[1].clear_injected(), None);
 }
@@ -579,7 +580,7 @@ fn runnable_vcpu_unhalts() {
     let vcpu = get_vcpus(&chip).remove(0);
     let chip_copy = chip.try_clone().unwrap();
     // BSP starts runnable.
-    assert_eq!(chip.wait_until_runnable(&vcpu), Ok(VcpuRunState::Runnable));
+    assert_eq!(chip.wait_until_runnable(&*vcpu), Ok(VcpuRunState::Runnable));
     let start = Instant::now();
     let handle = thread::spawn(move || {
         thread::sleep(TEST_SLEEP_DURATION);
@@ -594,7 +595,7 @@ fn runnable_vcpu_unhalts() {
         );
     });
     chip.halted(0);
-    assert_eq!(chip.wait_until_runnable(&vcpu), Ok(VcpuRunState::Runnable));
+    assert_eq!(chip.wait_until_runnable(&*vcpu), Ok(VcpuRunState::Runnable));
     assert!(Instant::now() - start > Duration::from_millis(5));
     handle.join().unwrap();
 }
@@ -606,7 +607,7 @@ fn kicked_vcpu_unhalts() {
     let vcpu = get_vcpus(&chip).remove(0);
     let chip_copy = chip.try_clone().unwrap();
     // BSP starts runnable.
-    assert_eq!(chip.wait_until_runnable(&vcpu), Ok(VcpuRunState::Runnable));
+    assert_eq!(chip.wait_until_runnable(&*vcpu), Ok(VcpuRunState::Runnable));
     let start = Instant::now();
     let handle = thread::spawn(move || {
         thread::sleep(TEST_SLEEP_DURATION);
@@ -614,7 +615,7 @@ fn kicked_vcpu_unhalts() {
     });
     chip.halted(0);
     assert_eq!(
-        chip.wait_until_runnable(&vcpu),
+        chip.wait_until_runnable(&*vcpu),
         Ok(VcpuRunState::Interrupted)
     );
     assert!(Instant::now() - start > Duration::from_millis(5));
@@ -647,15 +648,6 @@ impl FakeVcpu {
 }
 
 impl Vcpu for FakeVcpu {
-    fn try_clone(&self) -> Result<Self> {
-        Ok(FakeVcpu {
-            id: self.id,
-            requested: self.requested.clone(),
-            ready: self.ready.clone(),
-            injected: self.injected.clone(),
-        })
-    }
-
     fn id(&self) -> usize {
         self.id
     }

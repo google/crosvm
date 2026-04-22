@@ -19,6 +19,7 @@ use libc::EIO;
 use libc::ENOENT;
 use libc::ENXIO;
 use snapshot::AnySnapshot;
+use sync::Mutex;
 use vm_memory::GuestAddress;
 use winapi::shared::winerror::E_UNEXPECTED;
 use windows::Win32::Foundation::WHV_E_INSUFFICIENT_BUFFER;
@@ -307,13 +308,13 @@ impl Drop for SafeVirtualProcessor {
 
 pub struct WhpxVcpu {
     index: u32,
-    safe_virtual_processor: Arc<SafeVirtualProcessor>,
+    _safe_virtual_processor: Arc<SafeVirtualProcessor>,
     vm_partition: Arc<SafePartition>,
     last_exit_context: Arc<WHV_RUN_VP_EXIT_CONTEXT>,
     // must be arc, since we cannot "dupe" an instruction emulator similar to a handle.
     instruction_emulator: Arc<SafeInstructionEmulator>,
-    tsc_frequency: Option<u64>,
-    apic_frequency: Option<u32>,
+    tsc_frequency: Mutex<u64>,
+    apic_frequency: Mutex<u32>,
 }
 
 impl WhpxVcpu {
@@ -325,18 +326,18 @@ impl WhpxVcpu {
         let instruction_emulator = SafeInstructionEmulator::new()?;
         Ok(WhpxVcpu {
             index,
-            safe_virtual_processor: Arc::new(safe_virtual_processor),
+            _safe_virtual_processor: Arc::new(safe_virtual_processor),
             vm_partition,
             last_exit_context: Arc::new(Default::default()),
             instruction_emulator: Arc::new(instruction_emulator),
-            tsc_frequency: None,
-            apic_frequency: None,
+            tsc_frequency: Mutex::new(0),
+            apic_frequency: Mutex::new(0),
         })
     }
 
-    pub fn set_frequencies(&mut self, tsc_frequency: Option<u64>, lapic_frequency: u32) {
-        self.tsc_frequency = tsc_frequency;
-        self.apic_frequency = Some(lapic_frequency);
+    pub fn set_frequencies(&self, tsc_frequency: Option<u64>, lapic_frequency: u32) {
+        *self.tsc_frequency.lock() = tsc_frequency.unwrap_or(0);
+        *self.apic_frequency.lock() = lapic_frequency;
     }
 
     /// Handle reading the MSR with id `id`. If MSR `id` is not supported, inject a GP fault.
@@ -350,8 +351,8 @@ impl WhpxVcpu {
         }
 
         let value = match id {
-            HV_X64_MSR_TSC_FREQUENCY => Some(self.tsc_frequency.unwrap_or(0)),
-            HV_X64_MSR_APIC_FREQUENCY => Some(self.apic_frequency.unwrap_or(0) as u64),
+            HV_X64_MSR_TSC_FREQUENCY => Some(*self.tsc_frequency.lock()),
+            HV_X64_MSR_APIC_FREQUENCY => Some(*self.apic_frequency.lock() as u64),
             _ => None,
         };
 
@@ -487,19 +488,6 @@ impl WhpxVcpu {
 }
 
 impl Vcpu for WhpxVcpu {
-    /// Makes a shallow clone of this `Vcpu`.
-    fn try_clone(&self) -> Result<Self> {
-        Ok(WhpxVcpu {
-            index: self.index,
-            safe_virtual_processor: self.safe_virtual_processor.clone(),
-            vm_partition: self.vm_partition.clone(),
-            last_exit_context: self.last_exit_context.clone(),
-            instruction_emulator: self.instruction_emulator.clone(),
-            tsc_frequency: self.tsc_frequency,
-            apic_frequency: self.apic_frequency,
-        })
-    }
-
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
     }
@@ -1271,20 +1259,6 @@ mod tests {
             None,
         )
         .expect("failed to create whpx vm")
-    }
-
-    #[test]
-    fn try_clone() {
-        if !Whpx::is_enabled() {
-            return;
-        }
-        let cpu_count = 1;
-        let mem =
-            GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
-        let vm = new_vm(cpu_count, mem);
-        let vcpu = vm.create_vcpu(0).expect("failed to create vcpu");
-        let vcpu: &WhpxVcpu = vcpu.downcast_ref().expect("Expected a WhpxVcpu");
-        let _vcpu_clone = vcpu.try_clone().expect("failed to clone whpx vcpu");
     }
 
     #[test]

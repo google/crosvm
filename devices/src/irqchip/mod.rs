@@ -4,6 +4,7 @@
 
 use std::marker::Send;
 use std::marker::Sized;
+use std::sync::Arc;
 
 use base::Event;
 use base::Result;
@@ -116,7 +117,7 @@ impl IrqEventSource {
 /// multiple hypervisors with a single implementation.
 pub trait IrqChip: Send {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()>;
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn Vcpu>) -> Result<()>;
 
     /// Register an event with edge-trigger semantic that can trigger an interrupt for a particular
     /// GSI.

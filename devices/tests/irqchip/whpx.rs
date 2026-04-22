@@ -63,8 +63,7 @@ fn get_chip(num_vcpus: usize) -> WhpxSplitIrqChip {
 
     for i in 0..num_vcpus {
         let vcpu = vm.create_vcpu(i).expect("failed to instantiate vcpu");
-        chip.add_vcpu(i, vcpu.as_vcpu())
-            .expect("failed to add vcpu");
+        chip.add_vcpu(i, vcpu).expect("failed to add vcpu");
     }
 
     chip

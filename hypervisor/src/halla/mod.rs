@@ -181,8 +181,8 @@ impl VmAArch64 for HallaVm {
         }
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {
-        Ok(Box::new(HallaVm::create_vcpu(self, id)?))
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuAArch64>> {
+        Ok(Arc::new(HallaVm::create_vcpu(self, id)?))
     }
 
     fn create_fdt(&self, _fdt: &mut Fdt, _phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {
@@ -681,7 +681,6 @@ impl HallaVm {
             .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(HallaVcpu {
-            vm: self.vm.try_clone()?,
             vcpu,
             id,
             run_mmap: Arc::new(run_mmap),
@@ -1115,25 +1114,12 @@ impl VcpuSignalHandleInner for HallaVcpuSignalHandle {
 
 /// A wrapper around using a Halla Vcpu.
 pub struct HallaVcpu {
-    vm: SafeDescriptor,
     vcpu: SafeDescriptor,
     id: usize,
     run_mmap: Arc<MemoryMapping>,
 }
 
 impl Vcpu for HallaVcpu {
-    fn try_clone(&self) -> Result<Self> {
-        let vm = self.vm.try_clone()?;
-        let vcpu = self.vcpu.try_clone()?;
-
-        Ok(HallaVcpu {
-            vm,
-            vcpu,
-            id: self.id,
-            run_mmap: self.run_mmap.clone(),
-        })
-    }
-
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
     }

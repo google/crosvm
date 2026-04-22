@@ -127,41 +127,35 @@ pub fn set_vcpu_thread_scheduling(
 pub fn runnable_vcpu<V>(
     cpu_id: usize,
     vcpu_id: usize,
-    vcpu: Option<V>,
+    vcpu: Option<Arc<V>>,
     vcpu_init: VcpuInitArch,
     vm: Arc<impl VmArch>,
     irq_chip: &mut dyn IrqChipArch,
     vcpu_count: usize,
     cpu_config: Option<CpuConfigArch>,
-) -> Result<V>
+) -> Result<Arc<V>>
 where
     V: VcpuArch,
 {
-    let mut vcpu = match vcpu {
+    let vcpu = match vcpu {
         Some(v) => v,
         None => {
             // If vcpu is None, it means this arch/hypervisor requires create_vcpu to be called from
             // the vcpu thread.
-            match vm
-                .create_vcpu(vcpu_id)
-                .context("failed to create vcpu")?
-                .downcast::<V>()
-            {
-                Ok(v) => *v,
-                Err(_) => panic!("VM created wrong type of VCPU"),
-            }
+            Arc::downcast(vm.create_vcpu(vcpu_id).context("failed to create vcpu")?)
+                .unwrap_or_else(|_| panic!("VM created wrong type of VCPU"))
         }
     };
 
     irq_chip
-        .add_vcpu(cpu_id, &vcpu)
+        .add_vcpu(cpu_id, vcpu.clone())
         .context("failed to add vcpu to irq chip")?;
 
     Arch::configure_vcpu(
         &*vm,
         vm.get_hypervisor(),
         irq_chip,
-        &mut vcpu,
+        &*vcpu,
         vcpu_init,
         cpu_id,
         vcpu_count,
@@ -221,7 +215,7 @@ pub fn remove_vcpu_signal_handler() -> Result<()> {
 fn vcpu_loop<V>(
     mut run_mode: VmRunMode,
     cpu_id: usize,
-    vcpu: V,
+    vcpu: Arc<V>,
     irq_chip: Box<dyn IrqChipArch + 'static>,
     run_rt: bool,
     delay_rt: bool,
@@ -294,7 +288,7 @@ where
                         VcpuControl::Debug(d) => {
                             if let Err(e) = crate::crosvm::gdb::vcpu_control_debug(
                                 cpu_id,
-                                &vcpu,
+                                &*vcpu,
                                 &guest_mem,
                                 d,
                                 to_gdb_tube.as_ref(),
@@ -374,7 +368,7 @@ where
         // thread kicks this vcpu as a result of some VmControl operation. In most IrqChip
         // implementations HLT instructions do not make it to crosvm, and thus this is a
         // no-op that always returns VcpuRunState::Runnable.
-        match irq_chip.wait_until_runnable(vcpu.as_vcpu()) {
+        match irq_chip.wait_until_runnable(&*vcpu) {
             Ok(VcpuRunState::Runnable) => {}
             Ok(VcpuRunState::Interrupted) => interrupted_by_signal = true,
             Err(e) => error!(
@@ -528,7 +522,7 @@ pub struct VcpuPidTid {
 pub fn run_vcpu<V>(
     cpu_id: usize,
     vcpu_id: usize,
-    vcpu: Option<V>,
+    vcpu: Option<Arc<V>>,
     vcpu_init: VcpuInitArch,
     vm: Arc<impl VmArch + 'static>,
     mut irq_chip: Box<dyn IrqChipArch + 'static>,
@@ -607,7 +601,7 @@ where
                     }
                 };
 
-                set_vcpu_thread_local(Some(&vcpu), SIGRTMIN() + 0);
+                set_vcpu_thread_local(Some(&*vcpu), SIGRTMIN() + 0);
 
                 mmio_bus.set_access_id(cpu_id);
                 io_bus.set_access_id(cpu_id);

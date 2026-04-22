@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use base::Result;
 use downcast_rs::impl_downcast;
@@ -22,7 +24,7 @@ pub trait VmRiscv64: Vm {
     fn get_hypervisor(&self) -> &dyn Hypervisor;
 
     /// Create a Vcpu with the specified Vcpu ID.
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuRiscv64>>;
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuRiscv64>>;
 }
 
 /// A wrapper around creating and using a VCPU on riscv64.

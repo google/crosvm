@@ -912,7 +912,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     anti_tamper_main_thread_tube: &Option<ProtoTube>,
     #[cfg(feature = "balloon")] mut balloon_tube: Option<&mut BalloonTube>,
     memory_size_mb: u64,
-    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
     #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
     run_mode_arc: &VcpuRunMode,
     region_state: &mut VmMemoryRegionState,
@@ -1434,7 +1434,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     };
 
     let vcpus: Vec<Option<_>> = match guest_os.vcpus.take() {
-        Some(vec) => vec.into_iter().map(|vcpu| Some(vcpu)).collect(),
+        Some(vec) => vec.into_iter().map(Some).collect(),
         None => iter::repeat_with(|| None)
             .take(guest_os.vcpu_count)
             .collect(),
@@ -1448,7 +1448,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let original_terminal_mode = stdin().set_raw_mode().ok();
 
-    let vcpu_boxes: Arc<Mutex<Vec<Box<dyn VcpuArch>>>> = Arc::new(Mutex::new(Vec::new()));
+    let vcpu_boxes: Arc<Mutex<Vec<Arc<dyn VcpuArch>>>> = Arc::new(Mutex::new(Vec::new()));
     let run_mode_arc = Arc::new(VcpuRunMode::default());
 
     let run_mode_state = if suspended {
@@ -1744,7 +1744,7 @@ where
 fn kick_all_vcpus(
     run_mode: &VcpuRunMode,
     vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
-    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
     #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
     resume_notify_devices: &[Arc<Mutex<dyn BusResumeDevice>>],
@@ -1805,7 +1805,7 @@ fn kick_all_vcpus(
 fn kick_vcpu(
     run_mode: &VcpuRunMode,
     vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
-    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
     index: usize,
     msg: VcpuControl,
@@ -1844,7 +1844,7 @@ fn kick_vcpu(
 /// though devices on the host will continue to run.
 pub(crate) fn suspend_all_vcpus(
     run_mode: &VcpuRunMode,
-    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
     #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
 ) {
@@ -1866,7 +1866,7 @@ pub(crate) fn suspend_all_vcpus(
 /// Resumes all VCPUs.
 pub(crate) fn resume_all_vcpus(
     run_mode: &VcpuRunMode,
-    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
     irq_chip: &dyn IrqChipArch,
     #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
 ) {

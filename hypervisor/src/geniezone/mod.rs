@@ -172,8 +172,8 @@ impl VmAArch64 for GeniezoneVm {
         }
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {
-        Ok(Box::new(GeniezoneVm::create_vcpu(self, id)?))
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuAArch64>> {
+        Ok(Arc::new(GeniezoneVm::create_vcpu(self, id)?))
     }
 
     fn create_fdt(&self, _fdt: &mut Fdt, _phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {
@@ -653,7 +653,6 @@ impl GeniezoneVm {
             .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(GeniezoneVcpu {
-            vm: self.vm.try_clone()?,
             vcpu,
             id,
             run_mmap: Arc::new(run_mmap),
@@ -1105,25 +1104,12 @@ impl VcpuSignalHandleInner for GeniezoneVcpuSignalHandle {
 
 /// A wrapper around using a Geniezone Vcpu.
 pub struct GeniezoneVcpu {
-    vm: SafeDescriptor,
     vcpu: SafeDescriptor,
     id: usize,
     run_mmap: Arc<MemoryMapping>,
 }
 
 impl Vcpu for GeniezoneVcpu {
-    fn try_clone(&self) -> Result<Self> {
-        let vm = self.vm.try_clone()?;
-        let vcpu = self.vcpu.try_clone()?;
-
-        Ok(GeniezoneVcpu {
-            vm,
-            vcpu,
-            id: self.id,
-            run_mmap: self.run_mmap.clone(),
-        })
-    }
-
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
     }

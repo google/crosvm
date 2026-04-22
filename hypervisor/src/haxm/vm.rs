@@ -6,6 +6,7 @@ use core::ffi::c_void;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
+use std::sync::Arc;
 use std::sync::RwLock;
 
 use base::errno_result;
@@ -442,7 +443,7 @@ impl VmX86_64 for HaxmVm {
         &self.haxm
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>> {
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuX86_64>> {
         // SAFETY:
         // Safe because we know that our file is a VM fd and we verify the return result.
         let fd = unsafe { ioctl_with_ref(self, HAX_VM_IOCTL_VCPU_CREATE, &(id as u32)) };
@@ -465,7 +466,7 @@ impl VmX86_64 for HaxmVm {
             return errno_result();
         }
 
-        Ok(Box::new(HaxmVcpu {
+        Ok(Arc::new(HaxmVcpu {
             descriptor,
             id,
             tunnel: tunnel_info.va as *mut hax_tunnel,

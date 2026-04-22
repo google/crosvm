@@ -207,7 +207,7 @@ impl AsRawDescriptor for AiaDescriptor {
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
     pub(super) vm: Arc<KvmVm>,
-    pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
+    pub(super) vcpus: Arc<Mutex<Vec<Option<Arc<KvmVcpu>>>>>,
     num_vcpus: usize,
     num_ids: usize,     // number of imsics ids
     num_sources: usize, // number of aplic sources

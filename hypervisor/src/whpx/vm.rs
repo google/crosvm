@@ -752,8 +752,8 @@ impl VmX86_64 for WhpxVm {
         &self.whpx
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>> {
-        Ok(Box::new(WhpxVcpu::new(
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuX86_64>> {
+        Ok(Arc::new(WhpxVcpu::new(
             self.vm_partition.clone(),
             id.try_into().unwrap(),
         )?))

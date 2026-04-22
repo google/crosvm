@@ -373,11 +373,6 @@ pub(crate) trait VcpuSignalHandleInner {
 /// A virtual CPU holding a virtualized hardware thread's state, such as registers and interrupt
 /// state, which may be used to execute virtual machines.
 pub trait Vcpu: downcast_rs::DowncastSync {
-    /// Makes a shallow clone of this `Vcpu`.
-    fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized;
-
     /// Casts this architecture specific trait object to the base trait object `Vcpu`.
     fn as_vcpu(&self) -> &dyn Vcpu;
 

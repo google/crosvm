@@ -391,7 +391,6 @@ impl GunyahVm {
             .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(GunyahVcpu {
-            vm: self.vm.try_clone()?,
             vcpu,
             id,
             run_mmap: Arc::new(run_mmap),
@@ -821,7 +820,6 @@ const GH_RM_EXIT_TYPE_ASYNC_EXT_ABORT: u16 = 6;
 const GH_RM_EXIT_TYPE_VM_FORCE_STOPPED: u16 = 7;
 
 pub struct GunyahVcpu {
-    vm: SafeDescriptor,
     vcpu: File,
     id: usize,
     run_mmap: Arc<MemoryMapping>,
@@ -849,20 +847,6 @@ impl AsRawDescriptor for GunyahVcpu {
 }
 
 impl Vcpu for GunyahVcpu {
-    fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let vcpu = self.vcpu.try_clone()?;
-
-        Ok(GunyahVcpu {
-            vm: self.vm.try_clone()?,
-            vcpu,
-            id: self.id,
-            run_mmap: self.run_mmap.clone(),
-        })
-    }
-
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
     }

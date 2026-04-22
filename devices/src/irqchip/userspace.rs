@@ -93,7 +93,7 @@ const X86_CR0_INIT: u64 = X86_CR0_ET | X86_CR0_NW | X86_CR0_CD;
 /// An `IrqChip` with all interrupt devices emulated in userspace.  `UserspaceIrqChip` works with
 /// any hypervisor, but only supports x86.
 pub struct UserspaceIrqChip<V: VcpuX86_64> {
-    pub vcpus: Arc<Mutex<Vec<Option<V>>>>,
+    pub vcpus: Arc<Mutex<Vec<Option<Arc<V>>>>>,
     routes: Arc<Mutex<Routes>>,
     pit: Arc<Mutex<Pit>>,
     pic: Arc<Mutex<Pic>>,
@@ -385,11 +385,12 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
 }
 
 impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()> {
-        let vcpu: &V = vcpu
-            .downcast_ref()
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn Vcpu>) -> Result<()> {
+        let vcpu = vcpu
+            .downcast_arc()
+            .map_err(|_| ())
             .expect("UserspaceIrqChip::add_vcpu called with incorrect vcpu type");
-        self.vcpus.lock()[vcpu_id] = Some(vcpu.try_clone()?);
+        self.vcpus.lock()[vcpu_id] = Some(vcpu);
         Ok(())
     }
 
@@ -979,7 +980,7 @@ impl Waiter {
 struct TimerWorker<V: VcpuX86_64> {
     id: usize,
     apic: Arc<Mutex<Apic>>,
-    vcpus: Arc<Mutex<Vec<Option<V>>>>,
+    vcpus: Arc<Mutex<Vec<Option<Arc<V>>>>>,
     descriptor: Descriptor,
     waiter: Arc<Waiter>,
 }

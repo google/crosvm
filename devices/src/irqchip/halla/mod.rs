@@ -9,7 +9,6 @@ use base::Error;
 use base::Event;
 use base::Result;
 use hypervisor::halla::halla_sys::*;
-use hypervisor::halla::HallaVcpu;
 use hypervisor::halla::HallaVm;
 use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
@@ -44,7 +43,6 @@ fn default_irq_routing_table() -> Vec<IrqRoute> {
 /// This implementation will use the HVM API to create and configure the in-kernel irqchip.
 pub struct HallaKernelIrqChip {
     pub(super) vm: Arc<HallaVm>,
-    pub(super) vcpus: Arc<Mutex<Vec<Option<HallaVcpu>>>>,
     device_kind: DeviceKind,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
@@ -109,7 +107,6 @@ impl HallaKernelIrqChip {
 
         Ok(HallaKernelIrqChip {
             vm,
-            vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
             device_kind,
             routes: Arc::new(Mutex::new(default_irq_routing_table())),
         })
@@ -118,7 +115,6 @@ impl HallaKernelIrqChip {
     pub(super) fn arch_try_clone(&self) -> Result<Self> {
         Ok(HallaKernelIrqChip {
             vm: self.vm.clone(),
-            vcpus: self.vcpus.clone(),
             device_kind: self.device_kind,
             routes: self.routes.clone(),
         })
@@ -151,14 +147,8 @@ impl IrqChipAArch64 for HallaKernelIrqChip {
     }
 }
 
-/// This IrqChip only works with Halla so we only implement it for HallaVcpu.
 impl IrqChip for HallaKernelIrqChip {
-    /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()> {
-        let vcpu: &HallaVcpu = vcpu
-            .downcast_ref()
-            .expect("HallaKernelIrqChip::add_vcpu called with non-HallaVcpu");
-        self.vcpus.lock()[vcpu_id] = Some(vcpu.try_clone()?);
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn Vcpu>) -> Result<()> {
         Ok(())
     }
 

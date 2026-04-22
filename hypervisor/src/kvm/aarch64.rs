@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::mem::offset_of;
+use std::sync::Arc;
 
 use aarch64_sys_reg::AArch64SysRegId;
 use anyhow::Context;
@@ -241,10 +242,10 @@ impl VmAArch64 for KvmVm {
         }
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuAArch64>> {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
         // or VcpuX86.  But both use the same implementation in KvmVm::create_kvm_vcpu.
-        Ok(Box::new(self.create_kvm_vcpu(id)?))
+        Ok(Arc::new(self.create_kvm_vcpu(id)?))
     }
 
     fn create_fdt(&self, _fdt: &mut Fdt, _phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {

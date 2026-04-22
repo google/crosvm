@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use aarch64_sys_reg::AArch64SysRegId;
 use anyhow::bail;
@@ -63,8 +64,8 @@ impl VmAArch64 for GunyahVm {
         self.set_protected_vm_firmware_ipa(fw_addr, fw_max_size)
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {
-        Ok(Box::new(GunyahVm::create_vcpu(self, id)?))
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuAArch64>> {
+        Ok(Arc::new(GunyahVm::create_vcpu(self, id)?))
     }
 
     fn create_fdt(&self, fdt: &mut Fdt, phandles: &BTreeMap<&str, u32>) -> cros_fdt::Result<()> {

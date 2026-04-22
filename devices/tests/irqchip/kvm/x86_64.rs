@@ -55,8 +55,7 @@ fn get_kernel_chip() -> KvmKernelIrqChip {
         KvmKernelIrqChip::new(vm.clone(), 1).expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-    chip.add_vcpu(0, vcpu.as_vcpu())
-        .expect("failed to add vcpu");
+    chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
 
     chip
 }
@@ -74,8 +73,7 @@ fn get_split_chip() -> KvmSplitIrqChip {
         .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
-    chip.add_vcpu(0, vcpu.as_vcpu())
-        .expect("failed to add vcpu");
+    chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
     chip
 }
 

@@ -219,7 +219,7 @@ impl WhpxSplitIrqChip {
 
 /// This IrqChip only works with Whpx so we only implement it for WhpxVcpu.
 impl IrqChip for WhpxSplitIrqChip {
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: &dyn Vcpu) -> Result<()> {
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn Vcpu>) -> Result<()> {
         // The WHPX API acts entirely on the VM partition, so we don't need to keep references to
         // the vcpus.
         Ok(())

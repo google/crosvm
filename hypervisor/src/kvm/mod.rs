@@ -358,7 +358,9 @@ impl KvmVm {
             .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(KvmVcpu {
+            #[cfg(target_arch = "x86_64")]
             kvm: self.kvm.try_clone()?,
+            #[cfg(not(target_arch = "riscv64"))]
             vm: self.vm.try_clone()?,
             vcpu,
             id,
@@ -946,7 +948,9 @@ impl VcpuSignalHandleInner for KvmVcpuSignalHandle {
 
 /// A wrapper around using a KVM Vcpu.
 pub struct KvmVcpu {
+    #[cfg(target_arch = "x86_64")]
     kvm: Kvm,
+    #[cfg(not(target_arch = "riscv64"))]
     vm: SafeDescriptor,
     vcpu: File,
     id: usize,
@@ -955,20 +959,6 @@ pub struct KvmVcpu {
 }
 
 impl Vcpu for KvmVcpu {
-    fn try_clone(&self) -> Result<Self> {
-        let vm = self.vm.try_clone()?;
-        let vcpu = self.vcpu.try_clone()?;
-
-        Ok(KvmVcpu {
-            kvm: self.kvm.try_clone()?,
-            vm,
-            vcpu,
-            cap_kvmclock_ctrl: self.cap_kvmclock_ctrl,
-            id: self.id,
-            run_mmap: self.run_mmap.clone(),
-        })
-    }
-
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
     }

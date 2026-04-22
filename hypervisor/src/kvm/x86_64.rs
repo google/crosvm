@@ -4,6 +4,7 @@
 
 use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use base::errno_result;
 use base::error;
@@ -498,10 +499,10 @@ impl VmX86_64 for KvmVm {
         }
     }
 
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>> {
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuX86_64>> {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
         // or VcpuX86.  But both use the same implementation in KvmVm::create_vcpu.
-        Ok(Box::new(KvmVm::create_kvm_vcpu(self, id)?))
+        Ok(Arc::new(KvmVm::create_kvm_vcpu(self, id)?))
     }
 
     /// Sets the address of the three-page region in the VM's address space.

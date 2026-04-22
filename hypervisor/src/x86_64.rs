@@ -8,6 +8,7 @@ use std::arch::x86_64::__cpuid;
 use std::arch::x86_64::_rdtsc;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use anyhow::Context;
 use base::custom_serde::deserialize_seq_to_arr;
@@ -59,7 +60,7 @@ pub trait VmX86_64: Vm {
     fn get_hypervisor(&self) -> &dyn HypervisorX86_64;
 
     /// Create a Vcpu with the specified Vcpu ID.
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuX86_64>>;
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuX86_64>>;
 
     /// Sets the address of the three-page region in the VM's address space.
     fn set_tss_addr(&self, addr: GuestAddress) -> Result<()>;

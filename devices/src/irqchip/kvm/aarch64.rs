@@ -45,7 +45,7 @@ fn kvm_default_irq_routing_table() -> Vec<IrqRoute> {
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
     pub(super) vm: Arc<KvmVm>,
-    pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
+    pub(super) vcpus: Arc<Mutex<Vec<Option<Arc<KvmVcpu>>>>>,
     vgic: SafeDescriptor,
     vgic_its: Option<SafeDescriptor>,
     device_kind: DeviceKind,

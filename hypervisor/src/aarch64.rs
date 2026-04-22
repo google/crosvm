@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use aarch64_sys_reg::AArch64SysRegId;
 use anyhow::Context;
@@ -77,7 +78,7 @@ pub trait VmAArch64: Vm {
     fn load_protected_vm_firmware(&self, fw_addr: GuestAddress, fw_max_size: u64) -> Result<()>;
 
     /// Create a Vcpu with the specified Vcpu ID.
-    fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>>;
+    fn create_vcpu(&self, id: usize) -> Result<Arc<dyn VcpuAArch64>>;
 
     /// Create DT configuration node for the hypervisor.
     /// `fdt` - Fdt initialized at the root node.

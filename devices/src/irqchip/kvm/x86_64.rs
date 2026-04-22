@@ -81,7 +81,7 @@ fn kvm_default_irq_routing_table(ioapic_pins: usize) -> Vec<IrqRoute> {
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
     pub(super) vm: Arc<KvmVm>,
-    pub(super) vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
+    pub(super) vcpus: Arc<Mutex<Vec<Option<Arc<KvmVcpu>>>>>,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
 
@@ -235,7 +235,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
 /// for x86/x86_64.
 pub struct KvmSplitIrqChip {
     vm: Arc<KvmVm>,
-    vcpus: Arc<Mutex<Vec<Option<KvmVcpu>>>>,
+    vcpus: Arc<Mutex<Vec<Option<Arc<KvmVcpu>>>>>,
     routes: Arc<Mutex<Vec<IrqRoute>>>,
     pit: Arc<Mutex<Pit>>,
     pic: Arc<Mutex<Pic>>,
@@ -449,11 +449,12 @@ fn routes_conflict(route: &IrqRoute, other: &IrqRoute) -> bool {
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip for KvmSplitIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: &dyn Vcpu) -> Result<()> {
-        let vcpu: &KvmVcpu = vcpu
-            .downcast_ref()
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn Vcpu>) -> Result<()> {
+        let vcpu = vcpu
+            .downcast_arc()
+            .map_err(|_| ())
             .expect("KvmSplitIrqChip::add_vcpu called with non-KvmVcpu");
-        self.vcpus.lock()[vcpu_id] = Some(vcpu.try_clone()?);
+        self.vcpus.lock()[vcpu_id] = Some(vcpu);
         Ok(())
     }
 

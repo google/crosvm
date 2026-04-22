@@ -1505,7 +1505,7 @@ impl arch::LinuxArch for X8664arch {
         vm: &V,
         hypervisor: &dyn HypervisorX86_64,
         irq_chip: &mut dyn IrqChipX86_64,
-        vcpu: &mut dyn VcpuX86_64,
+        vcpu: &dyn VcpuX86_64,
         vcpu_init: VcpuInitX86_64,
         vcpu_id: usize,
         num_vcpus: usize,

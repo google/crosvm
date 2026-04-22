@@ -36,7 +36,7 @@ impl GunyahIrqChip {
 
 impl IrqChip for GunyahIrqChip {
     // GunyahIrqChip doesn't need to track VCPUs.
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: &dyn Vcpu) -> Result<()> {
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn Vcpu>) -> Result<()> {
         Ok(())
     }
 

@@ -395,7 +395,7 @@ fn get_block_size() -> u64 {
     block_size as u64
 }
 
-fn get_vcpu_mpidr_aff<Vcpu: VcpuAArch64>(vcpus: &[Vcpu], index: usize) -> Option<u64> {
+fn get_vcpu_mpidr_aff<Vcpu: VcpuAArch64>(vcpus: &[Arc<Vcpu>], index: usize) -> Option<u64> {
     const MPIDR_AFF_MASK: u64 = 0xff_00ff_ffff;
 
     Some(vcpus.get(index)?.get_mpidr().ok()? & MPIDR_AFF_MASK)
@@ -660,11 +660,9 @@ impl arch::LinuxArch for AArch64 {
         let mut vcpus = Vec::with_capacity(vcpu_count);
         let mut vcpu_init = Vec::with_capacity(vcpu_count);
         for vcpu_id in 0..vcpu_count {
-            let vcpu: Vcpu = *vm
-                .create_vcpu(vcpu_id)
-                .map_err(Error::CreateVcpu)?
-                .downcast::<Vcpu>()
-                .map_err(|_| Error::DowncastVcpu)?;
+            let vcpu: Arc<Vcpu> =
+                Arc::downcast(vm.create_vcpu(vcpu_id).map_err(Error::CreateVcpu)?)
+                    .map_err(|_| Error::DowncastVcpu)?;
             let per_vcpu_init = if vm
                 .get_hypervisor()
                 .check_capability(HypervisorCap::HypervisorInitializedBootContext)
@@ -1097,7 +1095,7 @@ impl arch::LinuxArch for AArch64 {
         _vm: &V,
         _hypervisor: &dyn Hypervisor,
         _irq_chip: &mut dyn IrqChipAArch64,
-        vcpu: &mut dyn VcpuAArch64,
+        vcpu: &dyn VcpuAArch64,
         vcpu_init: VcpuInitAArch64,
         _vcpu_id: usize,
         _num_vcpus: usize,
