@@ -58,8 +58,13 @@ pub use fdt::apply_device_tree_overlays;
 pub use fdt::DtbOverlay;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
+pub use hypervisor::CpuConfigArch;
+pub use hypervisor::HypervisorArch;
 use hypervisor::MemCacheType;
+pub use hypervisor::VcpuArch;
+pub use hypervisor::VcpuInitArch;
 use hypervisor::Vm;
+pub use hypervisor::VmArch;
 #[cfg(windows)]
 use jail::FakeMinijailStub as Minijail;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -96,29 +101,14 @@ cfg_if::cfg_if! {
         pub use devices::IrqChipAArch64 as IrqChipArch;
         #[cfg(feature = "gdb")]
         pub use gdbstub_arch::aarch64::AArch64 as GdbArch;
-        pub use hypervisor::CpuConfigAArch64 as CpuConfigArch;
-        pub use hypervisor::Hypervisor as HypervisorArch;
-        pub use hypervisor::VcpuAArch64 as VcpuArch;
-        pub use hypervisor::VcpuInitAArch64 as VcpuInitArch;
-        pub use hypervisor::VmAArch64 as VmArch;
     } else if #[cfg(target_arch = "riscv64")] {
         pub use devices::IrqChipRiscv64 as IrqChipArch;
         #[cfg(feature = "gdb")]
         pub use gdbstub_arch::riscv::Riscv64 as GdbArch;
-        pub use hypervisor::CpuConfigRiscv64 as CpuConfigArch;
-        pub use hypervisor::Hypervisor as HypervisorArch;
-        pub use hypervisor::VcpuInitRiscv64 as VcpuInitArch;
-        pub use hypervisor::VcpuRiscv64 as VcpuArch;
-        pub use hypervisor::VmRiscv64 as VmArch;
     } else if #[cfg(target_arch = "x86_64")] {
         pub use devices::IrqChipX86_64 as IrqChipArch;
         #[cfg(feature = "gdb")]
         pub use gdbstub_arch::x86::X86_64_SSE as GdbArch;
-        pub use hypervisor::CpuConfigX86_64 as CpuConfigArch;
-        pub use hypervisor::HypervisorX86_64 as HypervisorArch;
-        pub use hypervisor::VcpuInitX86_64 as VcpuInitArch;
-        pub use hypervisor::VcpuX86_64 as VcpuArch;
-        pub use hypervisor::VmX86_64 as VmArch;
     }
 }
 

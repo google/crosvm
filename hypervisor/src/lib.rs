@@ -44,6 +44,28 @@ pub use crate::riscv64::*;
 #[cfg(target_arch = "x86_64")]
 pub use crate::x86_64::*;
 
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "aarch64")] {
+        pub use CpuConfigAArch64 as CpuConfigArch;
+        pub use Hypervisor as HypervisorArch;
+        pub use VcpuAArch64 as VcpuArch;
+        pub use VcpuInitAArch64 as VcpuInitArch;
+        pub use VmAArch64 as VmArch;
+    } else if #[cfg(target_arch = "riscv64")] {
+        pub use CpuConfigRiscv64 as CpuConfigArch;
+        pub use Hypervisor as HypervisorArch;
+        pub use VcpuInitRiscv64 as VcpuInitArch;
+        pub use VcpuRiscv64 as VcpuArch;
+        pub use VmRiscv64 as VmArch;
+    } else if #[cfg(target_arch = "x86_64")] {
+        pub use CpuConfigX86_64 as CpuConfigArch;
+        pub use HypervisorX86_64 as HypervisorArch;
+        pub use VcpuInitX86_64 as VcpuInitArch;
+        pub use VcpuX86_64 as VcpuArch;
+        pub use VmX86_64 as VmArch;
+    }
+}
+
 /// An index in the list of guest-mapped memory regions.
 pub type MemSlot = u32;
 
