@@ -36,6 +36,7 @@ use hypervisor::PicSelect;
 use hypervisor::PicState;
 use hypervisor::PitState;
 use hypervisor::Vcpu;
+use hypervisor::VcpuArch;
 use hypervisor::VcpuX86_64;
 use hypervisor::Vm;
 use resources::SystemAllocator;
@@ -219,7 +220,7 @@ impl WhpxSplitIrqChip {
 
 /// This IrqChip only works with Whpx so we only implement it for WhpxVcpu.
 impl IrqChip for WhpxSplitIrqChip {
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn Vcpu>) -> Result<()> {
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         // The WHPX API acts entirely on the VM partition, so we don't need to keep references to
         // the vcpus.
         Ok(())
@@ -377,7 +378,7 @@ impl IrqChip for WhpxSplitIrqChip {
 
     /// Injects any pending interrupts for `vcpu`.
     /// For WhpxSplitIrqChip this injects any PIC interrupts on vcpu_id 0.
-    fn inject_interrupts(&self, vcpu: &dyn Vcpu) -> Result<()> {
+    fn inject_interrupts(&self, vcpu: &dyn VcpuArch) -> Result<()> {
         let vcpu: &WhpxVcpu = vcpu
             .downcast_ref()
             .expect("WhpxSplitIrqChip::add_vcpu called with non-WhpxVcpu");
@@ -407,7 +408,7 @@ impl IrqChip for WhpxSplitIrqChip {
     /// `VcpuRunState::Interrupted` if the wait was interrupted.
     /// For WhpxSplitIrqChip this is a no-op and always returns Runnable because Whpx handles VCPU
     /// blocking.
-    fn wait_until_runnable(&self, _vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+    fn wait_until_runnable(&self, _vcpu: &dyn VcpuArch) -> Result<VcpuRunState> {
         Ok(VcpuRunState::Runnable)
     }
 

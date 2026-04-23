@@ -40,7 +40,7 @@ use hypervisor::MsiDataMessage;
 use hypervisor::PicSelect;
 use hypervisor::PicState;
 use hypervisor::PitState;
-use hypervisor::Vcpu;
+use hypervisor::VcpuArch;
 use hypervisor::VcpuX86_64;
 use resources::SystemAllocator;
 use snapshot::AnySnapshot;
@@ -385,9 +385,8 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
 }
 
 impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn Vcpu>) -> Result<()> {
-        let vcpu = vcpu
-            .downcast_arc()
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()> {
+        let vcpu = Arc::downcast(vcpu)
             .map_err(|_| ())
             .expect("UserspaceIrqChip::add_vcpu called with incorrect vcpu type");
         self.vcpus.lock()[vcpu_id] = Some(vcpu);
@@ -555,7 +554,7 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
     ///   * Handles APIC INIT IPIs
     ///   * Handles APIC SIPIs
     ///   * Requests an interrupt window, if PIC or APIC still has pending interrupts for this vcpu
-    fn inject_interrupts(&self, vcpu: &dyn Vcpu) -> Result<()> {
+    fn inject_interrupts(&self, vcpu: &dyn VcpuArch) -> Result<()> {
         let vcpu: &V = vcpu
             .downcast_ref()
             .expect("UserspaceIrqChip::add_vcpu called with incorrect vcpu type");
@@ -646,7 +645,7 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
     /// For `UserspaceIrqChip`, if the APIC isn't `MPState::Runnable`, sleep until there are new
     /// interrupts pending on the APIC, inject the interrupts, and go back to sleep if still not
     /// runnable.
-    fn wait_until_runnable(&self, vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+    fn wait_until_runnable(&self, vcpu: &dyn VcpuArch) -> Result<VcpuRunState> {
         let vcpu_id = vcpu.id();
         let waiter = &self.waiters[vcpu_id];
         let mut interrupted_lock = waiter.mtx.lock();

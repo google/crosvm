@@ -28,7 +28,7 @@ use hypervisor::PicSelect;
 use hypervisor::PicState;
 use hypervisor::PitState;
 use hypervisor::Vcpu;
-use hypervisor::VcpuX86_64;
+use hypervisor::VcpuArch;
 use kvm_sys::*;
 use resources::SystemAllocator;
 use serde::Deserialize;
@@ -449,9 +449,8 @@ fn routes_conflict(route: &IrqRoute, other: &IrqRoute) -> bool {
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip for KvmSplitIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn Vcpu>) -> Result<()> {
-        let vcpu = vcpu
-            .downcast_arc()
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()> {
+        let vcpu = Arc::downcast(vcpu)
             .map_err(|_| ())
             .expect("KvmSplitIrqChip::add_vcpu called with non-KvmVcpu");
         self.vcpus.lock()[vcpu_id] = Some(vcpu);
@@ -595,7 +594,7 @@ impl IrqChip for KvmSplitIrqChip {
 
     /// Injects any pending interrupts for `vcpu`.
     /// For KvmSplitIrqChip this injects any PIC interrupts on vcpu_id 0.
-    fn inject_interrupts(&self, vcpu: &dyn Vcpu) -> Result<()> {
+    fn inject_interrupts(&self, vcpu: &dyn VcpuArch) -> Result<()> {
         let vcpu: &KvmVcpu = vcpu
             .downcast_ref()
             .expect("KvmSplitIrqChip::add_vcpu called with non-KvmVcpu");
@@ -626,7 +625,7 @@ impl IrqChip for KvmSplitIrqChip {
     /// `VcpuRunState::Interrupted` if the wait was interrupted.
     /// For KvmSplitIrqChip this is a no-op and always returns Runnable because KVM handles VCPU
     /// blocking.
-    fn wait_until_runnable(&self, _vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+    fn wait_until_runnable(&self, _vcpu: &dyn VcpuArch) -> Result<VcpuRunState> {
         Ok(VcpuRunState::Runnable)
     }
 

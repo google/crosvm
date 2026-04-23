@@ -13,7 +13,7 @@ use hypervisor::geniezone::GeniezoneVm;
 use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
-use hypervisor::Vcpu;
+use hypervisor::VcpuArch;
 use resources::SystemAllocator;
 use sync::Mutex;
 
@@ -150,7 +150,7 @@ impl IrqChipAArch64 for GeniezoneKernelIrqChip {
 /// This IrqChip only works with Geniezone so we only implement it for GeniezoneVcpu.
 impl IrqChip for GeniezoneKernelIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn Vcpu>) -> Result<()> {
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         Ok(())
     }
 
@@ -241,7 +241,7 @@ impl IrqChip for GeniezoneKernelIrqChip {
     /// Injects any pending interrupts for `vcpu`.
     /// For GeniezoneKernelIrqChip this is a no-op because Geniezone is responsible for injecting
     /// all interrupts.
-    fn inject_interrupts(&self, _vcpu: &dyn Vcpu) -> Result<()> {
+    fn inject_interrupts(&self, _vcpu: &dyn VcpuArch) -> Result<()> {
         Ok(())
     }
 
@@ -254,7 +254,7 @@ impl IrqChip for GeniezoneKernelIrqChip {
     /// `VcpuRunState::Interrupted` if the wait was interrupted.
     /// For GeniezoneKernelIrqChip this is a no-op and always returns Runnable because Geniezone
     /// handles VCPU blocking.
-    fn wait_until_runnable(&self, _vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+    fn wait_until_runnable(&self, _vcpu: &dyn VcpuArch) -> Result<VcpuRunState> {
         Ok(VcpuRunState::Runnable)
     }
 

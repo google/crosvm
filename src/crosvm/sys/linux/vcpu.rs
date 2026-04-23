@@ -506,7 +506,7 @@ where
             vcpu.set_immediate_exit(false);
         }
 
-        if let Err(e) = irq_chip.inject_interrupts(vcpu.as_vcpu()) {
+        if let Err(e) = irq_chip.inject_interrupts(&*vcpu) {
             error!("failed to inject interrupts for vcpu {}: {}", cpu_id, e);
         }
     }

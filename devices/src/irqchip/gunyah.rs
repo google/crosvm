@@ -10,7 +10,7 @@ use hypervisor::gunyah::GunyahVm;
 use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
-use hypervisor::Vcpu;
+use hypervisor::VcpuArch;
 
 use crate::IrqChip;
 use crate::IrqChipAArch64;
@@ -36,7 +36,7 @@ impl GunyahIrqChip {
 
 impl IrqChip for GunyahIrqChip {
     // GunyahIrqChip doesn't need to track VCPUs.
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn Vcpu>) -> Result<()> {
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         Ok(())
     }
 
@@ -110,7 +110,7 @@ impl IrqChip for GunyahIrqChip {
     /// Injects any pending interrupts for `vcpu`.
     /// For GunyahIrqChip this is a no-op because Gunyah is responsible for injecting all
     /// interrupts.
-    fn inject_interrupts(&self, _vcpu: &dyn Vcpu) -> Result<()> {
+    fn inject_interrupts(&self, _vcpu: &dyn VcpuArch) -> Result<()> {
         Ok(())
     }
 
@@ -118,7 +118,7 @@ impl IrqChip for GunyahIrqChip {
     /// For GunyahIrqChip this is a no-op because Gunyah handles VCPU blocking.
     fn halted(&self, _vcpu_id: usize) {}
 
-    fn wait_until_runnable(&self, _vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+    fn wait_until_runnable(&self, _vcpu: &dyn VcpuArch) -> Result<VcpuRunState> {
         // Gunyah handles vCPU blocking. From userspace perspective, vCPU is always runnable.
         Ok(VcpuRunState::Runnable)
     }

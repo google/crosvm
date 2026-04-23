@@ -10,7 +10,7 @@ use base::Event;
 use base::Result;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
-use hypervisor::Vcpu;
+use hypervisor::VcpuArch;
 use resources::SystemAllocator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -117,7 +117,7 @@ impl IrqEventSource {
 /// multiple hypervisors with a single implementation.
 pub trait IrqChip: Send {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn Vcpu>) -> Result<()>;
+    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()>;
 
     /// Register an event with edge-trigger semantic that can trigger an interrupt for a particular
     /// GSI.
@@ -167,7 +167,7 @@ pub trait IrqChip: Send {
     fn broadcast_eoi(&self, vector: u8) -> Result<()>;
 
     /// Injects any pending interrupts for `vcpu`.
-    fn inject_interrupts(&self, vcpu: &dyn Vcpu) -> Result<()>;
+    fn inject_interrupts(&self, vcpu: &dyn VcpuArch) -> Result<()>;
 
     /// Notifies the irq chip that the specified VCPU has executed a halt instruction.
     fn halted(&self, vcpu_id: usize);
@@ -175,7 +175,7 @@ pub trait IrqChip: Send {
     /// Blocks until `vcpu` is in a runnable state or until interrupted by
     /// `IrqChip::kick_halted_vcpus`.  Returns `VcpuRunState::Runnable if vcpu is runnable, or
     /// `VcpuRunState::Interrupted` if the wait was interrupted.
-    fn wait_until_runnable(&self, vcpu: &dyn Vcpu) -> Result<VcpuRunState>;
+    fn wait_until_runnable(&self, vcpu: &dyn VcpuArch) -> Result<VcpuRunState>;
 
     /// Makes unrunnable VCPUs return immediately from `wait_until_runnable`.
     /// For UserspaceIrqChip, every vcpu gets kicked so its current or next call to

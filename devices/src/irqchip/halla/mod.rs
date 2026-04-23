@@ -13,7 +13,7 @@ use hypervisor::halla::HallaVm;
 use hypervisor::DeviceKind;
 use hypervisor::IrqRoute;
 use hypervisor::MPState;
-use hypervisor::Vcpu;
+use hypervisor::VcpuArch;
 use resources::SystemAllocator;
 use sync::Mutex;
 
@@ -148,7 +148,7 @@ impl IrqChipAArch64 for HallaKernelIrqChip {
 }
 
 impl IrqChip for HallaKernelIrqChip {
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn Vcpu>) -> Result<()> {
+    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         Ok(())
     }
 
@@ -239,7 +239,7 @@ impl IrqChip for HallaKernelIrqChip {
     /// Injects any pending interrupts for `vcpu`.
     /// For HallaKernelIrqChip this is a no-op because Halla is responsible for injecting
     /// all interrupts.
-    fn inject_interrupts(&self, _vcpu: &dyn Vcpu) -> Result<()> {
+    fn inject_interrupts(&self, _vcpu: &dyn VcpuArch) -> Result<()> {
         Ok(())
     }
 
@@ -252,7 +252,7 @@ impl IrqChip for HallaKernelIrqChip {
     /// `VcpuRunState::Interrupted` if the wait was interrupted.
     /// For HallaKernelIrqChip this is a no-op and always returns Runnable because Halla
     /// handles VCPU blocking.
-    fn wait_until_runnable(&self, _vcpu: &dyn Vcpu) -> Result<VcpuRunState> {
+    fn wait_until_runnable(&self, _vcpu: &dyn VcpuArch) -> Result<VcpuRunState> {
         Ok(VcpuRunState::Runnable)
     }
 
