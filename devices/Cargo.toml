@@ -65,7 +65,6 @@ crosvm_cli = { workspace = true }
 data_model = { workspace = true }
 dbus = { version = "0.9.7", features = ["stdfd"], optional = true }
 disk = { workspace = true }
-downcast-rs = "1.2.0"
 enumn = { workspace = true }
 ffmpeg = { workspace = true, optional = true }
 gpu_display = { workspace = true, optional = true }

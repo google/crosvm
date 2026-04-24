@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
@@ -16,8 +17,6 @@ use base::warn;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::SharedMemory;
-use downcast_rs::impl_downcast;
-use downcast_rs::Downcast;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -333,8 +332,7 @@ pub trait PciCapability {
     fn writable_bits(&self) -> Vec<u32>;
 }
 
-pub trait PciCapConfigWriteResult: Downcast {}
-impl_downcast!(PciCapConfigWriteResult);
+pub trait PciCapConfigWriteResult: Any {}
 
 /// A trait for implementing complex PCI capabilities.
 pub trait PciCapConfig: Send {

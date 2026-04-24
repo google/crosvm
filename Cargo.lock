@@ -1048,7 +1048,6 @@ dependencies = [
  "data_model",
  "dbus",
  "disk",
- "downcast-rs",
  "enumn",
  "ffmpeg",
  "fuse",
@@ -1141,12 +1140,6 @@ checksum = "c3267e1ade4f1f6ddd35fed44a04b6514e244ffeda90c6a14a9ee30f9c9fd7a1"
 dependencies = [
  "litrs",
 ]
-
-[[package]]
-name = "downcast-rs"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "e2e_tests"
@@ -1588,7 +1581,6 @@ dependencies = [
  "cfg-if",
  "cros_fdt",
  "data_model",
- "downcast-rs",
  "enumn",
  "fnv",
  "hypervisor_test_macro",

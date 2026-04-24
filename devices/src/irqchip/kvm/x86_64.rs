@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::any::Any;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -595,8 +596,7 @@ impl IrqChip for KvmSplitIrqChip {
     /// Injects any pending interrupts for `vcpu`.
     /// For KvmSplitIrqChip this injects any PIC interrupts on vcpu_id 0.
     fn inject_interrupts(&self, vcpu: &dyn VcpuArch) -> Result<()> {
-        let vcpu: &KvmVcpu = vcpu
-            .downcast_ref()
+        let vcpu: &KvmVcpu = <dyn Any>::downcast_ref(vcpu)
             .expect("KvmSplitIrqChip::add_vcpu called with non-KvmVcpu");
 
         let vcpu_id = vcpu.id();

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::any::Any;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -255,7 +256,7 @@ impl PciePort {
     }
 
     pub fn handle_cap_write_result(&mut self, res: Box<dyn PciCapConfigWriteResult>) {
-        if let Some(status) = res.downcast_ref::<PmStatusChange>() {
+        if let Some(status) = <dyn Any>::downcast_ref::<PmStatusChange>(&*res) {
             if status.from == PciDevicePower::D3
                 && status.to == PciDevicePower::D0
                 && self.prepare_hotplug

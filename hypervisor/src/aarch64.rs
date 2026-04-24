@@ -12,7 +12,6 @@ use anyhow::Context;
 use base::Error;
 use base::Result;
 use cros_fdt::Fdt;
-use downcast_rs::impl_downcast;
 use libc::EINVAL;
 use serde::Deserialize;
 use serde::Serialize;
@@ -249,8 +248,6 @@ pub struct VcpuSnapshot {
     pub cache_arch_info: BTreeMap<u8, u64>,
     pub hypervisor_data: AnySnapshot,
 }
-
-impl_downcast!(VcpuAArch64);
 
 /// Initial register state for AArch64 VCPUs.
 #[derive(Clone, Default)]

@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use base::Result;
-use downcast_rs::impl_downcast;
 use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestAddress;
@@ -53,8 +52,6 @@ pub trait VcpuRiscv64: Vcpu {
 pub struct VcpuSnapshot {
     pub vcpu_id: usize,
 }
-
-impl_downcast!(VcpuRiscv64);
 
 /// Initial state for Riscv64 VCPUs.
 #[derive(Clone)]

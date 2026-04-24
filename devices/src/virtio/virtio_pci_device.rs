@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -850,9 +851,9 @@ impl PciDevice for VirtioPciDevice {
 
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
         if let Some(res) = self.config_regs.write_reg(reg_idx, offset, data) {
-            if let Some(msix_behavior) = res.downcast_ref::<MsixStatus>() {
+            if let Some(msix_behavior) = <dyn Any>::downcast_ref::<MsixStatus>(&*res) {
                 self.device.control_notify(*msix_behavior);
-            } else if let Some(status) = res.downcast_ref::<PmStatusChange>() {
+            } else if let Some(status) = <dyn Any>::downcast_ref::<PmStatusChange>(&*res) {
                 self.handle_pm_status_change(status);
             }
         }

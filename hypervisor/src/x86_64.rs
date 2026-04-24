@@ -17,7 +17,6 @@ use base::error;
 use base::warn;
 use base::Result;
 use bit_field::*;
-use downcast_rs::impl_downcast;
 use libc::c_void;
 use serde::Deserialize;
 use serde::Serialize;
@@ -312,8 +311,6 @@ pub struct VcpuSnapshot {
     hypervisor_data: AnySnapshot,
     tsc_offset: u64,
 }
-
-impl_downcast!(VcpuX86_64);
 
 // TSC MSR
 pub const MSR_IA32_TSC: u32 = 0x00000010;
