@@ -1110,10 +1110,6 @@ pub struct GeniezoneVcpu {
 }
 
 impl Vcpu for GeniezoneVcpu {
-    fn as_vcpu(&self) -> &dyn Vcpu {
-        self
-    }
-
     fn id(&self) -> usize {
         self.id
     }

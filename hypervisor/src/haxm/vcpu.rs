@@ -129,10 +129,6 @@ impl HaxmVcpu {
 }
 
 impl Vcpu for HaxmVcpu {
-    fn as_vcpu(&self) -> &dyn Vcpu {
-        self
-    }
-
     /// Returns the vcpu id.
     fn id(&self) -> usize {
         self.id

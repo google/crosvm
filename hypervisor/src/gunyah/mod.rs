@@ -847,10 +847,6 @@ impl AsRawDescriptor for GunyahVcpu {
 }
 
 impl Vcpu for GunyahVcpu {
-    fn as_vcpu(&self) -> &dyn Vcpu {
-        self
-    }
-
     fn run(&self) -> Result<VcpuExit> {
         // SAFETY:
         // Safe because we know our file is a VCPU fd and we verify the return result.

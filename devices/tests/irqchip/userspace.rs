@@ -656,10 +656,6 @@ impl Vcpu for FakeVcpu {
         self.id
     }
 
-    fn as_vcpu(&self) -> &dyn Vcpu {
-        self
-    }
-
     fn run(&self) -> Result<VcpuExit> {
         unimplemented!()
     }

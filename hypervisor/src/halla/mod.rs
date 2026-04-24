@@ -1120,10 +1120,6 @@ pub struct HallaVcpu {
 }
 
 impl Vcpu for HallaVcpu {
-    fn as_vcpu(&self) -> &dyn Vcpu {
-        self
-    }
-
     fn id(&self) -> usize {
         self.id
     }

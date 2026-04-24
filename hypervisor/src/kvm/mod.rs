@@ -959,10 +959,6 @@ pub struct KvmVcpu {
 }
 
 impl Vcpu for KvmVcpu {
-    fn as_vcpu(&self) -> &dyn Vcpu {
-        self
-    }
-
     fn id(&self) -> usize {
         self.id
     }

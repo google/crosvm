@@ -488,10 +488,6 @@ impl WhpxVcpu {
 }
 
 impl Vcpu for WhpxVcpu {
-    fn as_vcpu(&self) -> &dyn Vcpu {
-        self
-    }
-
     /// Returns the vcpu id.
     fn id(&self) -> usize {
         self.index.try_into().unwrap()
