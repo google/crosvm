@@ -58,7 +58,7 @@ fn get_chip(num_vcpus: usize) -> WhpxSplitIrqChip {
 
     let (_, irq_tube) = Tube::pair().expect("failed to create irq tube");
 
-    let mut chip = WhpxSplitIrqChip::new(vm.clone(), irq_tube, None)
+    let chip = WhpxSplitIrqChip::new(vm.clone(), irq_tube, None)
         .expect("failed to instantiate WhpxSplitIrqChip");
 
     for i in 0..num_vcpus {
@@ -131,7 +131,7 @@ fn routes_conflict() {
     if !split_supported() {
         return;
     }
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
     chip.route_irq(IrqRoute {
         gsi: 32,
         source: IrqSource::Msi {
@@ -156,7 +156,7 @@ fn irq_event_tokens() {
     if !split_supported() {
         return;
     }
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
     let tokens = chip
         .irq_event_tokens()
         .expect("could not get irq_event_tokens");
@@ -195,7 +195,7 @@ fn finalize_devices() {
     if !split_supported() {
         return;
     }
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
 
     let mmio_bus = Bus::new(BusType::Mmio);
     let io_bus = Bus::new(BusType::Io);
@@ -318,7 +318,7 @@ fn broadcast_eoi() {
     if !split_supported() {
         return;
     }
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
 
     let mmio_bus = Bus::new(BusType::Mmio);
     let io_bus = Bus::new(BusType::Io);

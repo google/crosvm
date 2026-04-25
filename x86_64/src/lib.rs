@@ -1051,7 +1051,7 @@ impl arch::LinuxArch for X8664arch {
         vm: Arc<dyn VmX86_64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-        irq_chip: &mut dyn IrqChipX86_64,
+        irq_chip: &dyn IrqChipX86_64,
         vcpu_ids: &mut Vec<usize>,
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
@@ -1111,7 +1111,7 @@ impl arch::LinuxArch for X8664arch {
 
         let (pci, pci_irqs, pid_debug_label_map, amls, gpe_scope_amls) = arch::generate_pci_root(
             pci_devices,
-            irq_chip.as_irq_chip_mut(),
+            irq_chip.as_irq_chip(),
             mmio_bus.clone(),
             GuestAddress(pcie_cfg_mmio_range.start),
             12,
@@ -1191,7 +1191,7 @@ impl arch::LinuxArch for X8664arch {
         };
         let serial_devices = Self::setup_serial_devices(
             components.hv_cfg.protection_type,
-            irq_chip.as_irq_chip_mut(),
+            irq_chip.as_irq_chip(),
             &io_bus,
             serial_parameters,
             serial_jail,
@@ -1241,7 +1241,7 @@ impl arch::LinuxArch for X8664arch {
             suspend_tube_send.clone(),
             vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
             components.acpi_sdts,
-            irq_chip.as_irq_chip_mut(),
+            irq_chip.as_irq_chip(),
             sci_irq,
             battery,
             &mmio_bus,
@@ -1500,7 +1500,7 @@ impl arch::LinuxArch for X8664arch {
     fn configure_vcpu(
         vm: &dyn Vm,
         hypervisor: &dyn HypervisorX86_64,
-        irq_chip: &mut dyn IrqChipX86_64,
+        irq_chip: &dyn IrqChipX86_64,
         vcpu: &dyn VcpuX86_64,
         vcpu_init: VcpuInitX86_64,
         vcpu_id: usize,
@@ -2120,7 +2120,7 @@ impl X8664arch {
     pub fn setup_legacy_cmos_device(
         arch_memory_layout: &ArchMemoryLayout,
         io_bus: &Bus,
-        irq_chip: &mut dyn IrqChipX86_64,
+        irq_chip: &dyn IrqChipX86_64,
         vm_control: Tube,
         mem_size: u64,
     ) -> anyhow::Result<()> {
@@ -2185,7 +2185,7 @@ impl X8664arch {
         suspend_tube: Arc<Mutex<SendTube>>,
         vm_evt_wrtube: SendTube,
         sdts: Vec<SDT>,
-        irq_chip: &mut dyn IrqChip,
+        irq_chip: &dyn IrqChip,
         sci_irq: u32,
         battery: (Option<BatteryType>, Option<Minijail>),
         #[cfg_attr(windows, allow(unused_variables))] mmio_bus: &Bus,
@@ -2451,7 +2451,7 @@ impl X8664arch {
     /// * - `serial_parameters` - definitions for how the serial devices should be configured
     pub fn setup_serial_devices(
         protection_type: ProtectionType,
-        irq_chip: &mut dyn IrqChip,
+        irq_chip: &dyn IrqChip,
         io_bus: &Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,

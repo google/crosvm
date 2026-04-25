@@ -42,7 +42,7 @@ pub fn add_goldfish_battery(
     amls: &mut Vec<u8>,
     battery_jail: Option<Minijail>,
     mmio_bus: &Bus,
-    irq_chip: &mut dyn IrqChip,
+    irq_chip: &dyn IrqChip,
     irq_num: u32,
     resources: &mut SystemAllocator,
     #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
@@ -163,7 +163,7 @@ impl PlatformBusResources {
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn generate_platform_bus(
     devices: Vec<(VfioPlatformDevice, Option<Minijail>)>,
-    irq_chip: &mut dyn IrqChip,
+    irq_chip: &dyn IrqChip,
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
     vm: &dyn Vm,

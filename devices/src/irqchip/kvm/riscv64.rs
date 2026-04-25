@@ -278,10 +278,6 @@ impl IrqChipRiscv64 for KvmKernelIrqChip {
         self
     }
 
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
-        self
-    }
-
     fn finalize(&self) -> Result<()> {
         // The kernel needs the number of vcpus finalized before setting up the address for each
         // interrupt controller.

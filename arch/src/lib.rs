@@ -630,7 +630,7 @@ pub trait LinuxArch {
         vm: Arc<dyn VmArch>,
         ramoops_region: Option<pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-        irq_chip: &mut dyn IrqChipArch,
+        irq_chip: &dyn IrqChipArch,
         vcpu_ids: &mut Vec<usize>,
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
@@ -658,7 +658,7 @@ pub trait LinuxArch {
     fn configure_vcpu(
         vm: &dyn Vm,
         hypervisor: &dyn HypervisorArch,
-        irq_chip: &mut dyn IrqChipArch,
+        irq_chip: &dyn IrqChipArch,
         vcpu: &dyn VcpuArch,
         vcpu_init: VcpuInitArch,
         vcpu_id: usize,
@@ -896,7 +896,7 @@ pub fn configure_pci_device(
 
         linux
             .irq_chip
-            .as_irq_chip_mut()
+            .as_irq_chip()
             .register_level_irq_event(gsi, &intx_event, IrqEventSource::from_device(&device))
             .map_err(DeviceRegistrationError::RegisterIrqfd)?;
     }
@@ -1067,7 +1067,7 @@ pub fn assign_pci_addresses(
 /// Creates a root PCI device for use by this Vm.
 pub fn generate_pci_root(
     mut devices: Vec<(Box<dyn PciDevice>, Option<Minijail>)>,
-    irq_chip: &mut dyn IrqChip,
+    irq_chip: &dyn IrqChip,
     mmio_bus: Arc<Bus>,
     mmio_base: GuestAddress,
     mmio_register_bit_num: usize,

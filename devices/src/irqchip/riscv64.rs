@@ -14,9 +14,6 @@ pub trait IrqChipRiscv64: IrqChip {
     /// Returns self as the super-trait IrqChip.
     fn as_irq_chip(&self) -> &dyn IrqChip;
 
-    /// Returns self as the mutable super-trait IrqChip.
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip;
-
     /// Completes IrqChip setup. Must be called after Vcpus are created.
     fn finalize(&self) -> Result<()>;
 
@@ -28,7 +25,7 @@ pub trait IrqChipRiscv64: IrqChip {
         anyhow::bail!("snapshot not yet implemented for riscv64")
     }
 
-    fn restore(&mut self, _data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
+    fn restore(&self, _data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
         anyhow::bail!("restore not yet implemented for riscv64")
     }
 }

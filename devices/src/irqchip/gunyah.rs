@@ -36,12 +36,12 @@ impl GunyahIrqChip {
 
 impl IrqChip for GunyahIrqChip {
     // GunyahIrqChip doesn't need to track VCPUs.
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
+    fn add_vcpu(&self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         Ok(())
     }
 
     fn register_edge_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqEdgeEvent,
         _source: IrqEventSource,
@@ -51,13 +51,13 @@ impl IrqChip for GunyahIrqChip {
         Ok(None)
     }
 
-    fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
+    fn unregister_edge_irq_event(&self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
         self.vm.unregister_irqfd(irq, irq_event.get_trigger())?;
         Ok(())
     }
 
     fn register_level_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqLevelEvent,
         _source: IrqEventSource,
@@ -66,16 +66,16 @@ impl IrqChip for GunyahIrqChip {
         Ok(None)
     }
 
-    fn unregister_level_irq_event(&mut self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
+    fn unregister_level_irq_event(&self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
         self.vm.unregister_irqfd(irq, irq_event.get_trigger())?;
         Ok(())
     }
 
-    fn route_irq(&mut self, _route: IrqRoute) -> Result<()> {
+    fn route_irq(&self, _route: IrqRoute) -> Result<()> {
         unimplemented!()
     }
 
-    fn set_irq_routes(&mut self, _routes: &[IrqRoute]) -> Result<()> {
+    fn set_irq_routes(&self, _routes: &[IrqRoute]) -> Result<()> {
         unimplemented!()
     }
 
@@ -87,7 +87,7 @@ impl IrqChip for GunyahIrqChip {
         Ok(Vec::new())
     }
 
-    fn service_irq(&mut self, _irq: u32, _level: bool) -> Result<()> {
+    fn service_irq(&self, _irq: u32, _level: bool) -> Result<()> {
         unimplemented!()
     }
 
@@ -96,7 +96,7 @@ impl IrqChip for GunyahIrqChip {
     /// Event, then the deassert will only happen after an EOI is broadcast for a vector
     /// associated with the irq line.
     /// This function should never be called on GunyahIrqChip.
-    fn service_irq_event(&mut self, _event_index: IrqEventIndex) -> Result<()> {
+    fn service_irq_event(&self, _event_index: IrqEventIndex) -> Result<()> {
         unreachable!();
     }
 
@@ -131,7 +131,7 @@ impl IrqChip for GunyahIrqChip {
         unimplemented!()
     }
 
-    fn set_mp_state(&mut self, _vcpu_id: usize, _state: &MPState) -> Result<()> {
+    fn set_mp_state(&self, _vcpu_id: usize, _state: &MPState) -> Result<()> {
         unimplemented!()
     }
 
@@ -145,7 +145,7 @@ impl IrqChip for GunyahIrqChip {
     }
 
     fn finalize_devices(
-        &mut self,
+        &self,
         _resources: &mut resources::SystemAllocator,
         _io_bus: &crate::Bus,
         _mmio_bus: &crate::Bus,
@@ -154,7 +154,7 @@ impl IrqChip for GunyahIrqChip {
     }
 
     /// The GunyahIrqChip doesn't process irq events itself so this function does nothing.
-    fn process_delayed_irq_events(&mut self) -> Result<()> {
+    fn process_delayed_irq_events(&self) -> Result<()> {
         Ok(())
     }
 
@@ -173,10 +173,6 @@ impl IrqChipAArch64 for GunyahIrqChip {
     }
 
     fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
         self
     }
 

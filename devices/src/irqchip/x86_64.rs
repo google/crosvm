@@ -33,26 +33,23 @@ pub trait IrqChipX86_64: IrqChip {
     // Get this as the super-trait IrqChip.
     fn as_irq_chip(&self) -> &dyn IrqChip;
 
-    // Get this as the mutable super-trait IrqChip.
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip;
-
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState>;
 
     /// Set the current state of the PIC
-    fn set_pic_state(&mut self, select: PicSelect, state: &PicState) -> Result<()>;
+    fn set_pic_state(&self, select: PicSelect, state: &PicState) -> Result<()>;
 
     /// Get the current state of the IOAPIC
     fn get_ioapic_state(&self) -> Result<IoapicState>;
 
     /// Set the current state of the IOAPIC
-    fn set_ioapic_state(&mut self, state: &IoapicState) -> Result<()>;
+    fn set_ioapic_state(&self, state: &IoapicState) -> Result<()>;
 
     /// Get the current state of the specified VCPU's local APIC
     fn get_lapic_state(&self, vcpu_id: usize) -> Result<LapicState>;
 
     /// Set the current state of the specified VCPU's local APIC
-    fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()>;
+    fn set_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()>;
 
     /// Get the lapic frequency in Hz
     fn lapic_frequency(&self) -> u32;
@@ -61,7 +58,7 @@ pub trait IrqChipX86_64: IrqChip {
     fn get_pit(&self) -> Result<PitState>;
 
     /// Sets the state of the PIT.
-    fn set_pit(&mut self, state: &PitState) -> Result<()>;
+    fn set_pit(&self, state: &PitState) -> Result<()>;
 
     /// Returns true if the PIT uses port 0x61 for the PC speaker, false if 0x61 is unused.
     fn pit_uses_speaker_port(&self) -> bool;
@@ -70,7 +67,7 @@ pub trait IrqChipX86_64: IrqChip {
     fn snapshot_chip_specific(&self) -> anyhow::Result<AnySnapshot>;
 
     /// Restore state specific to different IrqChips.
-    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()>;
+    fn restore_chip_specific(&self, data: AnySnapshot) -> anyhow::Result<()>;
 
     /// Snapshot state common to IrqChips.
     fn snapshot(&self, cpus_num: usize) -> anyhow::Result<AnySnapshot> {
@@ -96,7 +93,7 @@ pub trait IrqChipX86_64: IrqChip {
     }
 
     /// Restore state common to IrqChips.
-    fn restore(&mut self, data: AnySnapshot, vcpus_num: usize) -> anyhow::Result<()> {
+    fn restore(&self, data: AnySnapshot, vcpus_num: usize) -> anyhow::Result<()> {
         let deser: IrqChipSnapshot =
             AnySnapshot::from_any(data).context("failed to deserialize data")?;
 

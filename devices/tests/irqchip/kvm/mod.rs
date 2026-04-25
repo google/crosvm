@@ -27,7 +27,7 @@ fn create_kvm_kernel_irqchip() {
     let mem = GuestMemory::new(&[]).unwrap();
     let vm = Arc::new(KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm"));
 
-    let mut chip = KvmKernelIrqChip::new(
+    let chip = KvmKernelIrqChip::new(
         vm.clone(),
         1,
         #[cfg(target_arch = "aarch64")]
@@ -47,7 +47,7 @@ fn create_kvm_kernel_irqchip_with_its() {
     let mem = GuestMemory::new(&[]).unwrap();
     let vm = Arc::new(KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm"));
 
-    let mut chip = KvmKernelIrqChip::new(vm.clone(), 1, /* allow_vgic_its= */ true)
+    let chip = KvmKernelIrqChip::new(vm.clone(), 1, /* allow_vgic_its= */ true)
         .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
@@ -60,7 +60,7 @@ fn mp_state() {
     let mem = GuestMemory::new(&[]).unwrap();
     let vm = Arc::new(KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm"));
 
-    let mut chip = KvmKernelIrqChip::new(
+    let chip = KvmKernelIrqChip::new(
         vm.clone(),
         1,
         #[cfg(target_arch = "aarch64")]

@@ -538,7 +538,7 @@ impl arch::LinuxArch for AArch64 {
         vm: Arc<dyn VmAArch64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-        irq_chip: &mut dyn IrqChipAArch64,
+        irq_chip: &dyn IrqChipAArch64,
         vcpu_ids: &mut Vec<usize>,
         dump_device_tree_blob: Option<PathBuf>,
         _debugcon_jail: Option<Minijail>,
@@ -738,7 +738,7 @@ impl arch::LinuxArch for AArch64 {
         let (pci, pci_irqs, mut pid_debug_label_map, _amls, _gpe_scope_amls) =
             arch::generate_pci_root(
                 pci_devices,
-                irq_chip.as_irq_chip_mut(),
+                irq_chip.as_irq_chip(),
                 mmio_bus.clone(),
                 GuestAddress(arch_memory_layout.pci_cam.start),
                 8,
@@ -767,7 +767,7 @@ impl arch::LinuxArch for AArch64 {
         let (platform_devices, mut platform_pid_debug_label_map, dev_resources) =
             arch::sys::linux::generate_platform_bus(
                 platform_devices,
-                irq_chip.as_irq_chip_mut(),
+                irq_chip.as_irq_chip(),
                 &mmio_bus,
                 system_allocator,
                 &*vm,
@@ -809,7 +809,7 @@ impl arch::LinuxArch for AArch64 {
 
         let (vmwdt_host_tube, vmwdt_control_tube) = Tube::pair().map_err(Error::CreateTube)?;
         Self::add_arch_devs(
-            irq_chip.as_irq_chip_mut(),
+            irq_chip.as_irq_chip(),
             &mmio_bus,
             vcpu_count,
             _vm_evt_wrtube,
@@ -987,7 +987,7 @@ impl arch::LinuxArch for AArch64 {
                     &mut amls,
                     bat_jail,
                     &mmio_bus,
-                    irq_chip.as_irq_chip_mut(),
+                    irq_chip.as_irq_chip(),
                     bat_irq,
                     system_allocator,
                     #[cfg(feature = "swap")]
@@ -1088,7 +1088,7 @@ impl arch::LinuxArch for AArch64 {
     fn configure_vcpu(
         _vm: &dyn Vm,
         _hypervisor: &dyn Hypervisor,
-        _irq_chip: &mut dyn IrqChipAArch64,
+        _irq_chip: &dyn IrqChipAArch64,
         vcpu: &dyn VcpuAArch64,
         vcpu_init: VcpuInitAArch64,
         _vcpu_id: usize,
@@ -1385,7 +1385,7 @@ impl AArch64 {
     /// * `vcpu_count` - The number of virtual CPUs for this guest VM
     /// * `vm_evt_wrtube` - The notification channel
     fn add_arch_devs(
-        irq_chip: &mut dyn IrqChip,
+        irq_chip: &dyn IrqChip,
         bus: &Bus,
         vcpu_count: usize,
         vm_evt_wrtube: &SendTube,

@@ -129,17 +129,13 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
         self
     }
 
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
-        self
-    }
-
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(PicState::from(&self.vm.get_pic_state(select)?))
     }
 
     /// Set the current state of the PIC
-    fn set_pic_state(&mut self, select: PicSelect, state: &PicState) -> Result<()> {
+    fn set_pic_state(&self, select: PicSelect, state: &PicState) -> Result<()> {
         self.vm.set_pic_state(select, &kvm_pic_state::from(state))
     }
 
@@ -149,7 +145,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
     }
 
     /// Set the current state of the IOAPIC
-    fn set_ioapic_state(&mut self, state: &IoapicState) -> Result<()> {
+    fn set_ioapic_state(&self, state: &IoapicState) -> Result<()> {
         self.vm.set_ioapic_state(&kvm_ioapic_state::from(state))
     }
 
@@ -162,7 +158,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
     }
 
     /// Set the current state of the specified VCPU's local APIC
-    fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()> {
+    fn set_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()> {
         match self.vcpus.lock().get(vcpu_id) {
             Some(Some(vcpu)) => vcpu.set_lapic(&kvm_lapic_state::from(state)),
             _ => Err(Error::new(libc::ENOENT)),
@@ -181,7 +177,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
     }
 
     /// Sets the state of the PIT. Sets the pit state via the KVM API.
-    fn set_pit(&mut self, state: &PitState) -> Result<()> {
+    fn set_pit(&self, state: &PitState) -> Result<()> {
         self.vm.set_pit_state(&kvm_pit_state2::from(state))
     }
 
@@ -209,7 +205,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
         .context("failed to serialize KvmKernelIrqChip")
     }
 
-    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+    fn restore_chip_specific(&self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: KvmKernelIrqChipSnapshot =
             AnySnapshot::from_any(data).context("failed to deserialize data")?;
         self.set_irq_routes(&deser.routes)?;
@@ -294,7 +290,7 @@ impl KvmSplitIrqChip {
 
         let pit_event_source = IrqEventSource::from_device(&pit);
 
-        let mut chip = KvmSplitIrqChip {
+        let chip = KvmSplitIrqChip {
             vm,
             vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
             routes: Arc::new(Mutex::new(Vec::new())),
@@ -370,7 +366,7 @@ impl KvmSplitIrqChip {
 
     /// Register an event that can trigger an interrupt for a particular GSI.
     fn register_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &Event,
         resample_event: Option<&Event>,
@@ -399,7 +395,7 @@ impl KvmSplitIrqChip {
     }
 
     /// Unregister an event for a particular GSI.
-    fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
+    fn unregister_irq_event(&self, irq: u32, irq_event: &Event) -> Result<()> {
         if irq < self.ioapic_pins as u32 {
             let mut irq_events = self.irq_events.lock();
             for (index, evt) in irq_events.iter().enumerate() {
@@ -450,7 +446,7 @@ fn routes_conflict(route: &IrqRoute, other: &IrqRoute) -> bool {
 /// This IrqChip only works with Kvm so we only implement it for KvmVcpu.
 impl IrqChip for KvmSplitIrqChip {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()> {
+    fn add_vcpu(&self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         let vcpu = Arc::downcast(vcpu)
             .map_err(|_| ())
             .expect("KvmSplitIrqChip::add_vcpu called with non-KvmVcpu");
@@ -460,7 +456,7 @@ impl IrqChip for KvmSplitIrqChip {
 
     /// Register an event that can trigger an interrupt for a particular GSI.
     fn register_edge_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqEdgeEvent,
         source: IrqEventSource,
@@ -468,12 +464,12 @@ impl IrqChip for KvmSplitIrqChip {
         self.register_irq_event(irq, irq_event.get_trigger(), None, source)
     }
 
-    fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
+    fn unregister_edge_irq_event(&self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
         self.unregister_irq_event(irq, irq_event.get_trigger())
     }
 
     fn register_level_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqLevelEvent,
         source: IrqEventSource,
@@ -486,12 +482,12 @@ impl IrqChip for KvmSplitIrqChip {
         )
     }
 
-    fn unregister_level_irq_event(&mut self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
+    fn unregister_level_irq_event(&self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
         self.unregister_irq_event(irq, irq_event.get_trigger())
     }
 
     /// Route an IRQ line to an interrupt controller, or to a particular MSI vector.
-    fn route_irq(&mut self, route: IrqRoute) -> Result<()> {
+    fn route_irq(&self, route: IrqRoute) -> Result<()> {
         let mut routes = self.routes.lock();
         routes.retain(|r| !routes_conflict(r, &route));
 
@@ -505,7 +501,7 @@ impl IrqChip for KvmSplitIrqChip {
     }
 
     /// Replace all irq routes with the supplied routes
-    fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()> {
+    fn set_irq_routes(&self, routes: &[IrqRoute]) -> Result<()> {
         let mut current_routes = self.routes.lock();
         *current_routes = routes.to_vec();
 
@@ -530,7 +526,7 @@ impl IrqChip for KvmSplitIrqChip {
 
     /// Either assert or deassert an IRQ line.  Sends to either an interrupt controller, or does
     /// a send_msi if the irq is associated with an MSI.
-    fn service_irq(&mut self, irq: u32, level: bool) -> Result<()> {
+    fn service_irq(&self, irq: u32, level: bool) -> Result<()> {
         let chips = self.routes_to_chips(irq);
         for (chip, pin) in chips {
             match chip {
@@ -554,7 +550,7 @@ impl IrqChip for KvmSplitIrqChip {
     /// attempts to call service_irq on those chips. If the ioapic is unable to be immediately
     /// locked, we add the irq to the delayed_ioapic_irq_events Vec (though we still read
     /// from the Event that triggered the irq event).
-    fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()> {
+    fn service_irq_event(&self, event_index: IrqEventIndex) -> Result<()> {
         if let Some(evt) = &self.irq_events.lock()[event_index] {
             evt.event.wait()?;
             let chips = self.routes_to_chips(evt.gsi);
@@ -642,7 +638,7 @@ impl IrqChip for KvmSplitIrqChip {
     }
 
     /// Set the current MP state of the specified VCPU.
-    fn set_mp_state(&mut self, vcpu_id: usize, state: &MPState) -> Result<()> {
+    fn set_mp_state(&self, vcpu_id: usize, state: &MPState) -> Result<()> {
         match self.vcpus.lock().get(vcpu_id) {
             Some(Some(vcpu)) => vcpu.set_mp_state(&kvm_mp_state::from(state)),
             _ => Err(Error::new(libc::ENOENT)),
@@ -668,7 +664,7 @@ impl IrqChip for KvmSplitIrqChip {
     /// Finalize irqchip setup. Should be called once all devices have registered irq events and
     /// been added to the io_bus and mmio_bus.
     fn finalize_devices(
-        &mut self,
+        &self,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,
@@ -733,7 +729,7 @@ impl IrqChip for KvmSplitIrqChip {
     /// not be immediately locked are added to the delayed_ioapic_irq_events Vec. This function
     /// processes each delayed event in the vec each time it's called. If the ioapic is still
     /// locked, we keep the queued irqs for the next time this function is called.
-    fn process_delayed_irq_events(&mut self) -> Result<()> {
+    fn process_delayed_irq_events(&self) -> Result<()> {
         self.delayed_ioapic_irq_events
             .lock()
             .retain(|&event_index| {
@@ -787,17 +783,13 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
         self
     }
 
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
-        self
-    }
-
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(self.pic.lock().get_pic_state(select))
     }
 
     /// Set the current state of the PIC
-    fn set_pic_state(&mut self, select: PicSelect, state: &PicState) -> Result<()> {
+    fn set_pic_state(&self, select: PicSelect, state: &PicState) -> Result<()> {
         self.pic.lock().set_pic_state(select, state);
         Ok(())
     }
@@ -808,7 +800,7 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
     }
 
     /// Set the current state of the IOAPIC
-    fn set_ioapic_state(&mut self, state: &IoapicState) -> Result<()> {
+    fn set_ioapic_state(&self, state: &IoapicState) -> Result<()> {
         self.ioapic.lock().set_ioapic_state(state);
         Ok(())
     }
@@ -822,7 +814,7 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
     }
 
     /// Set the current state of the specified VCPU's local APIC
-    fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()> {
+    fn set_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()> {
         match self.vcpus.lock().get(vcpu_id) {
             Some(Some(vcpu)) => vcpu.set_lapic(&kvm_lapic_state::from(state)),
             _ => Err(Error::new(libc::ENOENT)),
@@ -841,7 +833,7 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
     }
 
     /// Sets the state of the PIT. Sets the pit state via the KVM API.
-    fn set_pit(&mut self, state: &PitState) -> Result<()> {
+    fn set_pit(&self, state: &PitState) -> Result<()> {
         self.pit.lock().set_pit_state(state);
         Ok(())
     }
@@ -859,7 +851,7 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
         .context("failed to serialize KvmSplitIrqChip")
     }
 
-    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+    fn restore_chip_specific(&self, data: AnySnapshot) -> anyhow::Result<()> {
         let deser: KvmSplitIrqChipSnapshot =
             AnySnapshot::from_any(data).context("failed to deserialize KvmSplitIrqChip")?;
         self.set_irq_routes(&deser.routes)?;

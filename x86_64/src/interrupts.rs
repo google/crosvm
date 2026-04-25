@@ -47,7 +47,7 @@ fn set_apic_delivery_mode(reg: u32, mode: u32) -> u32 {
 /// # Arguments
 /// * `vcpu_id` - The number of the VCPU to configure.
 /// * `irqchip` - The IrqChip for getting/setting LAPIC state.
-pub fn set_lint(vcpu_id: usize, irqchip: &mut dyn IrqChipX86_64) -> Result<()> {
+pub fn set_lint(vcpu_id: usize, irqchip: &dyn IrqChipX86_64) -> Result<()> {
     let mut lapic = irqchip.get_lapic_state(vcpu_id).map_err(Error::GetLapic)?;
 
     for (reg, mode) in &[

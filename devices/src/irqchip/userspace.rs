@@ -7,6 +7,8 @@ use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Display;
 use std::iter;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 cfg_if::cfg_if! {
@@ -117,7 +119,7 @@ pub struct UserspaceIrqChip {
     // Array of Events that devices will use to assert ioapic pins.
     irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
     dropper: Arc<Mutex<Dropper>>,
-    activated: bool,
+    activated: AtomicBool,
 }
 
 /// Helper that implements `Drop` on behalf of `UserspaceIrqChip`.  The many cloned copies of an irq
@@ -182,7 +184,7 @@ impl UserspaceIrqChip {
             workers: Vec::new(),
         };
 
-        let mut chip = UserspaceIrqChip {
+        let chip = UserspaceIrqChip {
             vcpus: Arc::new(Mutex::new(
                 iter::repeat_with(|| None).take(num_vcpus).collect(),
             )),
@@ -199,7 +201,7 @@ impl UserspaceIrqChip {
             delayed_ioapic_irq_events: Arc::new(Mutex::new(DelayedIoApicIrqEvents::new()?)),
             irq_events: Arc::new(Mutex::new(Vec::new())),
             dropper: Arc::new(Mutex::new(dropper)),
-            activated: false,
+            activated: AtomicBool::new(false),
         };
 
         // Setup standard x86 irq routes
@@ -347,8 +349,32 @@ impl Dropper {
 }
 
 impl UserspaceIrqChip {
+    pub fn wake_internal(&self) -> anyhow::Result<()> {
+        if self.activated.load(Ordering::Relaxed) {
+            // create workers and run them.
+            let mut dropper = self.dropper.lock();
+            for (i, descriptor) in self.timer_descriptors.iter().enumerate() {
+                let mut worker = TimerWorker {
+                    id: i,
+                    apic: self.apics[i].clone(),
+                    descriptor: *descriptor,
+                    vcpus: self.vcpus.clone(),
+                    waiter: self.waiters[i].clone(),
+                };
+                let worker_thread =
+                    WorkerThread::start(format!("UserspaceIrqChip timer worker {i}"), move |evt| {
+                        if let Err(e) = worker.run(evt) {
+                            error!("UserspaceIrqChip worker failed: {e:#}");
+                        }
+                    });
+                dropper.workers.push(worker_thread);
+            }
+        }
+        Ok(())
+    }
+
     fn register_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &Event,
         resample_event: Option<&Event>,
@@ -370,7 +396,7 @@ impl UserspaceIrqChip {
         Ok(Some(index))
     }
 
-    fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
+    fn unregister_irq_event(&self, irq: u32, irq_event: &Event) -> Result<()> {
         let mut irq_events = self.irq_events.lock();
         for (index, evt) in irq_events.iter().enumerate() {
             if let Some(evt) = evt {
@@ -385,13 +411,13 @@ impl UserspaceIrqChip {
 }
 
 impl IrqChip for UserspaceIrqChip {
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()> {
+    fn add_vcpu(&self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         self.vcpus.lock()[vcpu_id] = Some(vcpu);
         Ok(())
     }
 
     fn register_edge_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqEdgeEvent,
         source: IrqEventSource,
@@ -399,12 +425,12 @@ impl IrqChip for UserspaceIrqChip {
         self.register_irq_event(irq, irq_event.get_trigger(), None, source)
     }
 
-    fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
+    fn unregister_edge_irq_event(&self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
         self.unregister_irq_event(irq, irq_event.get_trigger())
     }
 
     fn register_level_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqLevelEvent,
         source: IrqEventSource,
@@ -417,15 +443,15 @@ impl IrqChip for UserspaceIrqChip {
         )
     }
 
-    fn unregister_level_irq_event(&mut self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
+    fn unregister_level_irq_event(&self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
         self.unregister_irq_event(irq, irq_event.get_trigger())
     }
 
-    fn route_irq(&mut self, route: IrqRoute) -> Result<()> {
+    fn route_irq(&self, route: IrqRoute) -> Result<()> {
         self.routes.lock().add(route)
     }
 
-    fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()> {
+    fn set_irq_routes(&self, routes: &[IrqRoute]) -> Result<()> {
         self.routes.lock().replace_all(routes)
     }
 
@@ -439,7 +465,7 @@ impl IrqChip for UserspaceIrqChip {
         Ok(tokens)
     }
 
-    fn service_irq(&mut self, irq: u32, level: bool) -> Result<()> {
+    fn service_irq(&self, irq: u32, level: bool) -> Result<()> {
         for route in self.routes.lock()[irq as usize].iter() {
             match *route {
                 IrqSource::Irqchip {
@@ -481,7 +507,7 @@ impl IrqChip for UserspaceIrqChip {
     /// delayed_ioapic_irq_events (though we still read from the Event that triggered the irq
     /// event).  If it's an MSI route, we call send_msi to decode the MSI and send it to the
     /// destination APIC(s).
-    fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()> {
+    fn service_irq_event(&self, event_index: IrqEventIndex) -> Result<()> {
         let irq_events = self.irq_events.lock();
         let evt = if let Some(evt) = &irq_events[event_index] {
             evt
@@ -675,7 +701,7 @@ impl IrqChip for UserspaceIrqChip {
         Ok(self.apics[vcpu_id].lock().get_mp_state())
     }
 
-    fn set_mp_state(&mut self, vcpu_id: usize, state: &MPState) -> Result<()> {
+    fn set_mp_state(&self, vcpu_id: usize, state: &MPState) -> Result<()> {
         self.apics[vcpu_id].lock().set_mp_state(state);
         Ok(())
     }
@@ -697,13 +723,13 @@ impl IrqChip for UserspaceIrqChip {
             delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
             irq_events: self.irq_events.clone(),
             dropper: self.dropper.clone(),
-            activated: self.activated,
+            activated: AtomicBool::new(self.activated.load(Ordering::Relaxed)),
         })
     }
 
     // TODO(srichman): factor out UserspaceIrqChip and KvmSplitIrqChip::finalize_devices
     fn finalize_devices(
-        &mut self,
+        &self,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,
@@ -768,8 +794,8 @@ impl IrqChip for UserspaceIrqChip {
         }
 
         // Spawn timer threads here instead of in new(), in case crosvm is in sandbox mode.
-        self.activated = true;
-        let _ = self.wake();
+        self.activated.store(true, Ordering::Relaxed);
+        let _ = self.wake_internal();
 
         Ok(())
     }
@@ -781,7 +807,7 @@ impl IrqChip for UserspaceIrqChip {
     /// not be immediately locked are added to the delayed_ioapic_irq_events Vec. This function
     /// processes each delayed event in the vec each time it's called. If the ioapic is still
     /// locked, we keep the queued irqs for the next time this function is called.
-    fn process_delayed_irq_events(&mut self) -> Result<()> {
+    fn process_delayed_irq_events(&self) -> Result<()> {
         let irq_events = self.irq_events.lock();
         let mut delayed_events = self.delayed_ioapic_irq_events.lock();
         delayed_events.events.retain(|&event_index| {
@@ -840,27 +866,7 @@ impl Suspendable for UserspaceIrqChip {
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {
-        if self.activated {
-            // create workers and run them.
-            let mut dropper = self.dropper.lock();
-            for (i, descriptor) in self.timer_descriptors.iter().enumerate() {
-                let mut worker = TimerWorker {
-                    id: i,
-                    apic: self.apics[i].clone(),
-                    descriptor: *descriptor,
-                    vcpus: self.vcpus.clone(),
-                    waiter: self.waiters[i].clone(),
-                };
-                let worker_thread =
-                    WorkerThread::start(format!("UserspaceIrqChip timer worker {i}"), move |evt| {
-                        if let Err(e) = worker.run(evt) {
-                            error!("UserspaceIrqChip worker failed: {e:#}");
-                        }
-                    });
-                dropper.workers.push(worker_thread);
-            }
-        }
-        Ok(())
+        self.wake_internal()
     }
 }
 
@@ -885,15 +891,11 @@ impl IrqChipX86_64 for UserspaceIrqChip {
         self
     }
 
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
-        self
-    }
-
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(self.pic.lock().get_pic_state(select))
     }
 
-    fn set_pic_state(&mut self, select: PicSelect, state: &PicState) -> Result<()> {
+    fn set_pic_state(&self, select: PicSelect, state: &PicState) -> Result<()> {
         self.pic.lock().set_pic_state(select, state);
         Ok(())
     }
@@ -902,7 +904,7 @@ impl IrqChipX86_64 for UserspaceIrqChip {
         Ok(self.ioapic.lock().get_ioapic_state())
     }
 
-    fn set_ioapic_state(&mut self, state: &IoapicState) -> Result<()> {
+    fn set_ioapic_state(&self, state: &IoapicState) -> Result<()> {
         self.ioapic.lock().set_ioapic_state(state);
         Ok(())
     }
@@ -911,7 +913,7 @@ impl IrqChipX86_64 for UserspaceIrqChip {
         Ok(self.apics[vcpu_id].lock().get_state())
     }
 
-    fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()> {
+    fn set_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()> {
         self.apics[vcpu_id].lock().set_state(state);
         Ok(())
     }
@@ -925,7 +927,7 @@ impl IrqChipX86_64 for UserspaceIrqChip {
         Ok(self.pit.lock().get_pit_state())
     }
 
-    fn set_pit(&mut self, state: &PitState) -> Result<()> {
+    fn set_pit(&self, state: &PitState) -> Result<()> {
         self.pit.lock().set_pit_state(state);
         Ok(())
     }
@@ -939,7 +941,7 @@ impl IrqChipX86_64 for UserspaceIrqChip {
     fn snapshot_chip_specific(&self) -> anyhow::Result<AnySnapshot> {
         Err(anyhow::anyhow!("Not supported yet in userspace"))
     }
-    fn restore_chip_specific(&mut self, _data: AnySnapshot) -> anyhow::Result<()> {
+    fn restore_chip_specific(&self, _data: AnySnapshot) -> anyhow::Result<()> {
         Err(anyhow::anyhow!("Not supported yet in userspace"))
     }
 }

@@ -117,37 +117,37 @@ impl IrqEventSource {
 /// multiple hypervisors with a single implementation.
 pub trait IrqChip: Send {
     /// Add a vcpu to the irq chip.
-    fn add_vcpu(&mut self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()>;
+    fn add_vcpu(&self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()>;
 
     /// Register an event with edge-trigger semantic that can trigger an interrupt for a particular
     /// GSI.
     fn register_edge_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqEdgeEvent,
         source: IrqEventSource,
     ) -> Result<Option<IrqEventIndex>>;
 
     /// Unregister an event with edge-trigger semantic for a particular GSI.
-    fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()>;
+    fn unregister_edge_irq_event(&self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()>;
 
     /// Register an event with level-trigger semantic that can trigger an interrupt for a particular
     /// GSI.
     fn register_level_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqLevelEvent,
         source: IrqEventSource,
     ) -> Result<Option<IrqEventIndex>>;
 
     /// Unregister an event with level-trigger semantic for a particular GSI.
-    fn unregister_level_irq_event(&mut self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()>;
+    fn unregister_level_irq_event(&self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()>;
 
     /// Route an IRQ line to an interrupt controller, or to a particular MSI vector.
-    fn route_irq(&mut self, route: IrqRoute) -> Result<()>;
+    fn route_irq(&self, route: IrqRoute) -> Result<()>;
 
     /// Replace all irq routes with the supplied routes
-    fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()>;
+    fn set_irq_routes(&self, routes: &[IrqRoute]) -> Result<()>;
 
     /// Return a vector of all registered irq numbers and their associated events and event
     /// sources. These should be used by the main thread to wait for irq events.
@@ -155,13 +155,13 @@ pub trait IrqChip: Send {
 
     /// Either assert or deassert an IRQ line.  Sends to either an interrupt controller, or does
     /// a send_msi if the irq is associated with an MSI.
-    fn service_irq(&mut self, irq: u32, level: bool) -> Result<()>;
+    fn service_irq(&self, irq: u32, level: bool) -> Result<()>;
 
     /// Service an IRQ event by asserting then deasserting an IRQ line. The associated Event
     /// that triggered the irq event will be read from. If the irq is associated with a resample
     /// Event, then the deassert will only happen after an EOI is broadcast for a vector
     /// associated with the irq line.
-    fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()>;
+    fn service_irq_event(&self, event_index: IrqEventIndex) -> Result<()>;
 
     /// Broadcast an end of interrupt.
     fn broadcast_eoi(&self, vector: u8) -> Result<()>;
@@ -187,7 +187,7 @@ pub trait IrqChip: Send {
     fn get_mp_state(&self, vcpu_id: usize) -> Result<MPState>;
 
     /// Set the current MP state of the specified VCPU.
-    fn set_mp_state(&mut self, vcpu_id: usize, state: &MPState) -> Result<()>;
+    fn set_mp_state(&self, vcpu_id: usize, state: &MPState) -> Result<()>;
 
     /// Attempt to create a shallow clone of this IrqChip instance.
     fn try_clone(&self) -> Result<Self>
@@ -197,14 +197,14 @@ pub trait IrqChip: Send {
     /// Finalize irqchip setup. Should be called once all devices have registered irq events and
     /// been added to the io_bus and mmio_bus.
     fn finalize_devices(
-        &mut self,
+        &self,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,
     ) -> Result<()>;
 
     /// Process any irqs events that were delayed because of any locking issues.
-    fn process_delayed_irq_events(&mut self) -> Result<()>;
+    fn process_delayed_irq_events(&self) -> Result<()>;
 
     /// Return an event which is meant to trigger process of any irqs events that were delayed
     /// by calling process_delayed_irq_events(). This should be used by the main thread to wait

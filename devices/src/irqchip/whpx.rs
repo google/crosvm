@@ -182,7 +182,7 @@ impl WhpxSplitIrqChip {
 
 impl WhpxSplitIrqChip {
     fn register_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &Event,
         resample_event: Option<&Event>,
@@ -205,7 +205,7 @@ impl WhpxSplitIrqChip {
         Ok(Some(index))
     }
 
-    fn unregister_irq_event(&mut self, irq: u32, irq_event: &Event) -> Result<()> {
+    fn unregister_irq_event(&self, irq: u32, irq_event: &Event) -> Result<()> {
         let mut irq_events = self.irq_events.lock();
         for (index, evt) in irq_events.iter().enumerate() {
             if let Some(evt) = evt {
@@ -221,14 +221,14 @@ impl WhpxSplitIrqChip {
 
 /// This IrqChip only works with Whpx so we only implement it for WhpxVcpu.
 impl IrqChip for WhpxSplitIrqChip {
-    fn add_vcpu(&mut self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
+    fn add_vcpu(&self, _vcpu_id: usize, _vcpu: Arc<dyn VcpuArch>) -> Result<()> {
         // The WHPX API acts entirely on the VM partition, so we don't need to keep references to
         // the vcpus.
         Ok(())
     }
 
     fn register_edge_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqEdgeEvent,
         source: IrqEventSource,
@@ -236,12 +236,12 @@ impl IrqChip for WhpxSplitIrqChip {
         self.register_irq_event(irq, irq_event.get_trigger(), None, source)
     }
 
-    fn unregister_edge_irq_event(&mut self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
+    fn unregister_edge_irq_event(&self, irq: u32, irq_event: &IrqEdgeEvent) -> Result<()> {
         self.unregister_irq_event(irq, irq_event.get_trigger())
     }
 
     fn register_level_irq_event(
-        &mut self,
+        &self,
         irq: u32,
         irq_event: &IrqLevelEvent,
         source: IrqEventSource,
@@ -254,15 +254,15 @@ impl IrqChip for WhpxSplitIrqChip {
         )
     }
 
-    fn unregister_level_irq_event(&mut self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
+    fn unregister_level_irq_event(&self, irq: u32, irq_event: &IrqLevelEvent) -> Result<()> {
         self.unregister_irq_event(irq, irq_event.get_trigger())
     }
 
-    fn route_irq(&mut self, route: IrqRoute) -> Result<()> {
+    fn route_irq(&self, route: IrqRoute) -> Result<()> {
         self.routes.lock().add(route)
     }
 
-    fn set_irq_routes(&mut self, routes: &[IrqRoute]) -> Result<()> {
+    fn set_irq_routes(&self, routes: &[IrqRoute]) -> Result<()> {
         self.routes.lock().replace_all(routes)
     }
 
@@ -276,7 +276,7 @@ impl IrqChip for WhpxSplitIrqChip {
         Ok(tokens)
     }
 
-    fn service_irq(&mut self, irq: u32, level: bool) -> Result<()> {
+    fn service_irq(&self, irq: u32, level: bool) -> Result<()> {
         for route in self.routes.lock()[irq as usize].iter() {
             match *route {
                 IrqSource::Irqchip {
@@ -316,7 +316,7 @@ impl IrqChip for WhpxSplitIrqChip {
     /// delayed_ioapic_irq_events (though we still read from the Event that triggered the irq
     /// event).  If it's an MSI route, we call send_msi to decode the MSI and send the interrupt
     /// to WHPX.
-    fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()> {
+    fn service_irq_event(&self, event_index: IrqEventIndex) -> Result<()> {
         let irq_events = self.irq_events.lock();
         let evt = if let Some(evt) = &irq_events[event_index] {
             evt
@@ -422,7 +422,7 @@ impl IrqChip for WhpxSplitIrqChip {
         Err(Error::new(libc::ENXIO))
     }
 
-    fn set_mp_state(&mut self, _vcpu_id: usize, _state: &MPState) -> Result<()> {
+    fn set_mp_state(&self, _vcpu_id: usize, _state: &MPState) -> Result<()> {
         // WHPX does not seem to have an API for this, but luckily this API isn't used anywhere
         // except the plugin.
         Err(Error::new(libc::ENXIO))
@@ -445,7 +445,7 @@ impl IrqChip for WhpxSplitIrqChip {
     }
 
     fn finalize_devices(
-        &mut self,
+        &self,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,
@@ -503,7 +503,7 @@ impl IrqChip for WhpxSplitIrqChip {
         Ok(())
     }
 
-    fn process_delayed_irq_events(&mut self) -> Result<()> {
+    fn process_delayed_irq_events(&self) -> Result<()> {
         let irq_events = self.irq_events.lock();
         let mut delayed_events = self.delayed_ioapic_irq_events.lock();
         delayed_events.events.retain(|&event_index| {
@@ -563,17 +563,13 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
         self
     }
 
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
-        self
-    }
-
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(self.pic.lock().get_pic_state(select))
     }
 
     /// Set the current state of the PIC
-    fn set_pic_state(&mut self, select: PicSelect, state: &PicState) -> Result<()> {
+    fn set_pic_state(&self, select: PicSelect, state: &PicState) -> Result<()> {
         self.pic.lock().set_pic_state(select, state);
         Ok(())
     }
@@ -584,7 +580,7 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
     }
 
     /// Set the current state of the IOAPIC
-    fn set_ioapic_state(&mut self, state: &IoapicState) -> Result<()> {
+    fn set_ioapic_state(&self, state: &IoapicState) -> Result<()> {
         self.ioapic.lock().set_ioapic_state(state);
         Ok(())
     }
@@ -595,7 +591,7 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
     }
 
     /// Set the current state of the specified VCPU's local APIC
-    fn set_lapic_state(&mut self, vcpu_id: usize, state: &LapicState) -> Result<()> {
+    fn set_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()> {
         self.vm.set_vcpu_lapic_state(vcpu_id, state)
     }
 
@@ -609,7 +605,7 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
     }
 
     /// Sets the state of the PIT.
-    fn set_pit(&mut self, state: &PitState) -> Result<()> {
+    fn set_pit(&self, state: &PitState) -> Result<()> {
         self.pit.lock().set_pit_state(state);
         Ok(())
     }
@@ -627,7 +623,7 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
         .context("failed to snapshot WhpxSplitIrqChip")
     }
 
-    fn restore_chip_specific(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+    fn restore_chip_specific(&self, data: AnySnapshot) -> anyhow::Result<()> {
         let mut deser: WhpxSplitIrqChipSnapshot =
             AnySnapshot::from_any(data).context("failed to deserialize WhpxSplitIrqChip")?;
         self.set_irq_routes(deser.routes.as_slice())?;

@@ -80,7 +80,7 @@ fn get_chip(num_vcpus: usize) -> UserspaceIrqChip {
 
 fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceIrqChip {
     let (_, irq_tube) = Tube::pair().unwrap();
-    let mut chip = UserspaceIrqChip::new_with_clock(num_vcpus, irq_tube, None, clock)
+    let chip = UserspaceIrqChip::new_with_clock(num_vcpus, irq_tube, None, clock)
         .expect("failed to instantiate UserspaceIrqChip");
 
     for i in 0..num_vcpus {
@@ -149,7 +149,7 @@ fn pit_uses_speaker_port() {
 
 #[test]
 fn routes_conflict() {
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
     chip.route_irq(IrqRoute {
         gsi: 32,
         source: IrqSource::Msi {
@@ -171,7 +171,7 @@ fn routes_conflict() {
 
 #[test]
 fn irq_event_tokens() {
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
     let tokens = chip
         .irq_event_tokens()
         .expect("could not get irq_event_tokens");
@@ -207,7 +207,7 @@ fn irq_event_tokens() {
 // TODO(srichman): Factor out of UserspaceIrqChip and KvmSplitIrqChip.
 #[test]
 fn finalize_devices() {
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
 
     let mmio_bus = Bus::new(BusType::Mmio);
     let io_bus = Bus::new(BusType::Io);
@@ -326,7 +326,7 @@ fn finalize_devices() {
 
 #[test]
 fn inject_pic_interrupt() {
-    let mut chip = get_chip(2);
+    let chip = get_chip(2);
     let vcpus = get_vcpus(&chip);
 
     assert_eq!(vcpus[0].clear_injected(), None);
@@ -349,7 +349,7 @@ fn inject_pic_interrupt() {
 
 #[test]
 fn inject_msi() {
-    let mut chip = get_chip(2);
+    let chip = get_chip(2);
     let vcpus = get_vcpus(&chip);
 
     let evt = IrqEdgeEvent::new().unwrap();
@@ -463,7 +463,7 @@ fn lowest_priority_destination() {
 // TODO(srichman): Factor out of UserspaceIrqChip and KvmSplitIrqChip.
 #[test]
 fn broadcast_eoi() {
-    let mut chip = get_chip(1);
+    let chip = get_chip(1);
 
     let mmio_bus = Bus::new(BusType::Mmio);
     let io_bus = Bus::new(BusType::Io);

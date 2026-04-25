@@ -51,7 +51,7 @@ fn get_kernel_chip() -> KvmKernelIrqChip {
     let vm =
         Arc::new(KvmVm::new(&kvm, mem, Default::default()).expect("failed tso instantiate vm"));
 
-    let mut chip =
+    let chip =
         KvmKernelIrqChip::new(vm.clone(), 1).expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
@@ -69,7 +69,7 @@ fn get_split_chip() -> KvmSplitIrqChip {
 
     let (_, device_tube) = Tube::pair().expect("failed to create irq tube");
 
-    let mut chip = KvmSplitIrqChip::new(vm.clone(), 1, device_tube, None)
+    let chip = KvmSplitIrqChip::new(vm.clone(), 1, device_tube, None)
         .expect("failed to instantiate KvmKernelIrqChip");
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
@@ -171,7 +171,7 @@ fn split_irqchip_pit_uses_speaker_port() {
 
 #[test]
 fn split_irqchip_routes_conflict() {
-    let mut chip = get_split_chip();
+    let chip = get_split_chip();
     chip.route_irq(IrqRoute {
         gsi: 5,
         source: IrqSource::Msi {
@@ -193,7 +193,7 @@ fn split_irqchip_routes_conflict() {
 
 #[test]
 fn irq_event_tokens() {
-    let mut chip = get_split_chip();
+    let chip = get_split_chip();
     let tokens = chip
         .irq_event_tokens()
         .expect("could not get irq_event_tokens");
@@ -228,7 +228,7 @@ fn irq_event_tokens() {
 
 #[test]
 fn finalize_devices() {
-    let mut chip = get_split_chip();
+    let chip = get_split_chip();
 
     let mmio_bus = Bus::new(BusType::Mmio);
     let io_bus = Bus::new(BusType::Io);
@@ -348,7 +348,7 @@ fn finalize_devices() {
 
 #[test]
 fn get_external_interrupt() {
-    let mut chip = get_split_chip();
+    let chip = get_split_chip();
     assert!(!chip.interrupt_requested(0));
 
     chip.service_irq(0, true).expect("failed to service irq");
@@ -367,7 +367,7 @@ fn get_external_interrupt() {
 
 #[test]
 fn broadcast_eoi() {
-    let mut chip = get_split_chip();
+    let chip = get_split_chip();
 
     let mmio_bus = Bus::new(BusType::Mmio);
     let io_bus = Bus::new(BusType::Io);

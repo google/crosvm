@@ -219,7 +219,7 @@ impl arch::LinuxArch for Riscv64 {
         vm: Arc<dyn VmRiscv64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-        irq_chip: &mut dyn IrqChipRiscv64,
+        irq_chip: &dyn IrqChipRiscv64,
         vcpu_ids: &mut Vec<usize>,
         _dump_device_tree_blob: Option<PathBuf>,
         _debugcon_jail: Option<Minijail>,
@@ -266,7 +266,7 @@ impl arch::LinuxArch for Riscv64 {
         let (pci, pci_irqs, mut pid_debug_label_map, _amls, _gpe_scope_amls) =
             arch::generate_pci_root(
                 pci_devices,
-                irq_chip.as_irq_chip_mut(),
+                irq_chip.as_irq_chip(),
                 Arc::clone(&mmio_bus),
                 GuestAddress(RISCV64_PCI_CFG_BASE),
                 8,
@@ -293,7 +293,7 @@ impl arch::LinuxArch for Riscv64 {
         let (platform_devices, mut platform_pid_debug_label_map, dev_resources) =
             arch::sys::linux::generate_platform_bus(
                 platform_devices,
-                irq_chip.as_irq_chip_mut(),
+                irq_chip.as_irq_chip(),
                 &mmio_bus,
                 system_allocator,
                 &*vm,
@@ -458,7 +458,7 @@ impl arch::LinuxArch for Riscv64 {
     fn configure_vcpu(
         _vm: &dyn Vm,
         _hypervisor: &dyn Hypervisor,
-        _irq_chip: &mut dyn IrqChipRiscv64,
+        _irq_chip: &dyn IrqChipRiscv64,
         vcpu: &dyn VcpuRiscv64,
         _vcpu_init: VcpuInitRiscv64,
         vcpu_id: usize,

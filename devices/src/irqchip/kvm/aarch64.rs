@@ -207,10 +207,6 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
         self
     }
 
-    fn as_irq_chip_mut(&mut self) -> &mut dyn IrqChip {
-        self
-    }
-
     fn get_vgic_version(&self) -> DeviceKind {
         self.device_kind
     }
@@ -278,7 +274,7 @@ impl IrqChipAArch64 for KvmKernelIrqChip {
         }
     }
 
-    fn restore(&mut self, data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
+    fn restore(&self, data: AnySnapshot, _vcpus_num: usize) -> anyhow::Result<()> {
         if self.device_kind == DeviceKind::ArmVgicV3 {
             // SAVE_PENDING_TABLES operation wrote the pending tables into guest memory.
             let deser: VgicSnapshot =
