@@ -1841,7 +1841,7 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
     }
 
     let ioapic_host_tube;
-    let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
+    let irq_chip = match cfg.irq_chip.unwrap_or_default() {
         IrqChipKind::Split => bail!("Geniezone does not support split irqchip mode"),
         IrqChipKind::Userspace => bail!("Geniezone does not support userspace irqchip mode"),
         IrqChipKind::Kernel { allow_vgic_its: _ } => {
@@ -1856,7 +1856,7 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
         components,
         &arch_memory_layout,
         vm,
-        &mut irq_chip,
+        Arc::new(irq_chip),
         ioapic_host_tube,
         #[cfg(feature = "swap")]
         swap_controller,
@@ -1900,7 +1900,7 @@ fn run_halla(
     }
 
     let ioapic_host_tube;
-    let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
+    let irq_chip = match cfg.irq_chip.unwrap_or_default() {
         IrqChipKind::Split => bail!("Halla does not support split irqchip mode"),
         IrqChipKind::Userspace => bail!("Halla does not support userspace irqchip mode"),
         IrqChipKind::Kernel { allow_vgic_its: _ } => {
@@ -1915,7 +1915,7 @@ fn run_halla(
         components,
         &arch_memory_layout,
         vm,
-        &mut irq_chip,
+        Arc::new(irq_chip),
         ioapic_host_tube,
         #[cfg(feature = "swap")]
         swap_controller,
@@ -1964,24 +1964,8 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
         bail!("Failed to create protected VM");
     }
 
-    enum KvmIrqChip {
-        #[cfg(target_arch = "x86_64")]
-        Split(KvmSplitIrqChip),
-        Kernel(KvmKernelIrqChip),
-    }
-
-    impl KvmIrqChip {
-        fn as_mut(&mut self) -> &mut dyn IrqChipArch {
-            match self {
-                #[cfg(target_arch = "x86_64")]
-                KvmIrqChip::Split(i) => i,
-                KvmIrqChip::Kernel(i) => i,
-            }
-        }
-    }
-
     let ioapic_host_tube;
-    let mut irq_chip = match cfg.irq_chip.unwrap_or_default() {
+    let irq_chip: Arc<dyn IrqChipArch> = match cfg.irq_chip.unwrap_or_default() {
         IrqChipKind::Userspace => {
             bail!("KVM userspace irqchip mode not implemented");
         }
@@ -1993,7 +1977,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
                 let (host_tube, ioapic_device_tube) =
                     Tube::pair().context("failed to create tube")?;
                 ioapic_host_tube = Some(host_tube);
-                KvmIrqChip::Split(
+                Arc::new(
                     KvmSplitIrqChip::new(
                         vm.clone(),
                         components.vcpu_properties.len(),
@@ -2009,7 +1993,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
             allow_vgic_its,
         } => {
             ioapic_host_tube = None;
-            KvmIrqChip::Kernel(
+            Arc::new(
                 KvmKernelIrqChip::new(
                     vm.clone(),
                     components.vcpu_properties.len(),
@@ -2026,7 +2010,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
         components,
         &arch_memory_layout,
         vm,
-        irq_chip.as_mut(),
+        irq_chip,
         ioapic_host_tube,
         #[cfg(feature = "swap")]
         swap_controller,
@@ -2084,7 +2068,7 @@ fn run_gunyah(
         components,
         &arch_memory_layout,
         vm.clone(),
-        &mut GunyahIrqChip::new(vm)?,
+        Arc::new(GunyahIrqChip::new(vm)?),
         None,
         #[cfg(feature = "swap")]
         swap_controller,
@@ -2174,7 +2158,7 @@ fn run_vm(
     #[allow(unused_mut)] mut components: VmComponents,
     arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
     vm: Arc<dyn VmArch>,
-    irq_chip: &mut dyn IrqChipArch,
+    irq_chip: Arc<dyn IrqChipArch>,
     ioapic_host_tube: Option<Tube>,
     #[cfg(feature = "swap")] mut swap_controller: Option<SwapController>,
 ) -> Result<ExitState> {
@@ -2513,7 +2497,7 @@ fn run_vm(
         vm,
         ramoops_region,
         devices,
-        irq_chip,
+        irq_chip.clone(),
         &mut vcpu_ids,
         cfg.dump_device_tree_blob.clone(),
         simple_jail(cfg.jail_config.as_ref(), "serial_device")?,
@@ -4075,10 +4059,7 @@ fn run_control(
             vcpu,
             vcpu_init,
             linux.vm.clone(),
-            linux
-                .irq_chip
-                .try_box_clone()
-                .context("failed to clone irqchip")?,
+            linux.irq_chip.clone(),
             linux.vcpu_count,
             linux.rt_cpus.contains(&cpu_id),
             vcpu_affinity,
@@ -4147,7 +4128,7 @@ fn run_control(
 
     let (irq_handler_control, irq_handler_control_for_thread) = Tube::pair()?;
     let sys_allocator_for_thread = sys_allocator_mutex.clone();
-    let irq_chip_for_thread = linux.irq_chip.try_box_clone()?;
+    let irq_chip_for_thread = linux.irq_chip.clone();
     let irq_handler_thread = std::thread::Builder::new()
         .name("irq_handler_thread".into())
         .spawn(move || {
@@ -4198,19 +4179,12 @@ fn run_control(
     if let Some(path) = &cfg.restore_path {
         vm_control::do_restore(
             path,
-            |msg| vcpu::kick_all_vcpus(&vcpu_handles, linux.irq_chip.as_irq_chip(), msg),
-            |msg, index| {
-                vcpu::kick_vcpu(&vcpu_handles.get(index), linux.irq_chip.as_irq_chip(), msg)
-            },
+            |msg| vcpu::kick_all_vcpus(&vcpu_handles, &*linux.irq_chip, msg),
+            |msg, index| vcpu::kick_vcpu(&vcpu_handles.get(index), &*linux.irq_chip, msg),
             &irq_handler_control,
             &device_ctrl_tube,
             linux.vcpu_count,
-            |image| {
-                linux
-                    .irq_chip
-                    .try_box_clone()?
-                    .restore(image, linux.vcpu_count)
-            },
+            |image| linux.irq_chip.restore(image, linux.vcpu_count),
             /* require_encrypted= */ false,
             &mut suspended_pvclock_state,
             &*linux.vm,
@@ -4218,7 +4192,7 @@ fn run_control(
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(
             &vcpu_handles,
-            linux.irq_chip.as_irq_chip(),
+            &*linux.irq_chip,
             VcpuControl::RunState(post_restore_run_mode),
         )
     }
@@ -4351,7 +4325,7 @@ fn run_control(
                         info!("VM requested {}", mode);
                         vcpu::kick_all_vcpus(
                             &vcpu_handles,
-                            linux.irq_chip.as_irq_chip(),
+                            &*linux.irq_chip,
                             VcpuControl::RunState(mode),
                         );
                     }
@@ -4542,7 +4516,7 @@ fn run_control(
 
     vcpu::kick_all_vcpus(
         &vcpu_handles,
-        linux.irq_chip.as_irq_chip(),
+        &*linux.irq_chip,
         VcpuControl::RunState(VmRunMode::Exiting),
     );
     for (handle, _) in vcpu_handles {
@@ -4657,7 +4631,7 @@ enum IrqHandlerToken {
 /// Handles IRQs and requests from devices to add additional IRQ lines.
 fn irq_handler_thread(
     irq_control_tubes: Vec<Tube>,
-    mut irq_chip: Box<dyn IrqChipArch + 'static>,
+    irq_chip: Arc<dyn IrqChipArch>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
     handler_control: Tube,
 ) -> anyhow::Result<()> {
@@ -4776,7 +4750,7 @@ fn irq_handler_thread(
                     if let Some(tube) = irq_control_tubes.get(&id) {
                         handle_irq_tube_request(
                             &sys_allocator_mutex,
-                            &mut irq_chip,
+                            &*irq_chip,
                             &mut vm_irq_tubes_to_remove,
                             &wait_ctx,
                             tube,
@@ -4832,7 +4806,7 @@ fn irq_handler_thread(
 
 fn handle_irq_tube_request(
     sys_allocator_mutex: &Arc<Mutex<SystemAllocator>>,
-    irq_chip: &mut Box<dyn IrqChipArch + 'static>,
+    irq_chip: &dyn IrqChipArch,
     vm_irq_tubes_to_remove: &mut Vec<usize>,
     wait_ctx: &WaitContext<IrqHandlerToken>,
     tube: &Tube,

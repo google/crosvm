@@ -48,7 +48,7 @@ fn split_supported() -> bool {
 }
 
 /// Helper function for setting up a WhpxSplitIrqChip.
-fn get_chip(num_vcpus: usize) -> WhpxSplitIrqChip {
+fn get_chip(num_vcpus: usize) -> Arc<WhpxSplitIrqChip> {
     let whpx = Whpx::new().expect("failed to instantiate Whpx");
     let mem = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
     let vm = Arc::new(
@@ -66,7 +66,7 @@ fn get_chip(num_vcpus: usize) -> WhpxSplitIrqChip {
         chip.add_vcpu(i, vcpu).expect("failed to add vcpu");
     }
 
-    chip
+    Arc::new(chip)
 }
 
 #[test]
@@ -236,7 +236,8 @@ fn finalize_devices() {
         .expect("register_level_irq_event should not return None");
 
     // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
-    chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
+    chip.clone()
+        .finalize_devices(&mut resources, &io_bus, &mmio_bus)
         .expect("failed to finalize devices");
 
     // Should not be able to allocate an irq < 24 now
@@ -357,7 +358,8 @@ fn broadcast_eoi() {
         .expect("failed to register_level_irq_event");
 
     // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
-    chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
+    chip.clone()
+        .finalize_devices(&mut resources, &io_bus, &mmio_bus)
         .expect("failed to finalize devices");
 
     // setup a ioapic redirection table entry 1 with a vector of 123

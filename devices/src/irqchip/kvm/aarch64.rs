@@ -180,29 +180,9 @@ impl KvmKernelIrqChip {
             routes: Arc::new(Mutex::new(kvm_default_irq_routing_table())),
         })
     }
-
-    /// Attempt to create a shallow clone of this aarch64 KvmKernelIrqChip instance.
-    pub(super) fn arch_try_clone(&self) -> Result<Self> {
-        Ok(KvmKernelIrqChip {
-            vm: self.vm.clone(),
-            vcpus: self.vcpus.clone(),
-            vgic: self.vgic.try_clone()?,
-            vgic_its: self
-                .vgic_its
-                .as_ref()
-                .map(|fd| fd.try_clone())
-                .transpose()?,
-            device_kind: self.device_kind,
-            routes: self.routes.clone(),
-        })
-    }
 }
 
 impl IrqChipAArch64 for KvmKernelIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipAArch64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }

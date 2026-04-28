@@ -109,22 +109,9 @@ impl KvmKernelIrqChip {
             routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(ioapic_pins))),
         })
     }
-
-    /// Attempt to create a shallow clone of this x86_64 KvmKernelIrqChip instance.
-    pub(super) fn arch_try_clone(&self) -> Result<Self> {
-        Ok(KvmKernelIrqChip {
-            vm: self.vm.clone(),
-            vcpus: self.vcpus.clone(),
-            routes: self.routes.clone(),
-        })
-    }
 }
 
 impl IrqChipX86_64 for KvmKernelIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }
@@ -645,26 +632,10 @@ impl IrqChip for KvmSplitIrqChip {
         }
     }
 
-    /// Attempt to clone this IrqChip instance.
-    fn try_clone(&self) -> Result<Self> {
-        Ok(KvmSplitIrqChip {
-            vm: self.vm.clone(),
-            vcpus: self.vcpus.clone(),
-            routes: self.routes.clone(),
-            pit: self.pit.clone(),
-            pic: self.pic.clone(),
-            ioapic: self.ioapic.clone(),
-            ioapic_pins: self.ioapic_pins,
-            delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
-            delayed_ioapic_irq_trigger: Event::new()?,
-            irq_events: self.irq_events.clone(),
-        })
-    }
-
     /// Finalize irqchip setup. Should be called once all devices have registered irq events and
     /// been added to the io_bus and mmio_bus.
     fn finalize_devices(
-        &self,
+        self: Arc<Self>,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,
@@ -775,10 +746,6 @@ struct KvmSplitIrqChipSnapshot {
 }
 
 impl IrqChipX86_64 for KvmSplitIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }

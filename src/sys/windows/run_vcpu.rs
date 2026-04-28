@@ -138,7 +138,7 @@ impl VcpuRunThread {
 
     /// Perform WHPX-specific vcpu configurations
     #[cfg(feature = "whpx")]
-    fn whpx_configure_vcpu(vcpu: &dyn VcpuArch, irq_chip: &mut dyn IrqChipArch) {
+    fn whpx_configure_vcpu(vcpu: &dyn VcpuArch, irq_chip: &dyn IrqChipArch) {
         // only apply to actual WhpxVcpu instances
         if let Some(whpx_vcpu) = (vcpu as &dyn std::any::Any).downcast_ref::<WhpxVcpu>() {
             // WhpxVcpu instances need to know the TSC and Lapic frequencies to handle Hyper-V MSR
@@ -162,7 +162,7 @@ impl VcpuRunThread {
         vcpu: Option<Arc<dyn VcpuArch>>,
         vcpu_init: VcpuInitX86_64,
         vm: &dyn VmArch,
-        irq_chip: &mut dyn IrqChipArch,
+        irq_chip: &dyn IrqChipArch,
         vcpu_count: usize,
         run_rt: bool,
         vcpu_affinity: Option<CpuSet>,
@@ -244,7 +244,7 @@ impl VcpuRunThread {
         vcpu_init: VcpuInitX86_64,
         vcpus: Arc<Mutex<Vec<Arc<dyn VcpuArch>>>>,
         vm: Arc<dyn VmArch>,
-        mut irq_chip: Box<dyn IrqChipArch + 'static>,
+        irq_chip: Arc<dyn IrqChipArch>,
         vcpu_count: usize,
         run_rt: bool,
         vcpu_affinity: Option<CpuSet>,
@@ -276,7 +276,7 @@ impl VcpuRunThread {
                         vcpu,
                         vcpu_init,
                         &*vm,
-                        irq_chip.as_mut(),
+                        irq_chip.as_ref(),
                         vcpu_count,
                         run_rt && !delay_rt,
                         vcpu_affinity,
@@ -593,10 +593,7 @@ pub fn run_all_vcpus(
             vcpu_init.clone(),
             vcpu_boxes.clone(),
             guest_os.vm.clone(),
-            guest_os
-                .irq_chip
-                .try_box_clone()
-                .exit_context(Exit::CloneEvent, "failed to clone event")?,
+            guest_os.irq_chip.clone(),
             guest_os.vcpu_count,
             guest_os.rt_cpus.contains(&cpu_id),
             vcpu_affinity,
@@ -639,7 +636,7 @@ fn vcpu_loop(
     context: &VcpuRunThread,
     vcpu: Arc<dyn VcpuArch>,
     vm: Arc<dyn VmArch>,
-    irq_chip: Box<dyn IrqChipArch + 'static>,
+    irq_chip: Arc<dyn IrqChipArch>,
     io_bus: Bus,
     mmio_bus: Bus,
     hypercall_bus: Bus,

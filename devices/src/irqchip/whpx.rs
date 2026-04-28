@@ -428,24 +428,8 @@ impl IrqChip for WhpxSplitIrqChip {
         Err(Error::new(libc::ENXIO))
     }
 
-    fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(WhpxSplitIrqChip {
-            vm: self.vm.clone(),
-            routes: self.routes.clone(),
-            pit: self.pit.clone(),
-            pic: self.pic.clone(),
-            ioapic: self.ioapic.clone(),
-            ioapic_pins: self.ioapic_pins,
-            delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
-            irq_events: self.irq_events.clone(),
-        })
-    }
-
     fn finalize_devices(
-        &self,
+        self: Arc<Self>,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,
@@ -555,10 +539,6 @@ struct WhpxSplitIrqChipSnapshot {
 }
 
 impl IrqChipX86_64 for WhpxSplitIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }

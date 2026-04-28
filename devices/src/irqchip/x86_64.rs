@@ -27,9 +27,6 @@ use crate::IrqChip;
 use crate::IrqChipCap;
 
 pub trait IrqChipX86_64: IrqChip {
-    // Clones this trait as a `Box` version of itself.
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>>;
-
     // Get this as the super-trait IrqChip.
     fn as_irq_chip(&self) -> &dyn IrqChip;
 

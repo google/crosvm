@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::marker::Send;
-use std::marker::Sized;
 use std::sync::Arc;
 
 use base::Event;
@@ -115,7 +114,7 @@ impl IrqEventSource {
 ///
 /// This trait is generic over a Vcpu type because some IrqChip implementations can support
 /// multiple hypervisors with a single implementation.
-pub trait IrqChip: Send {
+pub trait IrqChip: Send + Sync {
     /// Add a vcpu to the irq chip.
     fn add_vcpu(&self, vcpu_id: usize, vcpu: Arc<dyn VcpuArch>) -> Result<()>;
 
@@ -189,15 +188,10 @@ pub trait IrqChip: Send {
     /// Set the current MP state of the specified VCPU.
     fn set_mp_state(&self, vcpu_id: usize, state: &MPState) -> Result<()>;
 
-    /// Attempt to create a shallow clone of this IrqChip instance.
-    fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized;
-
     /// Finalize irqchip setup. Should be called once all devices have registered irq events and
     /// been added to the io_bus and mmio_bus.
     fn finalize_devices(
-        &self,
+        self: Arc<Self>,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,

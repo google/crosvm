@@ -45,14 +45,15 @@ use crate::x86_64::test_set_pic;
 use crate::x86_64::test_set_pit;
 
 /// Helper function for setting up a KvmKernelIrqChip
-fn get_kernel_chip() -> KvmKernelIrqChip {
+fn get_kernel_chip() -> Arc<KvmKernelIrqChip> {
     let kvm = Kvm::new().expect("failed to instantiate Kvm");
     let mem = GuestMemory::new(&[]).unwrap();
     let vm =
         Arc::new(KvmVm::new(&kvm, mem, Default::default()).expect("failed tso instantiate vm"));
 
-    let chip =
-        KvmKernelIrqChip::new(vm.clone(), 1).expect("failed to instantiate KvmKernelIrqChip");
+    let chip = Arc::new(
+        KvmKernelIrqChip::new(vm.clone(), 1).expect("failed to instantiate KvmKernelIrqChip"),
+    );
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
     chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
@@ -61,7 +62,7 @@ fn get_kernel_chip() -> KvmKernelIrqChip {
 }
 
 /// Helper function for setting up a KvmSplitIrqChip
-fn get_split_chip() -> KvmSplitIrqChip {
+fn get_split_chip() -> Arc<KvmSplitIrqChip> {
     let kvm = Kvm::new().expect("failed to instantiate Kvm");
     let mem = GuestMemory::new(&[]).unwrap();
     let vm =
@@ -74,7 +75,7 @@ fn get_split_chip() -> KvmSplitIrqChip {
 
     let vcpu = vm.create_vcpu(0).expect("failed to instantiate vcpu");
     chip.add_vcpu(0, vcpu).expect("failed to add vcpu");
-    chip
+    Arc::new(chip)
 }
 
 #[test]
@@ -268,7 +269,8 @@ fn finalize_devices() {
         .expect("register_irq_event should not return None");
 
     // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
-    chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
+    chip.clone()
+        .finalize_devices(&mut resources, &io_bus, &mmio_bus)
         .expect("failed to finalize devices");
 
     // Should not be able to allocate an irq < 24 now
@@ -405,7 +407,8 @@ fn broadcast_eoi() {
         .expect("failed to register_level_irq_event");
 
     // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
-    chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
+    chip.clone()
+        .finalize_devices(&mut resources, &io_bus, &mmio_bus)
         .expect("failed to finalize devices");
 
     // setup a ioapic redirection table entry 1 with a vector of 123

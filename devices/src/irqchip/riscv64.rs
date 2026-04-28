@@ -8,9 +8,6 @@ use snapshot::AnySnapshot;
 use crate::IrqChip;
 
 pub trait IrqChipRiscv64: IrqChip {
-    /// Clones this trait as a `Box` version of itself.
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipRiscv64>>;
-
     /// Returns self as the super-trait IrqChip.
     fn as_irq_chip(&self) -> &dyn IrqChip;
 

@@ -111,21 +111,9 @@ impl GeniezoneKernelIrqChip {
             routes: Arc::new(Mutex::new(default_irq_routing_table())),
         })
     }
-    /// Attempt to create a shallow clone of this aarch64 GzvmKernelIrqChip instance.
-    pub(super) fn arch_try_clone(&self) -> Result<Self> {
-        Ok(GeniezoneKernelIrqChip {
-            vm: self.vm.clone(),
-            device_kind: self.device_kind,
-            routes: self.routes.clone(),
-        })
-    }
 }
 
 impl IrqChipAArch64 for GeniezoneKernelIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipAArch64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }
@@ -268,18 +256,11 @@ impl IrqChip for GeniezoneKernelIrqChip {
         Err(Error::new(libc::ENOENT))
     }
 
-    /// Attempt to clone this IrqChip instance.
-    fn try_clone(&self) -> Result<Self> {
-        // Because the GeniezoneKernelIrqChip struct contains arch-specific fields we leave the
-        // cloning to arch-specific implementations
-        self.arch_try_clone()
-    }
-
     /// Finalize irqchip setup. Should be called once all devices have registered irq events and
     /// been added to the io_bus and mmio_bus.
     /// GeniezoneKernelIrqChip does not need to do anything here.
     fn finalize_devices(
-        &self,
+        self: Arc<Self>,
         _resources: &mut SystemAllocator,
         _io_bus: &Bus,
         _mmio_bus: &Bus,

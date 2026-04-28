@@ -63,6 +63,7 @@ use arch::CpuSet;
 use arch::DtbOverlay;
 use arch::FdtPosition;
 use arch::GetSerialCmdlineError;
+use arch::IrqChipArch;
 use arch::MemoryRegionConfig;
 use arch::PciConfig;
 use arch::RunnableLinuxVm;
@@ -1051,7 +1052,7 @@ impl arch::LinuxArch for X8664arch {
         vm: Arc<dyn VmX86_64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-        irq_chip: &dyn IrqChipX86_64,
+        irq_chip: Arc<dyn IrqChipX86_64>,
         vcpu_ids: &mut Vec<usize>,
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
@@ -1180,7 +1181,7 @@ impl arch::LinuxArch for X8664arch {
             Self::setup_legacy_cmos_device(
                 arch_memory_layout,
                 &io_bus,
-                irq_chip,
+                irq_chip.clone(),
                 device_tube,
                 components.memory_size,
             )
@@ -1262,6 +1263,7 @@ impl arch::LinuxArch for X8664arch {
         }
 
         irq_chip
+            .clone()
             .finalize_devices(system_allocator, &io_bus, &mmio_bus)
             .map_err(Error::RegisterIrqfd)?;
 
@@ -1477,7 +1479,7 @@ impl arch::LinuxArch for X8664arch {
             vcpu_affinity: components.vcpu_affinity,
             vcpu_init,
             no_smt: components.no_smt,
-            irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
+            irq_chip,
             hypercall_bus,
             io_bus,
             mmio_bus,
@@ -2120,7 +2122,7 @@ impl X8664arch {
     pub fn setup_legacy_cmos_device(
         arch_memory_layout: &ArchMemoryLayout,
         io_bus: &Bus,
-        irq_chip: &dyn IrqChipX86_64,
+        irq_chip: Arc<dyn IrqChipArch>,
         vm_control: Tube,
         mem_size: u64,
     ) -> anyhow::Result<()> {

@@ -40,7 +40,7 @@ use vm_control::VmIrqRequest;
 
 pub struct IrqWaitWorker {
     irq_handler_control: Tube,
-    irq_chip: Box<dyn IrqChipArch>,
+    irq_chip: Arc<dyn IrqChipArch>,
     irq_control_tubes: Vec<Tube>,
     sys_allocator: Arc<Mutex<SystemAllocator>>,
 }
@@ -55,7 +55,7 @@ enum Token {
 impl IrqWaitWorker {
     pub fn start(
         irq_handler_control: Tube,
-        irq_chip: Box<dyn IrqChipArch>,
+        irq_chip: Arc<dyn IrqChipArch>,
         irq_control_tubes: Vec<Tube>,
         sys_allocator: Arc<Mutex<SystemAllocator>>,
     ) -> JoinHandle<anyhow::Result<()>> {
@@ -75,7 +75,7 @@ impl IrqWaitWorker {
         wait_ctx: &WaitContext<Token>,
         children: &mut Vec<JoinHandle<Result<()>>>,
         child_control_tubes: &mut Vec<Tube>,
-        irq_chip: Box<dyn IrqChipArch>,
+        irq_chip: Arc<dyn IrqChipArch>,
         irq_frequencies: Arc<Mutex<Vec<u64>>>,
     ) -> Result<Arc<WaitContext<ChildToken>>> {
         let (child_control_tube, child_control_tube_for_child) = Tube::pair().map_err(|e| {
@@ -105,7 +105,7 @@ impl IrqWaitWorker {
             &wait_ctx,
             &mut children,
             &mut child_control_tubes,
-            self.irq_chip.try_box_clone()?,
+            self.irq_chip.clone(),
             irq_frequencies.clone(),
         )
         .context("failed to create IRQ wait child")?;
@@ -256,7 +256,7 @@ impl IrqWaitWorker {
                                                             // need to add another.
                                                             child_wait_ctx = Self::add_child(
                                                                 &wait_ctx, &mut children, &mut child_control_tubes,
-                                                                irq_chip.try_box_clone()?, irq_frequencies.clone())?;
+                                                                irq_chip.clone(), irq_frequencies.clone())?;
 
                                                         }
                                                         let irqevent =
@@ -404,14 +404,14 @@ enum ChildToken {
 struct IrqWaitWorkerChild {
     wait_ctx: Arc<WaitContext<ChildToken>>,
     irq_handler_control: Tube,
-    irq_chip: Box<dyn IrqChipArch>,
+    irq_chip: Arc<dyn IrqChipArch>,
     irq_frequencies: Arc<Mutex<Vec<u64>>>,
 }
 
 impl IrqWaitWorkerChild {
     fn start(
         irq_handler_control: Tube,
-        irq_chip: Box<dyn IrqChipArch>,
+        irq_chip: Arc<dyn IrqChipArch>,
         irq_frequencies: Arc<Mutex<Vec<u64>>>,
     ) -> Result<(Arc<WaitContext<ChildToken>>, JoinHandle<Result<()>>)> {
         let child_wait_ctx = Arc::new(WaitContext::new()?);

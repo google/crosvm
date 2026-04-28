@@ -25,9 +25,6 @@ use snapshot::AnySnapshot;
 use crate::IrqChip;
 
 pub trait IrqChipAArch64: IrqChip {
-    // Clones this trait as a `Box` version of itself.
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipAArch64>>;
-
     // Get this as the super-trait IrqChip.
     fn as_irq_chip(&self) -> &dyn IrqChip;
 

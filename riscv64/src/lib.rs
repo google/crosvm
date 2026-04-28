@@ -219,7 +219,7 @@ impl arch::LinuxArch for Riscv64 {
         vm: Arc<dyn VmRiscv64>,
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-        irq_chip: &dyn IrqChipRiscv64,
+        irq_chip: Arc<dyn IrqChipRiscv64>,
         vcpu_ids: &mut Vec<usize>,
         _dump_device_tree_blob: Option<PathBuf>,
         _debugcon_jail: Option<Minijail>,
@@ -371,6 +371,7 @@ impl arch::LinuxArch for Riscv64 {
         irq_chip.finalize().map_err(Error::FinalizeIrqChip)?;
 
         irq_chip
+            .clone()
             .finalize_devices(system_allocator, &io_bus, &mmio_bus)
             .map_err(Error::FinalizeDevices)?;
         let (aia_num_ids, aia_num_sources) = irq_chip.get_num_ids_sources();
@@ -436,7 +437,7 @@ impl arch::LinuxArch for Riscv64 {
             vcpu_init,
             vcpu_affinity: components.vcpu_affinity,
             no_smt: false,
-            irq_chip: irq_chip.try_box_clone().map_err(Error::CloneIrqChip)?,
+            irq_chip,
             hypercall_bus,
             io_bus,
             mmio_bus,

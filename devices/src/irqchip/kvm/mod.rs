@@ -178,18 +178,11 @@ impl IrqChip for KvmKernelIrqChip {
         }
     }
 
-    /// Attempt to clone this IrqChip instance.
-    fn try_clone(&self) -> Result<Self> {
-        // Because the KvmKernelIrqchip struct contains arch-specific fields we leave the
-        // cloning to arch-specific implementations
-        self.arch_try_clone()
-    }
-
     /// Finalize irqchip setup. Should be called once all devices have registered irq events and
     /// been added to the io_bus and mmio_bus.
     /// KvmKernelIrqChip does not need to do anything here.
     fn finalize_devices(
-        &self,
+        self: Arc<Self>,
         _resources: &mut SystemAllocator,
         _io_bus: &Bus,
         _mmio_bus: &Bus,

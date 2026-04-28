@@ -706,30 +706,9 @@ impl IrqChip for UserspaceIrqChip {
         Ok(())
     }
 
-    fn try_clone(&self) -> Result<Self> {
-        // kill_evts and timer_descriptors don't change, so they could be a plain Vec with each
-        // element cloned.  But the Arc<Mutex> avoids a quadratic number of open descriptors from
-        // cloning, and those fields aren't performance critical.
-        Ok(UserspaceIrqChip {
-            vcpus: self.vcpus.clone(),
-            waiters: self.waiters.clone(),
-            routes: self.routes.clone(),
-            pit: self.pit.clone(),
-            pic: self.pic.clone(),
-            ioapic: self.ioapic.clone(),
-            ioapic_pins: self.ioapic_pins,
-            apics: self.apics.clone(),
-            timer_descriptors: self.timer_descriptors.clone(),
-            delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
-            irq_events: self.irq_events.clone(),
-            dropper: self.dropper.clone(),
-            activated: AtomicBool::new(self.activated.load(Ordering::Relaxed)),
-        })
-    }
-
     // TODO(srichman): factor out UserspaceIrqChip and KvmSplitIrqChip::finalize_devices
     fn finalize_devices(
-        &self,
+        self: Arc<Self>,
         resources: &mut SystemAllocator,
         io_bus: &Bus,
         mmio_bus: &Bus,
@@ -754,11 +733,7 @@ impl IrqChip for UserspaceIrqChip {
 
         // Insert self into mmio_bus for handling APIC mmio
         mmio_bus
-            .insert_sync(
-                Arc::new(self.try_clone()?),
-                APIC_BASE_ADDRESS,
-                APIC_MEM_LENGTH_BYTES,
-            )
+            .insert_sync(self.clone(), APIC_BASE_ADDRESS, APIC_MEM_LENGTH_BYTES)
             .unwrap();
 
         // At this point, all of our devices have been created and they have registered their
@@ -883,10 +858,6 @@ impl BusDeviceSync for UserspaceIrqChip {
 }
 
 impl IrqChipX86_64 for UserspaceIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }

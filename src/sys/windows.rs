@@ -1352,10 +1352,7 @@ fn run_control(
     // us avoid approaching the Windows WaitForMultipleObjects 64-object limit.
     let irq_join_handle = IrqWaitWorker::start(
         irq_handler_control_for_worker,
-        guest_os
-            .irq_chip
-            .try_box_clone()
-            .exit_context(Exit::CloneEvent, "failed to clone irq chip")?,
+        guest_os.irq_chip.clone(),
         irq_control_tubes,
         sys_allocator_mutex.clone(),
     );
@@ -1520,12 +1517,7 @@ fn run_control(
             &irq_handler_control,
             &device_ctrl_tube,
             guest_os.vcpu_count,
-            |image| {
-                guest_os
-                    .irq_chip
-                    .try_box_clone()?
-                    .restore(image, guest_os.vcpu_count)
-            },
+            |image| guest_os.irq_chip.restore(image, guest_os.vcpu_count),
             /* require_encrypted= */ false,
             &mut suspended_pvclock_state,
             &*guest_os.vm,
@@ -2172,28 +2164,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     })
 }
 
-// Enum that allows us to assign a variable to what is essentially a &dyn IrqChipArch.
-enum WindowsIrqChip {
-    Userspace(UserspaceIrqChip),
-    #[cfg(feature = "gvm")]
-    Gvm(GvmIrqChip),
-    #[cfg(feature = "whpx")]
-    WhpxSplit(WhpxSplitIrqChip),
-}
-
-impl WindowsIrqChip {
-    // Convert our enum to a &mut dyn IrqChipArch
-    fn as_mut(&mut self) -> &mut dyn IrqChipArch {
-        match self {
-            WindowsIrqChip::Userspace(i) => i,
-            #[cfg(feature = "gvm")]
-            WindowsIrqChip::Gvm(i) => i,
-            #[cfg(feature = "whpx")]
-            WindowsIrqChip::WhpxSplit(i) => i,
-        }
-    }
-}
-
 /// Storage for the VM TSC offset for each vcpu. Stored in a static because the tracing thread will
 /// need access to it when tracing is enabled.
 static TSC_OFFSETS: sync::Mutex<Vec<Option<u64>>> = sync::Mutex::new(Vec::new());
@@ -2396,7 +2366,7 @@ fn run_config_inner(
                 components,
                 &arch_memory_layout,
                 vm,
-                WindowsIrqChip::Userspace(irq_chip).as_mut(),
+                Arc::new(irq_chip),
                 Some(ioapic_host_tube),
                 vm_evt_wrtube,
                 vm_evt_rdtube,
@@ -2436,7 +2406,7 @@ fn run_config_inner(
                     .expect("could not clone vm_evt_wrtube"),
             )?;
 
-            let mut irq_chip = match irq_chip {
+            let irq_chip: Arc<dyn IrqChipArch> = match irq_chip {
                 IrqChipKind::Kernel {} => {
                     unimplemented!("Kernel irqchip mode not supported by WHPX")
                 }
@@ -2447,12 +2417,9 @@ fn run_config_inner(
                                local apic emulation"
                         );
                     }
-                    WindowsIrqChip::WhpxSplit(create_whpx_split_irq_chip(
-                        vm.clone(),
-                        ioapic_device_tube,
-                    )?)
+                    Arc::new(create_whpx_split_irq_chip(vm.clone(), ioapic_device_tube)?)
                 }
-                IrqChipKind::Userspace => WindowsIrqChip::Userspace(create_userspace_irq_chip(
+                IrqChipKind::Userspace => Arc::new(create_userspace_irq_chip(
                     components.vcpu_properties.len(),
                     ioapic_device_tube,
                 )?),
@@ -2462,7 +2429,7 @@ fn run_config_inner(
                 components,
                 &arch_memory_layout,
                 vm,
-                irq_chip.as_mut(),
+                irq_chip,
                 Some(ioapic_host_tube),
                 vm_evt_wrtube,
                 vm_evt_rdtube,
@@ -2475,17 +2442,17 @@ fn run_config_inner(
             let guest_mem = create_guest_memory(&components, &arch_memory_layout, &gvm)?;
             let vm = create_gvm_vm(gvm, guest_mem)?;
             let ioapic_host_tube;
-            let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
+            let irq_chip: Arc<dyn IrqChipArch> = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
                 IrqChipKind::Split => unimplemented!("Split irqchip mode not supported by GVM"),
                 IrqChipKind::Kernel => {
                     ioapic_host_tube = None;
-                    WindowsIrqChip::Gvm(create_gvm_irq_chip(&vm, components.vcpu_properties.len())?)
+                    Arc::new(create_gvm_irq_chip(&vm, components.vcpu_properties.len())?)
                 }
                 IrqChipKind::Userspace => {
                     let (host_tube, ioapic_device_tube) =
                         Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
                     ioapic_host_tube = Some(host_tube);
-                    WindowsIrqChip::Userspace(create_userspace_irq_chip(
+                    Arc::new(create_userspace_irq_chip(
                         components.vcpu_properties.len(),
                         ioapic_device_tube,
                     )?)
@@ -2496,7 +2463,7 @@ fn run_config_inner(
                 components,
                 &arch_memory_layout,
                 vm,
-                irq_chip.as_mut(),
+                irq_chip.into_arc(),
                 ioapic_host_tube,
                 vm_evt_wrtube,
                 vm_evt_rdtube,
@@ -2511,7 +2478,7 @@ fn run_vm(
     #[allow(unused_mut)] mut components: VmComponents,
     arch_memory_layout: &<Arch as LinuxArch>::ArchMemoryLayout,
     vm: Arc<dyn VmArch>,
-    irq_chip: &mut dyn IrqChipArch,
+    irq_chip: Arc<dyn IrqChipArch>,
     ioapic_host_tube: Option<Tube>,
     vm_evt_wrtube: SendTube,
     vm_evt_rdtube: RecvTube,
@@ -2706,7 +2673,7 @@ fn run_vm(
         vm,
         ramoops_region,
         pci_devices,
-        irq_chip,
+        irq_chip.clone(),
         &mut vcpu_ids,
         cfg.dump_device_tree_blob.clone(),
         /* debugcon_jail= */ None,

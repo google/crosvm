@@ -74,11 +74,11 @@ const EOI: u64 = 0xB0;
 const TEST_SLEEP_DURATION: Duration = Duration::from_millis(50);
 
 /// Helper function for setting up a UserspaceIrqChip.
-fn get_chip(num_vcpus: usize) -> UserspaceIrqChip {
+fn get_chip(num_vcpus: usize) -> Arc<UserspaceIrqChip> {
     get_chip_with_clock(num_vcpus, Arc::new(Mutex::new(Clock::new())))
 }
 
-fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceIrqChip {
+fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> Arc<UserspaceIrqChip> {
     let (_, irq_tube) = Tube::pair().unwrap();
     let chip = UserspaceIrqChip::new_with_clock(num_vcpus, irq_tube, None, clock)
         .expect("failed to instantiate UserspaceIrqChip");
@@ -95,11 +95,11 @@ fn get_chip_with_clock(num_vcpus: usize, clock: Arc<Mutex<Clock>>) -> UserspaceI
         chip.apics[i].lock().set_enabled(true);
     }
 
-    chip
+    Arc::new(chip)
 }
 
 /// Helper function for cloning vcpus from a UserspaceIrqChip.
-fn get_vcpus(chip: &UserspaceIrqChip) -> Vec<Arc<FakeVcpu>> {
+fn get_vcpus(chip: &Arc<UserspaceIrqChip>) -> Vec<Arc<FakeVcpu>> {
     chip.vcpus
         .lock()
         .iter()
@@ -248,7 +248,8 @@ fn finalize_devices() {
         .expect("register_level_irq_event should not return None");
 
     // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses.
-    chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
+    chip.clone()
+        .finalize_devices(&mut resources, &io_bus, &mmio_bus)
         .expect("failed to finalize devices");
 
     // Should not be able to allocate an irq < 24 now.
@@ -502,7 +503,8 @@ fn broadcast_eoi() {
         .expect("failed to register_level_irq_event");
 
     // Once we finalize devices, the pic/pit/ioapic should be attached to io and mmio busses
-    chip.finalize_devices(&mut resources, &io_bus, &mmio_bus)
+    chip.clone()
+        .finalize_devices(&mut resources, &io_bus, &mmio_bus)
         .expect("failed to finalize devices");
 
     // setup a ioapic redirection table entry 1 with a vector of 123
@@ -582,7 +584,7 @@ fn apic_mmio() {
 fn runnable_vcpu_unhalts() {
     let chip = get_chip(1);
     let vcpu = get_vcpus(&chip).remove(0);
-    let chip_copy = chip.try_clone().unwrap();
+    let chip_copy = chip.clone();
     // BSP starts runnable.
     assert_eq!(chip.wait_until_runnable(&*vcpu), Ok(VcpuRunState::Runnable));
     let start = Instant::now();
@@ -609,7 +611,7 @@ fn runnable_vcpu_unhalts() {
 fn kicked_vcpu_unhalts() {
     let chip = get_chip(1);
     let vcpu = get_vcpus(&chip).remove(0);
-    let chip_copy = chip.try_clone().unwrap();
+    let chip_copy = chip.clone();
     // BSP starts runnable.
     assert_eq!(chip.wait_until_runnable(&*vcpu), Ok(VcpuRunState::Runnable));
     let start = Instant::now();

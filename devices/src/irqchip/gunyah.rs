@@ -12,6 +12,7 @@ use hypervisor::IrqRoute;
 use hypervisor::MPState;
 use hypervisor::VcpuArch;
 
+use crate::Bus;
 use crate::IrqChip;
 use crate::IrqChipAArch64;
 use crate::IrqChipCap;
@@ -135,20 +136,11 @@ impl IrqChip for GunyahIrqChip {
         unimplemented!()
     }
 
-    fn try_clone(&self) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(Self {
-            vm: self.vm.clone(),
-        })
-    }
-
     fn finalize_devices(
-        &self,
+        self: Arc<Self>,
         _resources: &mut resources::SystemAllocator,
-        _io_bus: &crate::Bus,
-        _mmio_bus: &crate::Bus,
+        _io_bus: &Bus,
+        _mmio_bus: &Bus,
     ) -> Result<()> {
         Ok(())
     }
@@ -168,10 +160,6 @@ impl IrqChip for GunyahIrqChip {
 }
 
 impl IrqChipAArch64 for GunyahIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipAArch64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }

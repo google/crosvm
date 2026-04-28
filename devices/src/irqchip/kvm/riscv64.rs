@@ -67,10 +67,6 @@ const KVM_DEV_RISCV_AIA_GRP_CTRL: u32 = 2;
 struct AiaDescriptor(SafeDescriptor);
 
 impl AiaDescriptor {
-    fn try_clone(&self) -> Result<AiaDescriptor> {
-        self.0.try_clone().map(AiaDescriptor)
-    }
-
     fn aia_init(&self) -> Result<()> {
         let init_attr = kvm_device_attr {
             group: KVM_DEV_RISCV_AIA_GRP_CTRL,
@@ -212,7 +208,6 @@ pub struct KvmKernelIrqChip {
     num_ids: usize,     // number of imsics ids
     num_sources: usize, // number of aplic sources
     aia: AiaDescriptor,
-    device_kind: DeviceKind,
     pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
 }
 
@@ -246,34 +241,14 @@ impl KvmKernelIrqChip {
             num_ids: num_ids as usize,
             num_sources: NUM_SOURCES as usize,
             aia,
-            device_kind: DeviceKind::RiscvAia,
             routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(
                 NUM_SOURCES as usize,
             ))),
         })
     }
-
-    /// Attempt to create a shallow clone of this riscv64 KvmKernelIrqChip instance.
-    /// This is the arch-specific impl used by `KvmKernelIrqChip::clone()`.
-    pub(super) fn arch_try_clone(&self) -> Result<Self> {
-        Ok(KvmKernelIrqChip {
-            vm: self.vm.clone(),
-            vcpus: self.vcpus.clone(),
-            num_vcpus: self.num_vcpus,
-            num_ids: self.num_ids,
-            num_sources: self.num_sources,
-            aia: self.aia.try_clone()?,
-            device_kind: self.device_kind,
-            routes: self.routes.clone(),
-        })
-    }
 }
 
 impl IrqChipRiscv64 for KvmKernelIrqChip {
-    fn try_box_clone(&self) -> Result<Box<dyn IrqChipRiscv64>> {
-        Ok(Box::new(self.try_clone()?))
-    }
-
     fn as_irq_chip(&self) -> &dyn IrqChip {
         self
     }
