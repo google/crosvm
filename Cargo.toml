@@ -292,7 +292,7 @@ x = ["devices/x"]
 
 ## Enables basic virtio-gpu support. This includes basic display and input features, but lacks 3D
 ## acceleration in the absence of other crosvm features.
-gpu = ["devices/gpu", "gpu_display", "vm_control/gpu"]
+gpu = ["devices/gpu", "gpu_display"]
 
 ## Enables 3D acceleration for the guest via the gfxstream protocol over virtio-gpu.
 gfxstream = ["rutabaga_gfx/gfxstream"]

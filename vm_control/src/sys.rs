@@ -7,16 +7,12 @@ cfg_if::cfg_if! {
         pub mod linux;
         use linux as platform;
         pub use platform::{VmMemoryMappingRequest, VmMemoryMappingResponse, FsMappingRequest};
-        #[cfg(feature = "gpu")]
         pub use platform::gpu::UnixDisplayMode as DisplayMode;
-        #[cfg(feature = "gpu")]
         pub use platform::gpu::UnixMouseMode as MouseMode;
     } else if #[cfg(windows)] {
         pub mod windows;
         pub use windows as platform;
-        #[cfg(feature = "gpu")]
         pub type DisplayMode = platform::gpu::WinDisplayMode<platform::gpu::DisplayDataProvider>;
-        #[cfg(feature = "gpu")]
         pub use platform::gpu::WinMouseMode as MouseMode;
         pub use platform::InitialAudioSessionState;
     } else {

@@ -19,7 +19,6 @@ pub use device_id::PlatformDeviceId;
 
 #[cfg(feature = "gdb")]
 pub mod gdb;
-#[cfg(feature = "gpu")]
 pub mod gpu;
 
 use base::debug;
@@ -132,9 +131,7 @@ pub use crate::gdb::VcpuDebug;
 pub use crate::gdb::VcpuDebugStatus;
 #[cfg(feature = "gdb")]
 pub use crate::gdb::VcpuDebugStatusMessage;
-#[cfg(feature = "gpu")]
 use crate::gpu::GpuControlCommand;
-#[cfg(feature = "gpu")]
 use crate::gpu::GpuControlResult;
 
 /// Control the state of a particular VM CPU.
@@ -1604,7 +1601,6 @@ pub enum VmRequest {
     /// Command to use controller.
     UsbCommand(UsbControlCommand),
     /// Command to modify the gpu.
-    #[cfg(feature = "gpu")]
     GpuCommand(GpuControlCommand),
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
@@ -2250,7 +2246,6 @@ impl VmRequest {
                 Some(tube) => handle_disk_command(command, tube),
                 None => VmResponse::Err(SysError::new(ENODEV)),
             },
-            #[cfg(feature = "gpu")]
             VmRequest::GpuCommand(ref cmd) => match gpu_control_tube {
                 Some(gpu_control) => {
                     let res = gpu_control.send(cmd);
@@ -2724,7 +2719,6 @@ pub enum VmResponse {
     PciHotPlugResponse { bus: u8 },
     /// Results of usb control commands.
     UsbResponse(UsbControlResult),
-    #[cfg(feature = "gpu")]
     /// Results of gpu control commands.
     GpuResponse(GpuControlResult),
     /// Results of battery control commands.
@@ -2781,7 +2775,6 @@ impl Display for VmResponse {
             UsbResponse(result) => write!(f, "usb control request get result {result:?}"),
             #[cfg(feature = "pci-hotplug")]
             PciHotPlugResponse { bus } => write!(f, "pci hotplug bus {bus:?}"),
-            #[cfg(feature = "gpu")]
             GpuResponse(result) => write!(f, "gpu control request result {result:?}"),
             BatResponse(result) => write!(f, "{result}"),
             SwapStatus(status) => {

@@ -13,15 +13,10 @@ use base::open_file_or_duplicate;
 use remain::sorted;
 use thiserror::Error;
 
-#[cfg(feature = "gpu")]
 pub use crate::gpu::do_gpu_display_add;
-#[cfg(feature = "gpu")]
 pub use crate::gpu::do_gpu_display_list;
-#[cfg(feature = "gpu")]
 pub use crate::gpu::do_gpu_display_remove;
-#[cfg(feature = "gpu")]
 pub use crate::gpu::do_gpu_set_display_mouse_mode;
-#[cfg(feature = "gpu")]
 pub use crate::gpu::ModifyGpuResult;
 pub use crate::sys::handle_request;
 pub use crate::sys::handle_request_with_timeout;
