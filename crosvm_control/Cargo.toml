@@ -5,10 +5,9 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
-audio = ["vm_control/audio"]
-gpu = []
-pci-hotplug = ["vm_control/pci-hotplug"]
-registered_events = ["vm_control/registered_events"]
+# STOP: You probably don't want to add a feature here. The ABI of this lib
+# shouldn't vary based on features. The socket protocol, while not stable,
+# doesn't have a good reason to vary either.
 
 [lib]
 crate-type = ["cdylib", "staticlib"]

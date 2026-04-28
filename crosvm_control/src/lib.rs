@@ -38,11 +38,8 @@ use libc::c_int;
 use libc::c_void;
 use libc::ssize_t;
 pub use swap::SwapStatus;
-#[cfg(feature = "gpu")]
 use vm_control::client::do_gpu_display_add;
-#[cfg(feature = "gpu")]
 use vm_control::client::do_gpu_display_list;
-#[cfg(feature = "gpu")]
 use vm_control::client::do_gpu_display_remove;
 use vm_control::client::do_modify_battery;
 use vm_control::client::do_net_add;
@@ -55,11 +52,8 @@ use vm_control::client::do_usb_list;
 use vm_control::client::handle_request;
 use vm_control::client::handle_request_with_timeout;
 use vm_control::client::vms_request;
-#[cfg(feature = "gpu")]
 use vm_control::gpu::DisplayMode;
-#[cfg(feature = "gpu")]
 use vm_control::gpu::DisplayParameters;
-#[cfg(feature = "gpu")]
 use vm_control::gpu::GpuControlResult;
 use vm_control::BalloonControlCommand;
 use vm_control::BatProperty;
@@ -111,36 +105,21 @@ pub unsafe extern "C" fn crosvm_client_gpu_display_add(
     vertical_dpi: u32,
 ) -> bool {
     catch_unwind(|| {
-        #[cfg(feature = "gpu")]
-        {
-            let Some(socket_path) = validate_socket_path(socket_path) else {
-                return false;
-            };
-            let mode = DisplayMode::Windowed(width, height);
-            let params = DisplayParameters::new(
-                mode,
-                false, // hidden
-                refresh_rate,
-                horizontal_dpi,
-                vertical_dpi,
-            );
-            let Ok(result) = do_gpu_display_add(socket_path, vec![params]) else {
-                return false;
-            };
-            matches!(result, GpuControlResult::DisplaysUpdated)
-        }
-        #[cfg(not(feature = "gpu"))]
-        {
-            let _ = (
-                socket_path,
-                width,
-                height,
-                refresh_rate,
-                horizontal_dpi,
-                vertical_dpi,
-            );
-            false
-        }
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return false;
+        };
+        let mode = DisplayMode::Windowed(width, height);
+        let params = DisplayParameters::new(
+            mode,
+            false, // hidden
+            refresh_rate,
+            horizontal_dpi,
+            vertical_dpi,
+        );
+        let Ok(result) = do_gpu_display_add(socket_path, vec![params]) else {
+            return false;
+        };
+        matches!(result, GpuControlResult::DisplaysUpdated)
     })
     .unwrap_or(false)
 }
@@ -169,47 +148,37 @@ pub unsafe extern "C" fn crosvm_client_gpu_display_list(
     entries_length: ssize_t,
 ) -> ssize_t {
     catch_unwind(|| {
-        #[cfg(feature = "gpu")]
-        {
-            if entries.is_null() {
-                return -1;
-            }
-            let Some(socket_path) = validate_socket_path(socket_path) else {
-                return -1;
-            };
-            let Ok(GpuControlResult::DisplayList { displays }) = do_gpu_display_list(socket_path)
-            else {
-                return -1;
-            };
+        if entries.is_null() {
+            return -1;
+        }
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return -1;
+        };
+        let Ok(GpuControlResult::DisplayList { displays }) = do_gpu_display_list(socket_path)
+        else {
+            return -1;
+        };
 
-            let limit = usize::try_from(entries_length).unwrap_or(0);
-            if limit == 0 {
-                return 0;
-            }
-            let cnt = limit.min(displays.len());
-            // SAFETY: checked that `entries` is not null and `limit` is less than or equal to
-            // `entries_length`.
-            let entries_slice = unsafe {
-                std::slice::from_raw_parts_mut(entries as *mut CrosvmDisplayEntry, limit)
+        let limit = usize::try_from(entries_length).unwrap_or(0);
+        if limit == 0 {
+            return 0;
+        }
+        let cnt = limit.min(displays.len());
+        // SAFETY: checked that `entries` is not null and `limit` is less than or equal to
+        // `entries_length`.
+        let entries_slice = unsafe { std::slice::from_raw_parts_mut(entries, limit) };
+        for (entry, (id, params)) in entries_slice.iter_mut().zip(displays) {
+            let (width, height) = params.get_window_size();
+            *entry = CrosvmDisplayEntry {
+                id,
+                width,
+                height,
+                refresh_rate: params.refresh_rate,
+                horizontal_dpi: params.horizontal_dpi(),
+                vertical_dpi: params.vertical_dpi(),
             };
-            for (entry, (id, params)) in entries_slice.iter_mut().zip(displays) {
-                let (width, height) = params.get_window_size();
-                *entry = CrosvmDisplayEntry {
-                    id,
-                    width,
-                    height,
-                    refresh_rate: params.refresh_rate,
-                    horizontal_dpi: params.horizontal_dpi(),
-                    vertical_dpi: params.vertical_dpi(),
-                };
-            }
-            cnt as ssize_t
         }
-        #[cfg(not(feature = "gpu"))]
-        {
-            let _ = (socket_path, entries, entries_length);
-            -1
-        }
+        cnt as ssize_t
     })
     .unwrap_or(-1)
 }
@@ -228,21 +197,13 @@ pub unsafe extern "C" fn crosvm_client_gpu_display_remove(
     display_id: u32,
 ) -> bool {
     catch_unwind(|| {
-        #[cfg(feature = "gpu")]
-        {
-            let Some(socket_path) = validate_socket_path(socket_path) else {
-                return false;
-            };
-            let Ok(result) = do_gpu_display_remove(socket_path, vec![display_id]) else {
-                return false;
-            };
-            matches!(result, GpuControlResult::DisplaysUpdated)
-        }
-        #[cfg(not(feature = "gpu"))]
-        {
-            let _ = (socket_path, display_id);
-            false
-        }
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return false;
+        };
+        let Ok(result) = do_gpu_display_remove(socket_path, vec![display_id]) else {
+            return false;
+        };
+        matches!(result, GpuControlResult::DisplaysUpdated)
     })
     .unwrap_or(false)
 }
