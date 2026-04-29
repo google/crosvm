@@ -48,8 +48,7 @@ fn test_whpx_mmio_fetch_memory() {
     }
 
     let whpx = Whpx::new().expect("failed to create whpx");
-    let vm =
-        WhpxVm::new(&whpx, 1, guest_mem, CpuId::new(0), false, None).expect("failed to create vm");
+    let vm = WhpxVm::new(&whpx, 1, guest_mem, CpuId::new(0), false).expect("failed to create vm");
 
     let vcpu = vm.create_vcpu(0).expect("new vcpu failed");
     let mut vcpu_sregs = vcpu.get_sregs().expect("get sregs failed");

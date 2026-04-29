@@ -25,7 +25,6 @@ use base::Protection;
 use base::RawDescriptor;
 use base::Result;
 use base::SafeDescriptor;
-use base::SendTube;
 use fnv::FnvHashMap;
 use libc::EEXIST;
 use libc::EFAULT;
@@ -89,7 +88,6 @@ impl WhpxVm {
         guest_mem: GuestMemory,
         cpuid: CpuId,
         apic_emulation: bool,
-        _vm_evt_wrtube: Option<SendTube>,
     ) -> WhpxResult<WhpxVm> {
         let partition = SafePartition::new()?;
         // setup partition defaults.
@@ -794,15 +792,8 @@ mod tests {
         let whpx = Whpx::new().expect("failed to instantiate whpx");
         let local_apic_supported = Whpx::check_whpx_feature(WhpxFeature::LocalApicEmulation)
             .expect("failed to get whpx features");
-        WhpxVm::new(
-            &whpx,
-            cpu_count,
-            mem,
-            CpuId::new(0),
-            local_apic_supported,
-            None,
-        )
-        .expect("failed to create whpx vm")
+        WhpxVm::new(&whpx, cpu_count, mem, CpuId::new(0), local_apic_supported)
+            .expect("failed to create whpx vm")
     }
 
     #[test]

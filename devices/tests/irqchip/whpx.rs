@@ -52,8 +52,7 @@ fn get_chip(num_vcpus: usize) -> Arc<WhpxSplitIrqChip> {
     let whpx = Whpx::new().expect("failed to instantiate Whpx");
     let mem = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
     let vm = Arc::new(
-        WhpxVm::new(&whpx, num_vcpus, mem, CpuId::new(0), true, None)
-            .expect("failed to instantiate vm"),
+        WhpxVm::new(&whpx, num_vcpus, mem, CpuId::new(0), true).expect("failed to instantiate vm"),
     );
 
     let (_, irq_tube) = Tube::pair().expect("failed to create irq tube");

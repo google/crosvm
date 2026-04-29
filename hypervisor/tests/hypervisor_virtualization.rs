@@ -125,8 +125,8 @@ impl HypervisorTestSetup for Whpx {
 
     fn create_vm(guest_mem: GuestMemory) -> (Self::Hypervisor, Self::Vm) {
         let whpx = Whpx::new().expect("failed to create whpx");
-        let vm = WhpxVm::new(&whpx, 1, guest_mem, CpuId::new(0), false, None)
-            .expect("failed to create vm");
+        let vm =
+            WhpxVm::new(&whpx, 1, guest_mem, CpuId::new(0), false).expect("failed to create vm");
         (whpx, vm)
     }
 }

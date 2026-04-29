@@ -1944,7 +1944,6 @@ fn create_whpx_vm(
     no_smt: bool,
     apic_emulation: bool,
     force_calibrated_tsc_leaf: bool,
-    vm_evt_wrtube: SendTube,
 ) -> Result<Arc<WhpxVm>> {
     let cpu_config = hypervisor::CpuConfigX86_64::new(
         force_calibrated_tsc_leaf,
@@ -1974,15 +1973,8 @@ fn create_whpx_vm(
         adjust_cpuid(entry, &ctx);
     }
 
-    let vm = WhpxVm::new(
-        &whpx,
-        cpu_count,
-        mem,
-        cpuid,
-        apic_emulation,
-        Some(vm_evt_wrtube),
-    )
-    .exit_context(Exit::WhpxSetupError, "failed to create WHPX vm")?;
+    let vm = WhpxVm::new(&whpx, cpu_count, mem, cpuid, apic_emulation)
+        .exit_context(Exit::WhpxSetupError, "failed to create WHPX vm")?;
 
     Ok(Arc::new(vm))
 }
@@ -2401,9 +2393,6 @@ fn run_config_inner(
                 no_smt,
                 apic_emulation_supported && irq_chip == IrqChipKind::Split,
                 cfg.force_calibrated_tsc_leaf,
-                vm_evt_wrtube
-                    .try_clone()
-                    .expect("could not clone vm_evt_wrtube"),
             )?;
 
             let irq_chip: Arc<dyn IrqChipArch> = match irq_chip {
