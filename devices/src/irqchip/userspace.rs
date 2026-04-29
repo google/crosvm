@@ -96,7 +96,7 @@ const X86_CR0_INIT: u64 = X86_CR0_ET | X86_CR0_NW | X86_CR0_CD;
 /// any hypervisor, but only supports x86.
 pub struct UserspaceIrqChip {
     pub vcpus: Arc<Mutex<Vec<Option<Arc<dyn VcpuX86_64>>>>>,
-    routes: Arc<Mutex<Routes>>,
+    routes: Mutex<Routes>,
     pit: Arc<Mutex<Pit>>,
     pic: Arc<Mutex<Pic>>,
     ioapic: Arc<Mutex<Ioapic>>,
@@ -115,19 +115,12 @@ pub struct UserspaceIrqChip {
     /// This lock may be locked by itself to access the `DelayedIoApicIrqEvents`. If accessed in
     /// conjunction with the `irq_events` field, that lock should be taken first to prevent
     /// deadlocks stemming from lock-ordering issues.
-    delayed_ioapic_irq_events: Arc<Mutex<DelayedIoApicIrqEvents>>,
+    delayed_ioapic_irq_events: Mutex<DelayedIoApicIrqEvents>,
     // Array of Events that devices will use to assert ioapic pins.
-    irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
-    dropper: Arc<Mutex<Dropper>>,
-    activated: AtomicBool,
-}
-
-/// Helper that implements `Drop` on behalf of `UserspaceIrqChip`.  The many cloned copies of an irq
-/// chip share a single arc'ed `Dropper`, which only runs its drop when the last irq chip copy is
-/// dropped.
-struct Dropper {
+    irq_events: Mutex<Vec<Option<IrqEvent>>>,
     /// Worker threads that deliver timer events to the APICs.
-    workers: Vec<WorkerThread<()>>,
+    workers: Mutex<Vec<WorkerThread<()>>>,
+    activated: AtomicBool,
 }
 
 impl UserspaceIrqChip {
@@ -180,9 +173,6 @@ impl UserspaceIrqChip {
             let apic = Apic::new(id, Box::new(timer));
             apics.push(Arc::new(Mutex::new(apic)));
         }
-        let dropper = Dropper {
-            workers: Vec::new(),
-        };
 
         let chip = UserspaceIrqChip {
             vcpus: Arc::new(Mutex::new(
@@ -191,16 +181,16 @@ impl UserspaceIrqChip {
             waiters: iter::repeat_with(Default::default)
                 .take(num_vcpus)
                 .collect(),
-            routes: Arc::new(Mutex::new(Routes::new())),
+            routes: Mutex::new(Routes::new()),
             pit: Arc::new(Mutex::new(pit)),
             pic: Arc::new(Mutex::new(Pic::new())),
             ioapic: Arc::new(Mutex::new(ioapic)),
             ioapic_pins,
             apics,
             timer_descriptors,
-            delayed_ioapic_irq_events: Arc::new(Mutex::new(DelayedIoApicIrqEvents::new()?)),
-            irq_events: Arc::new(Mutex::new(Vec::new())),
-            dropper: Arc::new(Mutex::new(dropper)),
+            delayed_ioapic_irq_events: Mutex::new(DelayedIoApicIrqEvents::new()?),
+            irq_events: Mutex::new(Vec::new()),
+            workers: Mutex::new(Vec::new()),
             activated: AtomicBool::new(false),
         };
 
@@ -339,20 +329,10 @@ impl UserspaceIrqChip {
     }
 }
 
-impl Dropper {
-    fn sleep(&mut self) -> anyhow::Result<()> {
-        for thread in self.workers.split_off(0).into_iter() {
-            thread.stop();
-        }
-        Ok(())
-    }
-}
-
 impl UserspaceIrqChip {
     pub fn wake_internal(&self) -> anyhow::Result<()> {
         if self.activated.load(Ordering::Relaxed) {
             // create workers and run them.
-            let mut dropper = self.dropper.lock();
             for (i, descriptor) in self.timer_descriptors.iter().enumerate() {
                 let mut worker = TimerWorker {
                     id: i,
@@ -367,7 +347,7 @@ impl UserspaceIrqChip {
                             error!("UserspaceIrqChip worker failed: {e:#}");
                         }
                     });
-                dropper.workers.push(worker_thread);
+                self.workers.lock().push(worker_thread);
             }
         }
         Ok(())
@@ -836,8 +816,12 @@ impl BusDevice for UserspaceIrqChip {
 
 impl Suspendable for UserspaceIrqChip {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        let mut dropper = self.dropper.lock();
-        dropper.sleep()
+        // TODO: This is never called because `UserspaceIrqChip` is a `BusDeviceSync`. We should be
+        // implementing `sleep_sync` and friends instead.
+        for thread in self.workers.lock().split_off(0).into_iter() {
+            thread.stop();
+        }
+        Ok(())
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {

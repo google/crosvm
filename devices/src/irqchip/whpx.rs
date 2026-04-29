@@ -73,7 +73,7 @@ const WHPX_LOCAL_APIC_EMULATION_APIC_FREQUENCY: u32 = 100_000_000;
 /// The WhpxSplitIrqChip supports
 pub struct WhpxSplitIrqChip {
     vm: Arc<WhpxVm>,
-    routes: Arc<Mutex<Routes>>,
+    routes: Mutex<Routes>,
     pit: Arc<Mutex<Pit>>,
     pic: Arc<Mutex<Pic>>,
     ioapic: Arc<Mutex<Ioapic>>,
@@ -87,9 +87,9 @@ pub struct WhpxSplitIrqChip {
     /// This lock may be locked by itself to access the `DelayedIoApicIrqEvents`. If accessed in
     /// conjunction with the `irq_events` field, that lock should be taken first to prevent
     /// deadlocks stemming from lock-ordering issues.
-    delayed_ioapic_irq_events: Arc<Mutex<DelayedIoApicIrqEvents>>,
+    delayed_ioapic_irq_events: Mutex<DelayedIoApicIrqEvents>,
     /// Array of Events that devices will use to assert ioapic pins.
-    irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
+    irq_events: Mutex<Vec<Option<IrqEvent>>>,
 }
 
 impl WhpxSplitIrqChip {
@@ -114,13 +114,13 @@ impl WhpxSplitIrqChip {
 
         let mut chip = WhpxSplitIrqChip {
             vm,
-            routes: Arc::new(Mutex::new(Routes::new())),
+            routes: Mutex::new(Routes::new()),
             pit: Arc::new(Mutex::new(pit)),
             pic: Arc::new(Mutex::new(Pic::new())),
             ioapic: Arc::new(Mutex::new(ioapic)),
             ioapic_pins,
-            delayed_ioapic_irq_events: Arc::new(Mutex::new(DelayedIoApicIrqEvents::new()?)),
-            irq_events: Arc::new(Mutex::new(Vec::new())),
+            delayed_ioapic_irq_events: Mutex::new(DelayedIoApicIrqEvents::new()?),
+            irq_events: Mutex::new(Vec::new()),
         };
 
         // This is equivalent to setting this in the blank Routes object above because

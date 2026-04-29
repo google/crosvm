@@ -203,12 +203,12 @@ impl AsRawDescriptor for AiaDescriptor {
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
     pub(super) vm: Arc<KvmVm>,
-    pub(super) vcpus: Arc<Mutex<Vec<Option<Arc<KvmVcpu>>>>>,
+    pub(super) vcpus: Mutex<Vec<Option<Arc<KvmVcpu>>>>,
     num_vcpus: usize,
     num_ids: usize,     // number of imsics ids
     num_sources: usize, // number of aplic sources
     aia: AiaDescriptor,
-    pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
+    pub(super) routes: Mutex<Vec<IrqRoute>>,
 }
 
 impl KvmKernelIrqChip {
@@ -236,14 +236,12 @@ impl KvmKernelIrqChip {
 
         Ok(KvmKernelIrqChip {
             vm,
-            vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
+            vcpus: Mutex::new((0..num_vcpus).map(|_| None).collect()),
             num_vcpus,
             num_ids: num_ids as usize,
             num_sources: NUM_SOURCES as usize,
             aia,
-            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(
-                NUM_SOURCES as usize,
-            ))),
+            routes: Mutex::new(kvm_default_irq_routing_table(NUM_SOURCES as usize)),
         })
     }
 }

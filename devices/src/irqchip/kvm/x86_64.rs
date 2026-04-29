@@ -82,8 +82,8 @@ fn kvm_default_irq_routing_table(ioapic_pins: usize) -> Vec<IrqRoute> {
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
 pub struct KvmKernelIrqChip {
     pub(super) vm: Arc<KvmVm>,
-    pub(super) vcpus: Arc<Mutex<Vec<Option<Arc<KvmVcpu>>>>>,
-    pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
+    pub(super) vcpus: Mutex<Vec<Option<Arc<KvmVcpu>>>>,
+    pub(super) routes: Mutex<Vec<IrqRoute>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -105,8 +105,8 @@ impl KvmKernelIrqChip {
 
         Ok(KvmKernelIrqChip {
             vm,
-            vcpus: Arc::new(Mutex::new((0..num_vcpus).map(|_| None).collect())),
-            routes: Arc::new(Mutex::new(kvm_default_irq_routing_table(ioapic_pins))),
+            vcpus: Mutex::new((0..num_vcpus).map(|_| None).collect()),
+            routes: Mutex::new(kvm_default_irq_routing_table(ioapic_pins)),
         })
     }
 }

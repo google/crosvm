@@ -44,7 +44,7 @@ fn default_irq_routing_table() -> Vec<IrqRoute> {
 pub struct HallaKernelIrqChip {
     pub(super) vm: Arc<HallaVm>,
     device_kind: DeviceKind,
-    pub(super) routes: Arc<Mutex<Vec<IrqRoute>>>,
+    pub(super) routes: Mutex<Vec<IrqRoute>>,
 }
 
 // These constants indicate the address space used by the ARM vGIC.
@@ -108,7 +108,7 @@ impl HallaKernelIrqChip {
         Ok(HallaKernelIrqChip {
             vm,
             device_kind,
-            routes: Arc::new(Mutex::new(default_irq_routing_table())),
+            routes: Mutex::new(default_irq_routing_table()),
         })
     }
 }
