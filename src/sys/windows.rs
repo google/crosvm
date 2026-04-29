@@ -2589,6 +2589,10 @@ fn run_vm(
                     .with_context(|| {
                         format!("failed to open device tree overlay {}", o.path.display())
                     })?,
+                symbol_allowlist: o
+                    .select_symbols
+                    .clone()
+                    .map(|v| v.into_iter().collect::<std::collections::BTreeSet<_>>()),
             })
         })
         .collect::<Result<Vec<DtbOverlay>>>()?;

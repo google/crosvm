@@ -1059,10 +1059,12 @@ pub struct RunCommand {
     /// selects the interface for guest-controlled power management of assigned devices.
     pub dev_pm: Option<DevicePowerManagerConfig>,
 
-    #[argh(option, arg_name = "PATH[,filter]")]
+    #[argh(option, arg_name = "PATH[,filter][,select-symbols=[xxx,yyy]]")]
     /// path to device tree overlay binary which will be applied to the base guest device tree
     /// Parameters:
-    ///    filter - only apply device tree nodes which belong to a VFIO device
+    ///    filter - adds symbols from all --vfio devices to `select-symbols` (legacy)
+    ///    select-symbols=[xxx,yyy] - labels of nodes to include in the final device tree
+    /// Note: if both are specified, the union of both sets of symbols is used.
     pub device_tree_overlay: Vec<DtboOption>,
 
     #[argh(switch)]
@@ -3172,10 +3174,17 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.device_tree_overlay = cmd.device_tree_overlay;
         #[cfg(any(target_os = "android", target_os = "linux"))]
         {
-            if cfg.device_tree_overlay.iter().any(|o| o.filter_devs)
-                && cfg.vfio.iter().all(|o| o.dt_symbol.is_none())
-            {
-                return Err("expected at least one VFIO device with a defined dt_symbol".into());
+            let vfio_symbols: Vec<String> = cfg
+                .vfio
+                .iter()
+                .filter_map(|o| o.dt_symbol.clone())
+                .collect();
+            for o in &mut cfg.device_tree_overlay {
+                if o.filter {
+                    o.select_symbols
+                        .get_or_insert_default()
+                        .extend(vfio_symbols.clone());
+                }
             }
         }
 

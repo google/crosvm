@@ -168,9 +168,12 @@ pub struct CpuOptions {
 pub struct DtboOption {
     /// Overlay file to apply to the base device tree.
     pub path: PathBuf,
+    /// Labels of nodes to include in the final device tree.
+    #[serde(default)]
+    pub select_symbols: Option<Vec<String>>,
     /// Whether to only apply device tree nodes which belong to a VFIO device.
-    #[serde(rename = "filter", default)]
-    pub filter_devs: bool,
+    #[serde(default)]
+    pub filter: bool,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, FromKeyValues, PartialEq, Eq)]
@@ -1870,7 +1873,7 @@ mod tests {
             .zip(["/path/to/dtbo1", "/path/to/dtbo2"])
         {
             assert_eq!(opt.path, PathBuf::from(p));
-            assert!(!opt.filter_devs);
+            assert!(opt.select_symbols.is_none());
         }
     }
 
@@ -1881,11 +1884,11 @@ mod tests {
             &[],
             &[
                 "--vfio",
-                "/path/to/dev,dt-symbol=mydev",
+                "/path/to/dev",
                 "--device-tree-overlay",
-                "/path/to/dtbo1,filter",
+                "/path/to/dtbo1,select-symbols=[mydev]",
                 "--device-tree-overlay",
-                "/path/to/dtbo2,filter",
+                "/path/to/dtbo2,select-symbols=[mydev]",
                 "/dev/null",
             ],
         )
@@ -1900,17 +1903,57 @@ mod tests {
             .zip(["/path/to/dtbo1", "/path/to/dtbo2"])
         {
             assert_eq!(opt.path, PathBuf::from(p));
-            assert!(opt.filter_devs);
+            assert_eq!(opt.select_symbols, Some(vec!["mydev".to_string()]));
         }
+    }
 
-        assert!(TryInto::<Config>::try_into(
-            crate::crosvm::cmdline::RunCommand::from_args(
-                &[],
-                &["--device-tree-overlay", "/path/to/dtbo,filter", "/dev/null"],
-            )
-            .unwrap(),
+    #[test]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn parse_dtbo_legacy_filter() {
+        let cfg: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--vfio",
+                "/path/to/dev,dt-symbol=mydev",
+                "--device-tree-overlay",
+                "/path/to/dtbo1,filter",
+                "/dev/null",
+            ],
         )
-        .is_err());
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(cfg.device_tree_overlay.len(), 1);
+        let opt = cfg.device_tree_overlay.first().unwrap();
+        assert_eq!(opt.path, PathBuf::from("/path/to/dtbo1"));
+        assert_eq!(opt.select_symbols, Some(vec!["mydev".to_string()]));
+    }
+
+    #[test]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn parse_dtbo_filter_and_select_symbols() {
+        let cfg: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--vfio",
+                "/path/to/dev,dt-symbol=mydev",
+                "--device-tree-overlay",
+                "/path/to/dtbo1,filter,select-symbols=[otherdev]",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(cfg.device_tree_overlay.len(), 1);
+        let opt = cfg.device_tree_overlay.first().unwrap();
+        assert_eq!(opt.path, PathBuf::from("/path/to/dtbo1"));
+        assert_eq!(
+            opt.select_symbols,
+            Some(vec!["otherdev".to_string(), "mydev".to_string()])
+        );
     }
 
     #[test]

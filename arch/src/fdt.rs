@@ -4,6 +4,7 @@
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::Read;
 
@@ -27,9 +28,8 @@ use crate::sys::linux::PlatformBusResources;
 pub struct DtbOverlay {
     /// Device tree overlay file to apply
     pub file: File,
-    /// Whether to filter out nodes that do not belong to assigned VFIO devices.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    pub do_filter: bool,
+    /// Labels of nodes to include in the final device tree.
+    pub symbol_allowlist: Option<BTreeSet<String>>,
 }
 
 /// Apply multiple device tree overlays to the base FDT.
@@ -41,7 +41,13 @@ pub fn apply_device_tree_overlays(fdt: &mut Fdt, overlays: Vec<DtbOverlay>) -> R
             .read_to_end(&mut buffer)
             .map_err(Error::FdtIoError)?;
         let overlay = Fdt::from_blob(buffer.as_slice())?;
-        apply_overlay::<&str>(fdt, overlay, [])?;
+        if let Some(allowlist) = &dtbo.symbol_allowlist {
+            if !allowlist.is_empty() {
+                apply_overlay(fdt, overlay, allowlist)?;
+            }
+        } else {
+            apply_overlay::<&str>(fdt, overlay, [])?;
+        }
     }
     Ok(())
 }
@@ -168,11 +174,13 @@ pub fn apply_device_tree_overlays(
             update_device_nodes(path, &mut overlay, res, phandles, &mut power_domain_count)?;
         }
 
-        // Unfiltered DTBOs applied as whole.
-        if !dtbo.do_filter {
+        // Apply overlay, optionally filtered by label allowlist.
+        if let Some(allowlist) = &dtbo.symbol_allowlist {
+            if !allowlist.is_empty() {
+                apply_overlay(fdt, overlay, allowlist)?;
+            }
+        } else {
             apply_overlay::<&str>(fdt, overlay, [])?;
-        } else if !devs_in_overlay.is_empty() {
-            apply_overlay(fdt, overlay, devs_in_overlay.iter().map(|r| &r.dt_symbol))?;
         }
     }
 
