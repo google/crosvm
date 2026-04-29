@@ -239,7 +239,7 @@ pub trait Vm: Send + Sync {
     /// triggered is prevented.
     fn register_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()>;
@@ -250,7 +250,7 @@ pub trait Vm: Send + Sync {
     /// `register_ioevent`.
     fn unregister_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()>;

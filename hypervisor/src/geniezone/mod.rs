@@ -745,7 +745,7 @@ impl GeniezoneVm {
 
     fn ioeventfd(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
         deassign: bool,
@@ -1009,7 +1009,7 @@ impl Vm for GeniezoneVm {
 
     fn register_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -1018,7 +1018,7 @@ impl Vm for GeniezoneVm {
 
     fn unregister_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {

@@ -1046,14 +1046,14 @@ impl VmMemoryRequest {
             IoEventRaw(request) => {
                 let res = if request.register {
                     vm.register_ioevent(
-                        &request.event,
+                        request.event,
                         IoEventAddress::Mmio(request.addr),
                         request.datamatch,
                     )
                     .context("failed to register IO event")
                 } else {
                     vm.unregister_ioevent(
-                        &request.event,
+                        request.event,
                         IoEventAddress::Mmio(request.addr),
                         request.datamatch,
                     )

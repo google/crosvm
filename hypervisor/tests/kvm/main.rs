@@ -286,30 +286,38 @@ fn register_ioevent() {
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd = Event::new().unwrap();
-    vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
-        .unwrap();
-    vm.register_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
-        .unwrap();
     vm.register_ioevent(
-        &evtfd,
+        evtfd.try_clone().unwrap(),
+        IoEventAddress::Pio(0xf4),
+        Datamatch::AnyLength,
+    )
+    .unwrap();
+    vm.register_ioevent(
+        evtfd.try_clone().unwrap(),
+        IoEventAddress::Mmio(0x1000),
+        Datamatch::AnyLength,
+    )
+    .unwrap();
+    vm.register_ioevent(
+        evtfd.try_clone().unwrap(),
         IoEventAddress::Pio(0xc1),
         Datamatch::U8(Some(0x7fu8)),
     )
     .unwrap();
     vm.register_ioevent(
-        &evtfd,
+        evtfd.try_clone().unwrap(),
         IoEventAddress::Pio(0xc2),
         Datamatch::U16(Some(0x1337u16)),
     )
     .unwrap();
     vm.register_ioevent(
-        &evtfd,
+        evtfd.try_clone().unwrap(),
         IoEventAddress::Pio(0xc4),
         Datamatch::U32(Some(0xdeadbeefu32)),
     )
     .unwrap();
     vm.register_ioevent(
-        &evtfd,
+        evtfd,
         IoEventAddress::Pio(0xc8),
         Datamatch::U64(Some(0xdeadbeefdeadbeefu64)),
     )
@@ -322,22 +330,38 @@ fn unregister_ioevent() {
     let gm = GuestMemory::new(&[(GuestAddress(0), pagesize() as u64)]).unwrap();
     let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
     let evtfd = Event::new().unwrap();
-    vm.register_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
-        .unwrap();
-    vm.register_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
-        .unwrap();
     vm.register_ioevent(
-        &evtfd,
+        evtfd.try_clone().unwrap(),
+        IoEventAddress::Pio(0xf4),
+        Datamatch::AnyLength,
+    )
+    .unwrap();
+    vm.register_ioevent(
+        evtfd.try_clone().unwrap(),
+        IoEventAddress::Mmio(0x1000),
+        Datamatch::AnyLength,
+    )
+    .unwrap();
+    vm.register_ioevent(
+        evtfd.try_clone().unwrap(),
         IoEventAddress::Mmio(0x1004),
         Datamatch::U8(Some(0x7fu8)),
     )
     .unwrap();
-    vm.unregister_ioevent(&evtfd, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
-        .unwrap();
-    vm.unregister_ioevent(&evtfd, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
-        .unwrap();
     vm.unregister_ioevent(
-        &evtfd,
+        evtfd.try_clone().unwrap(),
+        IoEventAddress::Pio(0xf4),
+        Datamatch::AnyLength,
+    )
+    .unwrap();
+    vm.unregister_ioevent(
+        evtfd.try_clone().unwrap(),
+        IoEventAddress::Mmio(0x1000),
+        Datamatch::AnyLength,
+    )
+    .unwrap();
+    vm.unregister_ioevent(
+        evtfd,
         IoEventAddress::Mmio(0x1004),
         Datamatch::U8(Some(0x7fu8)),
     )

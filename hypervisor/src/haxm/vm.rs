@@ -321,7 +321,7 @@ impl Vm for HaxmVm {
 
     fn register_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -329,8 +329,6 @@ impl Vm for HaxmVm {
             error!("HAXM currently only supports Datamatch::AnyLength");
             return Err(Error::new(ENOTSUP));
         }
-
-        let evt = evt.try_clone()?;
 
         let mut ioevents = self.ioevents.write().unwrap();
 
@@ -346,7 +344,7 @@ impl Vm for HaxmVm {
 
     fn unregister_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -359,7 +357,7 @@ impl Vm for HaxmVm {
         match ioevents.get(&addr) {
             Some(existing_evt) => {
                 // evt should match the existing evt associated with addr
-                if evt != existing_evt {
+                if evt != *existing_evt {
                     return Err(Error::new(ENOENT));
                 }
                 ioevents.remove(&addr);
@@ -528,20 +526,28 @@ mod tests {
         let mut vm = HaxmVm::new(&haxm, gm).expect("failed to create vm");
         let evt = Event::new().expect("failed to create event");
         let otherevt = Event::new().expect("failed to create event");
-        vm.register_ioevent(&evt, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
-            .unwrap();
-        vm.register_ioevent(&evt, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
-            .unwrap();
+        vm.register_ioevent(
+            evt.try_clone().unwrap(),
+            IoEventAddress::Pio(0xf4),
+            Datamatch::AnyLength,
+        )
+        .unwrap();
+        vm.register_ioevent(
+            evt.try_clone().unwrap(),
+            IoEventAddress::Mmio(0x1000),
+            Datamatch::AnyLength,
+        )
+        .unwrap();
 
         vm.register_ioevent(
-            &otherevt,
+            otherevt.try_clone().unwrap(),
             IoEventAddress::Mmio(0x1000),
             Datamatch::AnyLength,
         )
         .expect_err("HAXM should not allow you to register two events for the same address");
 
         vm.register_ioevent(
-            &otherevt,
+            otherevt.try_clone().unwrap(),
             IoEventAddress::Mmio(0x1000),
             Datamatch::U8(None),
         )
@@ -550,7 +556,7 @@ mod tests {
         );
 
         vm.register_ioevent(
-            &otherevt,
+            otherevt.try_clone().unwrap(),
             IoEventAddress::Mmio(0x1000),
             Datamatch::U32(Some(0xf6)),
         )
@@ -558,17 +564,33 @@ mod tests {
             "HAXM should not allow you to register ioevents with Datamatches other than AnyLength",
         );
 
-        vm.unregister_ioevent(&otherevt, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
+        vm.unregister_ioevent(otherevt, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
             .expect_err("unregistering an unknown event should fail");
-        vm.unregister_ioevent(&evt, IoEventAddress::Pio(0xf5), Datamatch::AnyLength)
-            .expect_err("unregistering an unknown PIO address should fail");
-        vm.unregister_ioevent(&evt, IoEventAddress::Pio(0x1000), Datamatch::AnyLength)
-            .expect_err("unregistering an unknown PIO address should fail");
-        vm.unregister_ioevent(&evt, IoEventAddress::Mmio(0xf4), Datamatch::AnyLength)
-            .expect_err("unregistering an unknown MMIO address should fail");
-        vm.unregister_ioevent(&evt, IoEventAddress::Pio(0xf4), Datamatch::AnyLength)
-            .unwrap();
-        vm.unregister_ioevent(&evt, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
+        vm.unregister_ioevent(
+            evt.try_clone().unwrap(),
+            IoEventAddress::Pio(0xf5),
+            Datamatch::AnyLength,
+        )
+        .expect_err("unregistering an unknown PIO address should fail");
+        vm.unregister_ioevent(
+            evt.try_clone().unwrap(),
+            IoEventAddress::Pio(0x1000),
+            Datamatch::AnyLength,
+        )
+        .expect_err("unregistering an unknown PIO address should fail");
+        vm.unregister_ioevent(
+            evt.try_clone().unwrap(),
+            IoEventAddress::Mmio(0xf4),
+            Datamatch::AnyLength,
+        )
+        .expect_err("unregistering an unknown MMIO address should fail");
+        vm.unregister_ioevent(
+            evt.try_clone().unwrap(),
+            IoEventAddress::Pio(0xf4),
+            Datamatch::AnyLength,
+        )
+        .unwrap();
+        vm.unregister_ioevent(evt, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
             .unwrap();
     }
 
@@ -579,10 +601,18 @@ mod tests {
         let mut vm = HaxmVm::new(&haxm, gm).expect("failed to create vm");
         let evt = Event::new().expect("failed to create event");
         let evt2 = Event::new().expect("failed to create event");
-        vm.register_ioevent(&evt, IoEventAddress::Pio(0x1000), Datamatch::AnyLength)
-            .unwrap();
-        vm.register_ioevent(&evt2, IoEventAddress::Mmio(0x1000), Datamatch::AnyLength)
-            .unwrap();
+        vm.register_ioevent(
+            evt.try_clone().unwrap(),
+            IoEventAddress::Pio(0x1000),
+            Datamatch::AnyLength,
+        )
+        .unwrap();
+        vm.register_ioevent(
+            evt2.try_clone().unwrap(),
+            IoEventAddress::Mmio(0x1000),
+            Datamatch::AnyLength,
+        )
+        .unwrap();
 
         // Check a pio address
         vm.handle_io_events(IoEventAddress::Pio(0x1000), &[])

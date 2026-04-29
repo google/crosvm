@@ -759,7 +759,7 @@ impl HallaVm {
 
     fn ioeventfd(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
         deassign: bool,
@@ -1019,7 +1019,7 @@ impl Vm for HallaVm {
 
     fn register_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -1028,7 +1028,7 @@ impl Vm for HallaVm {
 
     fn unregister_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {

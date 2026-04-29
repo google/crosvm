@@ -664,7 +664,7 @@ impl Vm for GunyahVm {
 
     fn register_ioevent(
         &self,
-        evt: &Event,
+        evt: Event,
         addr: IoEventAddress,
         datamatch: Datamatch,
     ) -> Result<()> {
@@ -725,7 +725,7 @@ impl Vm for GunyahVm {
 
     fn unregister_ioevent(
         &self,
-        _evt: &Event,
+        _evt: Event,
         addr: IoEventAddress,
         _datamatch: Datamatch,
     ) -> Result<()> {
