@@ -160,10 +160,6 @@ impl IrqChip for GunyahIrqChip {
 }
 
 impl IrqChipAArch64 for GunyahIrqChip {
-    fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
     fn get_vgic_version(&self) -> DeviceKind {
         DeviceKind::ArmVgicV3
     }

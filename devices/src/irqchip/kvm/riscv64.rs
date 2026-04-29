@@ -19,7 +19,6 @@ use hypervisor::Vm;
 use kvm_sys::*;
 use sync::Mutex;
 
-use crate::IrqChip;
 use crate::IrqChipRiscv64;
 
 const RISCV_IRQCHIP: u64 = 0x0800_0000;
@@ -247,10 +246,6 @@ impl KvmKernelIrqChip {
 }
 
 impl IrqChipRiscv64 for KvmKernelIrqChip {
-    fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
     fn finalize(&self) -> Result<()> {
         // The kernel needs the number of vcpus finalized before setting up the address for each
         // interrupt controller.

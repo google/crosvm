@@ -8,9 +8,6 @@ use snapshot::AnySnapshot;
 use crate::IrqChip;
 
 pub trait IrqChipRiscv64: IrqChip {
-    /// Returns self as the super-trait IrqChip.
-    fn as_irq_chip(&self) -> &dyn IrqChip;
-
     /// Completes IrqChip setup. Must be called after Vcpus are created.
     fn finalize(&self) -> Result<()>;
 

@@ -114,10 +114,6 @@ impl HallaKernelIrqChip {
 }
 
 impl IrqChipAArch64 for HallaKernelIrqChip {
-    fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
     fn get_vgic_version(&self) -> DeviceKind {
         self.device_kind
     }

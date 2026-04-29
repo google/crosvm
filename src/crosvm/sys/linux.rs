@@ -3402,7 +3402,7 @@ fn process_vm_request(
         VmRequest::Throttle(vcpu, cycles) => {
             vcpu::kick_vcpu(
                 &state.vcpu_handles.get(vcpu),
-                state.linux.irq_chip.as_irq_chip(),
+                &*state.linux.irq_chip,
                 VcpuControl::Throttle(cycles),
             );
             return Ok(VmRequestResult::new(None, false));
@@ -3484,7 +3484,7 @@ fn process_vm_request(
                         dev.lock().resume_imminent();
                     }
                 }
-                vcpu::kick_all_vcpus(state.vcpu_handles, state.linux.irq_chip.as_irq_chip(), msg);
+                vcpu::kick_all_vcpus(state.vcpu_handles, &*state.linux.irq_chip, msg);
             };
             let response = request.execute(
                 &*state.linux.vm,
@@ -3505,11 +3505,7 @@ fn process_vm_request(
                 &mut state.linux.bat_control,
                 kick_all_vcpus,
                 |index, msg| {
-                    vcpu::kick_vcpu(
-                        &state.vcpu_handles.get(index),
-                        state.linux.irq_chip.as_irq_chip(),
-                        msg,
-                    )
+                    vcpu::kick_vcpu(&state.vcpu_handles.get(index), &*state.linux.irq_chip, msg)
                 },
                 state.cfg.force_s2idle,
                 #[cfg(feature = "swap")]

@@ -842,10 +842,6 @@ impl BusDeviceSync for UserspaceIrqChip {
 }
 
 impl IrqChipX86_64 for UserspaceIrqChip {
-    fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(self.pic.lock().get_pic_state(select))
     }

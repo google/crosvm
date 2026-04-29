@@ -112,10 +112,6 @@ impl KvmKernelIrqChip {
 }
 
 impl IrqChipX86_64 for KvmKernelIrqChip {
-    fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(PicState::from(&self.vm.get_pic_state(select)?))
@@ -746,10 +742,6 @@ struct KvmSplitIrqChipSnapshot {
 }
 
 impl IrqChipX86_64 for KvmSplitIrqChip {
-    fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState> {
         Ok(self.pic.lock().get_pic_state(select))

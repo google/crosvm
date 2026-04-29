@@ -25,9 +25,6 @@ use snapshot::AnySnapshot;
 use crate::IrqChip;
 
 pub trait IrqChipAArch64: IrqChip {
-    // Get this as the super-trait IrqChip.
-    fn as_irq_chip(&self) -> &dyn IrqChip;
-
     /// Get the version of VGIC that this chip is emulating. Currently KVM may either implement
     /// VGIC version 2 or 3.
     fn get_vgic_version(&self) -> DeviceKind;

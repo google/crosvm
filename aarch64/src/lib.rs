@@ -738,7 +738,7 @@ impl arch::LinuxArch for AArch64 {
         let (pci, pci_irqs, mut pid_debug_label_map, _amls, _gpe_scope_amls) =
             arch::generate_pci_root(
                 pci_devices,
-                irq_chip.as_irq_chip(),
+                &*irq_chip,
                 mmio_bus.clone(),
                 GuestAddress(arch_memory_layout.pci_cam.start),
                 8,
@@ -767,7 +767,7 @@ impl arch::LinuxArch for AArch64 {
         let (platform_devices, mut platform_pid_debug_label_map, dev_resources) =
             arch::sys::linux::generate_platform_bus(
                 platform_devices,
-                irq_chip.as_irq_chip(),
+                &*irq_chip,
                 &mmio_bus,
                 system_allocator,
                 &*vm,
@@ -809,7 +809,7 @@ impl arch::LinuxArch for AArch64 {
 
         let (vmwdt_host_tube, vmwdt_control_tube) = Tube::pair().map_err(Error::CreateTube)?;
         Self::add_arch_devs(
-            irq_chip.as_irq_chip(),
+            &*irq_chip,
             &mmio_bus,
             vcpu_count,
             _vm_evt_wrtube,

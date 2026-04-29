@@ -26,7 +26,6 @@ use snapshot::AnySnapshot;
 use sync::Mutex;
 
 use crate::icc_regs;
-use crate::IrqChip;
 use crate::IrqChipAArch64;
 
 /// Default ARM routing table.  AARCH64_GIC_NR_SPIS pins go to VGIC.
@@ -183,10 +182,6 @@ impl KvmKernelIrqChip {
 }
 
 impl IrqChipAArch64 for KvmKernelIrqChip {
-    fn as_irq_chip(&self) -> &dyn IrqChip {
-        self
-    }
-
     fn get_vgic_version(&self) -> DeviceKind {
         self.device_kind
     }

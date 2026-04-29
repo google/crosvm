@@ -266,7 +266,7 @@ impl arch::LinuxArch for Riscv64 {
         let (pci, pci_irqs, mut pid_debug_label_map, _amls, _gpe_scope_amls) =
             arch::generate_pci_root(
                 pci_devices,
-                irq_chip.as_irq_chip(),
+                &*irq_chip,
                 Arc::clone(&mmio_bus),
                 GuestAddress(RISCV64_PCI_CFG_BASE),
                 8,
@@ -293,7 +293,7 @@ impl arch::LinuxArch for Riscv64 {
         let (platform_devices, mut platform_pid_debug_label_map, dev_resources) =
             arch::sys::linux::generate_platform_bus(
                 platform_devices,
-                irq_chip.as_irq_chip(),
+                &*irq_chip,
                 &mmio_bus,
                 system_allocator,
                 &*vm,

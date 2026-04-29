@@ -1112,7 +1112,7 @@ impl arch::LinuxArch for X8664arch {
 
         let (pci, pci_irqs, pid_debug_label_map, amls, gpe_scope_amls) = arch::generate_pci_root(
             pci_devices,
-            irq_chip.as_irq_chip(),
+            &*irq_chip,
             mmio_bus.clone(),
             GuestAddress(pcie_cfg_mmio_range.start),
             12,
@@ -1192,7 +1192,7 @@ impl arch::LinuxArch for X8664arch {
         };
         let serial_devices = Self::setup_serial_devices(
             components.hv_cfg.protection_type,
-            irq_chip.as_irq_chip(),
+            &*irq_chip,
             &io_bus,
             serial_parameters,
             serial_jail,
@@ -1242,7 +1242,7 @@ impl arch::LinuxArch for X8664arch {
             suspend_tube_send.clone(),
             vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
             components.acpi_sdts,
-            irq_chip.as_irq_chip(),
+            &*irq_chip,
             sci_irq,
             battery,
             &mmio_bus,

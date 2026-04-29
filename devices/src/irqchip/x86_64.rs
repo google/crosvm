@@ -27,9 +27,6 @@ use crate::IrqChip;
 use crate::IrqChipCap;
 
 pub trait IrqChipX86_64: IrqChip {
-    // Get this as the super-trait IrqChip.
-    fn as_irq_chip(&self) -> &dyn IrqChip;
-
     /// Get the current state of the PIC
     fn get_pic_state(&self, select: PicSelect) -> Result<PicState>;
 

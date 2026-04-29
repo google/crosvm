@@ -896,7 +896,6 @@ pub fn configure_pci_device(
 
         linux
             .irq_chip
-            .as_irq_chip()
             .register_level_irq_event(gsi, &intx_event, IrqEventSource::from_device(&device))
             .map_err(DeviceRegistrationError::RegisterIrqfd)?;
     }

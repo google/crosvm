@@ -834,7 +834,7 @@ impl PciHotPlugManager {
                 .context("make proxy device")?;
             let device_id = proxy_device.lock().device_id();
             let device_name = proxy_device.lock().debug_label();
-            linux.irq_chip.as_irq_chip().register_level_irq_event(
+            linux.irq_chip.register_level_irq_event(
                 irq_num,
                 &irq_evt,
                 IrqEventSource {
