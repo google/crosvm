@@ -5,12 +5,12 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
-powerd = ["dbus", "system_api"]
+powerd = ["dbus", "system_api", "protobuf"]
 
 [dependencies]
 base = { workspace = true }
 dbus = { version = "0.9.7", optional = true }
-protobuf = "3.2"
+protobuf = { version = "3.2", optional = true }
 remain = { workspace = true }
 system_api = { workspace = true, optional = true }
 thiserror = { workspace = true }

@@ -24,7 +24,7 @@ libc = { workspace = true }
 rand = { workspace = true }
 remain = { workspace = true }
 resources = { workspace = true }
-swap = { workspace = true }
+swap = { workspace = true, optional = true }
 sync = { workspace = true }
 base = { workspace = true }
 thiserror = { workspace = true }

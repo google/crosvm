@@ -26,7 +26,6 @@ fnv = "1"
 libc = { workspace = true }
 resources = { workspace = true }
 serde = { workspace = true, features = [ "derive" ] }
-serde_json = { workspace = true }
 snapshot = { workspace = true }
 sync = { workspace = true }
 base = { workspace = true }

@@ -30,7 +30,7 @@ sync = { workspace = true }
 thiserror = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 base = { workspace = true }
-swap = { workspace = true }
+swap = { workspace = true, optional = true }
 vm_control = { workspace = true }
 vm_memory = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }

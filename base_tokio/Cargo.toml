@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = { workspace = true }
 cfg-if = { workspace = true }
-futures = { version = "0.3" }
+
 libc = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }

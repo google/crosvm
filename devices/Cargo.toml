@@ -47,7 +47,6 @@ noncoherent-dma = []
 
 [dependencies]
 argh = { workspace = true }
-async-task = "4"
 acpi_tables = { workspace = true }
 anyhow = { workspace = true }
 async-trait = "0.1.36"
@@ -80,7 +79,6 @@ net_util = { workspace = true }
 num-traits = "0.2"
 power_monitor = { workspace = true }
 protobuf = { version = "3.2", optional = true }
-protos = { workspace = true, optional = true }
 rand = { workspace = true }
 remain = { workspace = true }
 resources = { workspace = true }
@@ -95,7 +93,7 @@ system_api = { workspace = true, optional = true }
 tempfile = "3"
 thiserror = { workspace = true }
 cros_tracing = { workspace = true }
-swap = { workspace = true }
+swap = { workspace = true, optional = true }
 uuid = { version = "1", features = ["v8", "serde"] }
 vmm_vhost = { workspace = true }
 virtio_sys = { workspace = true }

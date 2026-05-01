@@ -27,7 +27,6 @@ zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 serde = { workspace = true, features = [ "derive" ] }
-serde_json = { workspace = true }
 tube_transporter = { workspace = true }
 
 [dev-dependencies]

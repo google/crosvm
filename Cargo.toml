@@ -208,6 +208,7 @@ serde_json = "1"
 static_assertions = "1.1"
 thiserror = "1.0.23"
 tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
+uuid = { version = "1", features = ["v4"] }
 windows = { version = "=0.61.1" }
 
 [features]
@@ -229,7 +230,7 @@ balloon = ["devices/balloon", "vm_control/balloon"]
 ## Enables the composite-disk format, which adds protobufs as a dependency of the build. This format
 ## is intended to speed up crosvm's usage in CI environments that might otherwise have to
 ## concatenate large file system images into a single disk image.
-composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
+composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk", "uuid"]
 
 ## Enables support for using a seekable zstd archive of a raw disk image as a read-only disk.
 ## See [Format Specs](https://github.com/facebook/zstd/tree/v1.5.6/contrib/seekable_format) for
@@ -254,7 +255,7 @@ gdb = [
 ]
 
 ## Enables virtio-net and vhost-user-net backend.
-net = ["devices/net"]
+net = ["devices/net", "net_util", "vhost"]
 
 ## Enables PCI hotplug. Only available on Linux, and currently only for x86/x86-64.
 pci-hotplug = ["devices/pci-hotplug", "vm_control/pci-hotplug"]
@@ -418,7 +419,7 @@ libaaudio_stub = ["android_audio/libaaudio_stub"]
 
 ## Enables use of the ChromeOS audio server. ChromeOS builds will replace libcras_stub with an
 ## implementation that talks to the audio server. In upstream builds, using this option will panic.
-audio_cras = ["devices/audio_cras"]
+audio_cras = ["devices/audio_cras", "libcras"]
 
 ## Enables the VDA backend of the video devices. This feature requires the ChromeOS only
 ## libvda library and can be compiled but not linked. See b/244619291.
@@ -564,7 +565,6 @@ argh = { workspace = true }
 argh_helpers = { workspace = true }
 aarch64_sys_reg = { workspace = true }
 base = { workspace = true }
-bit_field = { workspace = true }
 proc_init = { workspace = true }
 cfg-if = { workspace = true }
 crash_report = { workspace = true, optional = true }
@@ -574,7 +574,6 @@ crosvm_cli = { workspace = true }
 devices = { workspace = true }
 disk = { workspace = true }
 document-features = { version = "0.2", optional = true }
-enumn = { workspace = true }
 ext2 = { workspace = true }
 gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
@@ -585,12 +584,12 @@ kernel_cmdline = { workspace = true }
 kernel_loader = { workspace = true }
 kvm_sys = { workspace = true, optional = true }
 libc = { workspace = true }
-libcras = "*"
+libcras = { version = "*", optional = true }
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}
 metrics = { workspace = true }
 metrics_events = { workspace = true }
-net_util = { workspace = true }
+net_util = { workspace = true, optional = true }
 protobuf = { version = "3.2", optional = true }
 protos = { workspace = true, optional = true }
 remain = { workspace = true }
@@ -599,18 +598,16 @@ scudo = { version = "0.1", optional = true }
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
 serde_keyvalue = { workspace = true, features = ["argh_derive"] }
-snapshot = { workspace = true }
 smallvec = "1.6.1"
 static_assertions = { workspace = true }
-swap = { workspace = true }
+swap = { workspace = true, optional = true }
 sync = { workspace = true }
 thiserror = { workspace = true }
 vm_control = { workspace = true }
 acpi_tables = { workspace = true }
 vm_memory = { workspace = true }
 vmm_vhost = { workspace = true }
-uuid = { version = "1", features = ["v4"] }
-zerocopy = { version = "0.8.13", features = ["derive"] }
+uuid = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv64 = { workspace = true }
@@ -624,8 +621,8 @@ aarch64 = { workspace = true }
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 minijail = "*" # provided by ebuild
 p9 = "0.3.1"
-vhost = { workspace = true }
-android_audio = { workspace = true }
+vhost = { workspace = true, optional = true }
+android_audio = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { workspace = true }
@@ -637,12 +634,12 @@ sandbox = { workspace = true }
 cros_tracing = { workspace = true }
 tube_transporter = { workspace = true }
 winapi = "0.3"
-win_audio = { workspace = true }
 win_util = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
 tempfile = "3"
+uuid = { workspace = true }
 
 [patch.crates-io]
 audio_streams = { path = "common/audio_streams" }

@@ -20,7 +20,7 @@ libc = { workspace = true }
 rand = { workspace = true }
 remain = { workspace = true }
 resources = { workspace = true }
-swap = { workspace = true }
+swap = { workspace = true, optional = true }
 sync = { workspace = true }
 thiserror = { workspace = true }
 base = { workspace = true }
