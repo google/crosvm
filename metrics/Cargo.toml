@@ -12,7 +12,6 @@ experimental = []
 anyhow = { workspace = true }
 base = { workspace = true }
 cfg-if = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
 sync = { workspace = true }
 metrics_events = { workspace = true }
 metrics_product = { path = "../vendor/generic/metrics", package = "metrics_generic" }

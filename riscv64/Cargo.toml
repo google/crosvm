@@ -16,7 +16,6 @@ gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
 hypervisor = { workspace = true }
 kernel_cmdline = { workspace = true }
-libc = { workspace = true }
 rand = { workspace = true }
 remain = { workspace = true }
 resources = { workspace = true }

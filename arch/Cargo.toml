@@ -24,7 +24,6 @@ gdbstub_arch = { workspace = true, optional = true }
 hypervisor = { workspace = true }
 jail = { workspace = true }
 kernel_cmdline = { workspace = true }
-libc = { workspace = true }
 metrics = { workspace = true }
 resources = { workspace = true }
 remain = { workspace = true }

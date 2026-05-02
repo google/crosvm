@@ -13,7 +13,6 @@ swap = ["swap/enable"]
 acpi_tables = { workspace = true }
 arch = { workspace = true }
 anyhow = { workspace = true }
-cfg-if = { workspace = true }
 chrono = { version = "0.4.34", default-features = false }
 cros_fdt = { workspace = true }
 devices = { workspace = true }
@@ -22,7 +21,6 @@ hypervisor = { workspace = true }
 jail = { path = "../jail" }
 kernel_cmdline = { workspace = true }
 kernel_loader = { workspace = true }
-libc = { workspace = true }
 rand = { workspace = true }
 remain = { workspace = true }
 resources = { workspace = true }

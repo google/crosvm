@@ -74,7 +74,6 @@ libc = { workspace = true }
 libvda = { path = "../media/libvda", optional = true }
 linux_input_sys = { workspace = true }
 metrics = { workspace = true }
-metrics_events = { workspace = true }
 net_util = { workspace = true }
 num-traits = "0.2"
 power_monitor = { workspace = true }

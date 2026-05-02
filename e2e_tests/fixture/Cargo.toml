@@ -6,7 +6,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
-arch = { workspace = true }
 base = { workspace = true }
 crc32fast = "1.3"
 cfg-if = { workspace = true }
@@ -18,6 +17,5 @@ log = "0.4"
 shlex = "1.3"
 url = "2.3"
 delegate = {path = "../guest_under_test/rootfs/delegate"}
-serde = { workspace = true, features = ["derive"]}
 serde_json = { workspace = true }
 readclock = { path = "../guest_under_test/rootfs/readclock" }

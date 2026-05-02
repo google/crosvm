@@ -134,7 +134,6 @@ dependencies = [
  "hypervisor",
  "jail",
  "kernel_cmdline",
- "libc",
  "metrics",
  "minijail",
  "power_monitor",
@@ -754,7 +753,6 @@ dependencies = [
 name = "cros_fdt"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "indexmap 1.9.1",
  "remain",
  "thiserror",
@@ -764,7 +762,6 @@ dependencies = [
 name = "cros_tracing"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "base",
  "cfg-if",
  "cros_tracing_types",
@@ -912,7 +909,6 @@ dependencies = [
  "fuse",
  "hypervisor",
  "kernel_loader",
- "libc",
  "libfuzzer-sys",
  "p9",
  "rand",
@@ -959,7 +955,6 @@ name = "crypto_generic"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base",
  "serde",
  "tempfile",
  "zeroize",
@@ -1053,7 +1048,6 @@ dependencies = [
  "libvda",
  "linux_input_sys",
  "metrics",
- "metrics_events",
  "minijail",
  "named-lock",
  "net_sys",
@@ -1111,7 +1105,6 @@ dependencies = [
  "protobuf",
  "protos",
  "remain",
- "serde",
  "sync",
  "tempfile",
  "thiserror",
@@ -1271,7 +1264,6 @@ name = "fixture"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arch",
  "base",
  "cfg-if",
  "crc32fast",
@@ -1281,7 +1273,6 @@ dependencies = [
  "prebuilts",
  "rand",
  "readclock",
- "serde",
  "serde_json",
  "shlex",
  "tempfile",
@@ -1726,7 +1717,6 @@ dependencies = [
 name = "kernel_cmdline"
 version = "0.1.0"
 dependencies = [
- "libc",
  "remain",
  "thiserror",
 ]
@@ -1737,7 +1727,6 @@ version = "0.1.0"
 dependencies = [
  "base",
  "data_model",
- "libc",
  "lz4_flex",
  "remain",
  "resources",
@@ -1857,9 +1846,7 @@ checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
 name = "linux_input_sys"
 version = "0.1.0"
 dependencies = [
- "base",
  "data_model",
- "libc",
  "zerocopy 0.8.14",
 ]
 
@@ -1958,7 +1945,6 @@ dependencies = [
  "chrono",
  "metrics_events",
  "metrics_generic",
- "serde",
  "sync",
  "winapi",
 ]
@@ -1967,7 +1953,6 @@ dependencies = [
 name = "metrics_events"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "cfg-if",
  "metrics_events_generic",
  "serde",
@@ -1985,7 +1970,6 @@ dependencies = [
 name = "metrics_generic"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "base",
  "metrics_events",
 ]
@@ -2621,7 +2605,6 @@ name = "resources"
 version = "0.1.0"
 dependencies = [
  "base",
- "libc",
  "remain",
  "serde",
  "serde_json",
@@ -2640,7 +2623,6 @@ dependencies = [
  "gdbstub_arch",
  "hypervisor",
  "kernel_cmdline",
- "libc",
  "minijail",
  "rand",
  "remain",
@@ -2843,7 +2825,6 @@ name = "serde_keyvalue_derive"
 version = "0.1.0"
 dependencies = [
  "argh",
- "proc-macro2",
  "quote 1.0.36",
  "syn 2.0.87",
 ]
@@ -2874,7 +2855,6 @@ name = "snapshot"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base",
  "ciborium",
  "crypto_generic",
  "serde",
@@ -3529,7 +3509,6 @@ dependencies = [
  "anyhow",
  "enumn",
  "libc",
- "log",
  "serde",
  "winapi",
  "windows",
@@ -3930,7 +3909,6 @@ dependencies = [
  "anyhow",
  "arch",
  "base",
- "cfg-if",
  "chrono",
  "cros_fdt",
  "devices",
@@ -3939,7 +3917,6 @@ dependencies = [
  "jail",
  "kernel_cmdline",
  "kernel_loader",
- "libc",
  "minijail",
  "rand",
  "remain",

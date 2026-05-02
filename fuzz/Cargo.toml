@@ -16,7 +16,6 @@ disk = { workspace = true }
 fuse = { workspace = true }
 hypervisor = { workspace = true }
 kernel_loader = { workspace = true }
-libc = { workspace = true }
 rand = { workspace = true }
 base = { workspace = true }
 tempfile = "3"

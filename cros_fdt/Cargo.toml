@@ -5,7 +5,6 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = { workspace = true }
 indexmap = "1"
 remain = { workspace = true }
 thiserror = { workspace = true }
