@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::arch::x86_64::CpuidResult;
 use std::arch::x86_64::__cpuid;
+use std::arch::x86_64::CpuidResult;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 

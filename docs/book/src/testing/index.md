@@ -151,12 +151,13 @@ $ ./tools/run_tests --dut=vm --filter-expr 'package(e2e_tests) and test(boot)'
 
 So you'll see the crosvm log in the first terminal.
 
-[^qemu-user]: qemu-aarch64-static or qemu-arm-static translate instructions into x86 and executes them on the
-    host kernel. This works well for unit tests, but will fail when interacting with platform
-    specific kernel features.
+[^qemu-user]: qemu-aarch64-static or qemu-arm-static translate instructions into x86 and executes
+    them on the host kernel. This works well for unit tests, but will fail when
+    interacting with platform specific kernel features.
 
 [^qemu]: run_tests will launch a VM for testing in the background. This VM is using full system
-    emulation, which causes tests to be slow. Also not all aarch64 features are properly emulated,
-    which prevents us from running e2e tests.
+    emulation, which causes tests to be slow. Also not all aarch64 features are properly
+    emulated, which prevents us from running e2e tests.
 
-[^windows]: Windows builds of crosvm are a work in progress. Some tests are executed via wine64 on linux
+[^windows]: Windows builds of crosvm are a work in progress. Some tests are executed via wine64 on
+    linux

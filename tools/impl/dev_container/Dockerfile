@@ -16,7 +16,7 @@
 ARG BASE_VERSION
 
 # Build catapult dashboard upload tool in a builder container
-FROM docker.io/golang:bullseye AS gobuilder
+FROM docker.io/golang:latest AS gobuilder
 WORKDIR /root/
 RUN git clone https://fuchsia.googlesource.com/infra/infra
 WORKDIR /root/infra/cmd/catapult

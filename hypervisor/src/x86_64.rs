@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::arch::x86_64::CpuidResult;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::__cpuid;
 use std::arch::x86_64::_rdtsc;
+use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::sync::Arc;
