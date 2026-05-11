@@ -23,4 +23,7 @@ pub trait XhciBackendDeviceProvider: Send + Sync {
 
     /// Keep raw descriptors that should be kept open.
     fn keep_rds(&self) -> Vec<RawDescriptor>;
+
+    /// Attach a USB device file directly (bypasses control socket). Default is no-op.
+    fn attach_device(&self, _file: std::fs::File) {}
 }

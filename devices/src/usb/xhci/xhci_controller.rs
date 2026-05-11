@@ -116,6 +116,7 @@ pub struct XhciController {
     pci_address: Option<PciAddress>,
     mem: GuestMemory,
     state: XhciControllerState,
+    initial_usb_devices: Vec<std::fs::File>,
 }
 
 impl XhciController {
@@ -139,7 +140,13 @@ impl XhciController {
             state: XhciControllerState::Created {
                 device_provider: usb_provider,
             },
+            initial_usb_devices: Vec::new(),
         }
+    }
+
+    /// Set USB device files to attach at startup (before VM boots).
+    pub fn set_initial_usb_devices(&mut self, devices: Vec<std::fs::File>) {
+        self.initial_usb_devices = devices;
     }
 
     /// Init xhci controller when it's forked.
@@ -151,12 +158,14 @@ impl XhciController {
             } => {
                 let (mmio, regs) = init_xhci_mmio_space_and_regs();
                 let fail_handle: Arc<dyn FailHandle> = Arc::new(XhciFailHandle::new(&regs));
-                let xhci = match Xhci::new(
+                let initial_devices = mem::take(&mut self.initial_usb_devices);
+                let xhci = match Xhci::new_with_devices(
                     fail_handle.clone(),
                     self.mem.clone(),
                     device_provider,
                     irq_evt,
                     regs,
+                    initial_devices,
                 ) {
                     Ok(xhci) => Some(xhci),
                     Err(_) => {

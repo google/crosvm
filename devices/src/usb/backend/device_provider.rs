@@ -114,6 +114,21 @@ impl XhciBackendDeviceProvider for DeviceProvider {
         self.start_helper(fail_handle, event_loop, hub)
     }
 
+    fn attach_device(&self, file: File) {
+        if let DeviceProvider::Started { inner } = self {
+            match inner.handle_attach_device(file) {
+                UsbControlResult::Ok { port } => {
+                    base::info!("Attached USB device at startup, port {}", port);
+                }
+                result => {
+                    base::error!("Failed to attach USB device at startup: {}", result);
+                }
+            }
+        } else {
+            base::error!("Cannot attach USB device: DeviceProvider not started");
+        }
+    }
+
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         match self {
             DeviceProvider::Created { control_tube } => {

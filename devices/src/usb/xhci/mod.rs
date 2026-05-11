@@ -102,6 +102,8 @@ pub struct Xhci {
     intr_resample_handler: Arc<IntrResampleHandler>,
     #[allow(dead_code)]
     device_provider: Box<dyn XhciBackendDeviceProvider>,
+    /// USB device files to attach once the guest XHCI driver is ready (writes USBCMD Run bit).
+    pending_usb_devices: Mutex<Vec<std::fs::File>>,
 }
 
 impl Xhci {
@@ -112,6 +114,25 @@ impl Xhci {
         device_provider: Box<dyn XhciBackendDeviceProvider>,
         interrupt_evt: IrqLevelEvent,
         regs: XhciRegs,
+    ) -> Result<Arc<Self>> {
+        Self::new_with_devices(
+            fail_handle,
+            mem,
+            device_provider,
+            interrupt_evt,
+            regs,
+            Vec::new(),
+        )
+    }
+
+    /// Create a new xHCI controller with USB devices to attach at startup.
+    pub fn new_with_devices(
+        fail_handle: Arc<dyn FailHandle>,
+        mem: GuestMemory,
+        mut device_provider: Box<dyn XhciBackendDeviceProvider>,
+        interrupt_evt: IrqLevelEvent,
+        regs: XhciRegs,
+        initial_usb_devices: Vec<std::fs::File>,
     ) -> Result<Arc<Self>> {
         let (event_loop, join_handle) =
             EventLoop::start("xhci".to_string(), Some(fail_handle.clone()))
@@ -131,7 +152,6 @@ impl Xhci {
                 .ok_or(Error::StartResampleHandler)?;
         let hub = Arc::new(UsbHub::new(&regs, interrupter.clone()));
 
-        let mut device_provider = device_provider;
         device_provider
             .start(fail_handle.clone(), event_loop.clone(), hub.clone())
             .map_err(Error::StartProvider)?;
@@ -161,6 +181,7 @@ impl Xhci {
             device_provider,
             event_loop,
             event_loop_join_handle: Some(join_handle),
+            pending_usb_devices: Mutex::new(initial_usb_devices),
         });
         Self::init_reg_callbacks(&xhci);
         Ok(xhci)
@@ -280,6 +301,18 @@ impl Xhci {
             .lock()
             .set_enabled(enabled)
             .map_err(Error::EnableInterrupter)?;
+
+        // Attach any pending USB devices now that the guest XHCI driver is running.
+        if (value & USB_CMD_RUNSTOP) > 0 {
+            let mut pending = self.pending_usb_devices.lock();
+            if !pending.is_empty() {
+                let files: Vec<std::fs::File> = pending.drain(..).collect();
+                drop(pending);
+                for file in files {
+                    self.device_provider.attach_device(file);
+                }
+            }
+        }
         Ok(value)
     }
 
