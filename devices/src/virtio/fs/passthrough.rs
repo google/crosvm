@@ -42,6 +42,8 @@ use base::ioctl_iow_nr;
 use base::ioctl_iowr_nr;
 use base::ioctl_with_mut_ptr;
 use base::ioctl_with_ptr;
+use base::open_how;
+use base::openat2;
 use base::syscall;
 use base::unix::FileFlags;
 use base::warn;
@@ -601,23 +603,6 @@ fn stat<F: AsRawDescriptor + ?Sized>(f: &F) -> io::Result<libc::stat64> {
     Ok(unsafe { st.assume_init() })
 }
 
-fn statat<D: AsRawDescriptor>(dir: &D, name: &CStr) -> io::Result<libc::stat64> {
-    let mut st = MaybeUninit::<libc::stat64>::zeroed();
-
-    // SAFETY: the kernel will only write data in `st` and we check the return value.
-    syscall!(unsafe {
-        libc::fstatat64(
-            dir.as_raw_descriptor(),
-            name.as_ptr(),
-            st.as_mut_ptr(),
-            libc::AT_SYMLINK_NOFOLLOW,
-        )
-    })?;
-
-    // SAFETY: the kernel guarantees that the struct is now fully initialized.
-    Ok(unsafe { st.assume_init() })
-}
-
 #[cfg(feature = "arc_quota")]
 fn is_android_project_id(project_id: u32) -> bool {
     // The following constants defines the valid range of project ID used by
@@ -925,7 +910,6 @@ impl PassthroughFs {
         }
     }
 
-    #[cfg(feature = "fs_runtime_ugid_map")]
     pub fn set_root_dir(&mut self, shared_dir: String) -> io::Result<()> {
         let canonicalized_root = match std::fs::canonicalize(shared_dir) {
             Ok(path) => path,
@@ -1136,8 +1120,18 @@ impl PassthroughFs {
     }
 
     fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
-        #[cfg_attr(not(feature = "fs_permission_translation"), allow(unused_mut))]
-        let mut st = statat(parent, name)?;
+        let how = open_how {
+            flags: (libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW) as u64,
+            resolve: libc::RESOLVE_IN_ROOT
+                | libc::RESOLVE_NO_MAGICLINKS
+                | libc::RESOLVE_NO_SYMLINKS,
+            ..Default::default()
+        };
+
+        let path_file = openat2(parent, name, &how).map_err(io::Error::from)?;
+
+        #[allow(unused_mut)]
+        let mut st = stat(&path_file)?;
 
         let altkey = InodeAltKey {
             ino: st.st_ino,
@@ -1167,53 +1161,40 @@ impl PassthroughFs {
             });
         }
 
-        // Open a regular file with O_RDONLY to store in `InodeData` so explicit open requests can
-        // be skipped later if the ZERO_MESSAGE_{OPEN,OPENDIR} features are enabled.
-        // If the crosvm process doesn't have a read permission, fall back to O_PATH below.
-        let mut flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        // Now we need to get a file descriptor that can be used for operations
+        // that don't support O_PATH. We try to open it with O_RDONLY or O_DIRECTORY
+        // first.
+        let mut flags = libc::O_RDONLY | libc::O_CLOEXEC;
         match FileType::from(st.st_mode) {
             FileType::Regular => {}
             FileType::Directory => flags |= libc::O_DIRECTORY,
             FileType::Other => flags |= libc::O_PATH,
         };
 
+        // We use /proc/self/fd/{path_fd} to open the file again with full permissions.
+        // This is safe because we resolved the path securely above.
+        let pathname = CString::new(format!("self/fd/{}", path_file.as_raw_descriptor()))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
         // SAFETY: this doesn't modify any memory and we check the return value.
-        let fd = match unsafe {
-            syscall!(libc::openat64(
-                parent.as_raw_descriptor(),
-                name.as_ptr(),
-                flags
-            ))
-        } {
+        let fd = match syscall!(unsafe {
+            libc::openat64(self.proc.as_raw_descriptor(), pathname.as_ptr(), flags)
+        }) {
             Ok(fd) => fd,
             Err(e) if e.errno() == libc::EACCES => {
-                // If O_RDONLY is unavailable, fall back to O_PATH to get an FD to store in
-                // `InodeData`.
-                // Note that some operations which should be allowed without read permissions
-                // require syscalls that don't support O_PATH fds. For those syscalls, we will
-                // need to fall back to their path-based equivalents with /self/fd/${FD}.
-                // e.g. `fgetxattr()` for an O_PATH FD fails while `getxaattr()` for /self/fd/${FD}
-                // works.
+                // Fall back to O_PATH if we can't read it.
                 flags |= libc::O_PATH;
                 // SAFETY: this doesn't modify any memory and we check the return value.
-                unsafe {
-                    syscall!(libc::openat64(
-                        parent.as_raw_descriptor(),
-                        name.as_ptr(),
-                        flags
-                    ))
-                }?
+                syscall!(unsafe {
+                    libc::openat64(self.proc.as_raw_descriptor(), pathname.as_ptr(), flags)
+                })?
             }
-            Err(e) => {
-                return Err(e.into());
-            }
+            Err(e) => return Err(e.into()),
         };
 
         // SAFETY: safe because we own the fd.
         let f = unsafe { File::from_raw_descriptor(fd) };
-        // We made sure the lock acquired for `self.inodes` is released automatically when
-        // the if block above is exited, so a call to `self.add_entry()` should not cause a deadlock
-        // here. This would not be the case if this were executed in an else block instead.
+        flags |= libc::O_NOFOLLOW;
         Ok(self.add_entry(f, st, flags, path))
     }
 
@@ -1333,6 +1314,9 @@ impl PassthroughFs {
     }
 
     fn do_unlink(&self, parent: &InodeData, name: &CStr, flags: libc::c_int) -> io::Result<()> {
+        if name.to_bytes().contains(&b'/') {
+            return Err(io::Error::from_raw_os_error(libc::EINVAL));
+        }
         // SAFETY: this doesn't modify any memory and we check the return value.
         syscall!(unsafe { libc::unlinkat(parent.as_raw_descriptor(), name.as_ptr(), flags) })?;
         Ok(())
@@ -2459,6 +2443,9 @@ impl FileSystem for PassthroughFs {
             let casefold_cache = self.lock_casefold_lookup_caches();
             let _scoped_umask = ScopedUmask::new(umask);
 
+            if name.to_bytes().contains(&b'/') {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL));
+            }
             // SAFETY: this doesn't modify any memory and we check the return value.
             syscall!(unsafe { libc::mkdirat(data.as_raw_descriptor(), name.as_ptr(), mode) })?;
             if let Some(mut c) = casefold_cache {
@@ -2639,29 +2626,44 @@ impl FileSystem for PassthroughFs {
         let (_uid, _gid) = set_creds(uid, gid)?;
 
         let flags = self.update_open_flags(flags as i32);
-        let create_flags =
-            (flags | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW) & !libc::O_DIRECT;
+        // Mask out O_DIRECT. Also mask out O_PATH because we need to return a readable/writable
+        // file descriptor for create.
+        let create_flags = (flags | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            & !(libc::O_DIRECT | libc::O_PATH);
+        if name.to_bytes().contains(&b'/') {
+            return Err(io::Error::from_raw_os_error(libc::EINVAL));
+        }
 
-        let fd = {
+        let file = {
             let _scoped_umask = ScopedUmask::new(umask);
             let casefold_cache = self.lock_casefold_lookup_caches();
 
-            // SAFETY: this doesn't modify any memory and we check the return value. We don't really
-            // check `flags` because if the kernel can't handle poorly specified flags then we have
-            // much bigger problems.
-            // TODO(b/278691962): If ascii_casefold is enabled, we need to call
-            // `get_case_unfolded_name()` to get the actual name to be created.
-            let fd = syscall!(unsafe {
-                libc::openat64(data.as_raw_descriptor(), name.as_ptr(), create_flags, mode)
-            })?;
+            let how = open_how {
+                flags: create_flags as u64,
+                mode: (mode & 0o7777) as u64,
+                resolve: libc::RESOLVE_IN_ROOT | libc::RESOLVE_NO_MAGICLINKS,
+            };
+
+            let res = openat2(&data, name, &how);
+            let file = match res {
+                Ok(file) => file,
+                Err(e) if e.errno() == libc::ENOSYS => {
+                    // Fallback to openat64 if openat2 is not supported.
+                    // SAFETY: safe because we checked that `name` has no slashes, so it cannot
+                    // traverse outside the parent directory.
+                    let fd = syscall!(unsafe {
+                        libc::openat64(data.as_raw_descriptor(), name.as_ptr(), create_flags, mode)
+                    })?;
+                    // SAFETY: safe because we just opened this fd.
+                    unsafe { File::from_raw_descriptor(fd) }
+                }
+                Err(e) => return Err(e.into()),
+            };
             if let Some(mut c) = casefold_cache {
                 c.insert(parent, name);
             }
-            fd
+            file
         };
-
-        // SAFETY: safe because we just opened this fd.
-        let file = unsafe { File::from_raw_descriptor(fd) };
 
         let st = stat(&file)?;
         let path = format!(

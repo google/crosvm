@@ -248,6 +248,34 @@ pub fn fallocate<F: AsRawDescriptor>(
         .map(|_| ())
 }
 
+/// Arguments for how `openat2(2)` should open the target path.
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone)]
+pub struct open_how {
+    /// Flags for the open operation (e.g. `O_RDONLY`).
+    pub flags: u64,
+    /// Mode for the created file (if `O_CREAT` is set).
+    pub mode: u64,
+    /// Resolution flags (e.g. `RESOLVE_IN_ROOT`).
+    pub resolve: u64,
+}
+
+/// Safe wrapper for `openat2(2)`.
+pub fn openat2<D: AsRawDescriptor>(dir: &D, name: &std::ffi::CStr, how: &open_how) -> Result<File> {
+    // SAFETY:
+    // Safe because the syscall is provided with valid arguments and its return value is checked.
+    syscall!(unsafe {
+        libc::syscall(
+            libc::SYS_openat2,
+            dir.as_raw_descriptor(),
+            name.as_ptr(),
+            how as *const open_how,
+            std::mem::size_of::<open_how>() as libc::size_t,
+        )
+    })
+    .map(|fd| unsafe { File::from_raw_descriptor(fd as RawFd) })
+}
+
 /// Safe wrapper for `fstat()`.
 pub fn fstat<F: AsRawDescriptor>(f: &F) -> Result<libc::stat64> {
     let mut st = MaybeUninit::<libc::stat64>::zeroed();

@@ -44,6 +44,7 @@ mknodat: 1
 newfstatat: 1
 open: return ENOENT
 openat: 1
+openat2: 1
 preadv: 1
 pwritev: 1
 renameat2: 1

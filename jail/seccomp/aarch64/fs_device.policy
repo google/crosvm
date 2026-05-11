@@ -42,6 +42,7 @@ linkat: 1
 mkdirat: 1
 mknodat: 1
 openat: 1
+openat2: 1
 preadv: 1
 pwritev: 1
 renameat2: 1

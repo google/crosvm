@@ -94,9 +94,8 @@ cfg_if::cfg_if! {
 
         // descriptor/fd related exports.
         pub use linux::{
-            clone_descriptor, safe_descriptor_from_path,
-            validate_raw_descriptor, clear_descriptor_cloexec,
-            safe_descriptor_from_cmdline_fd,
+            clear_descriptor_cloexec, clone_descriptor, open_how, openat2,
+            safe_descriptor_from_cmdline_fd, safe_descriptor_from_path, validate_raw_descriptor,
         };
 
         // Event/signal related exports.
