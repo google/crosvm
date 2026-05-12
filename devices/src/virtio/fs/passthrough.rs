@@ -603,6 +603,14 @@ fn stat<F: AsRawDescriptor + ?Sized>(f: &F) -> io::Result<libc::stat64> {
     Ok(unsafe { st.assume_init() })
 }
 
+fn validate_path_component(name: &CStr) -> io::Result<()> {
+    let bytes = name.to_bytes();
+    if bytes == b".." || (bytes.contains(&b'/') && bytes != b"/") {
+        return Err(io::Error::from_raw_os_error(libc::EINVAL));
+    }
+    Ok(())
+}
+
 #[cfg(feature = "arc_quota")]
 fn is_android_project_id(project_id: u32) -> bool {
     // The following constants defines the valid range of project ID used by
@@ -2338,6 +2346,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn lookup(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<Entry> {
+        validate_path_component(name)?;
         let data = self.find_inode(parent)?;
         #[allow(unused_variables)]
         let path = format!(
@@ -2422,6 +2431,7 @@ impl FileSystem for PassthroughFs {
         umask: u32,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
+        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "mkdir", parent, name, mode, umask, security_ctx);
         let data = self.find_inode(parent)?;
 
@@ -2456,6 +2466,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn rmdir(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
+        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "rmdir", parent, name);
         let data = self.find_inode(parent)?;
         let casefold_cache = self.lock_casefold_lookup_caches();
@@ -2598,6 +2609,7 @@ impl FileSystem for PassthroughFs {
         umask: u32,
         security_ctx: Option<&CStr>,
     ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
+        validate_path_component(name)?;
         let _trace = fs_trace!(
             self.tag,
             "create",
@@ -2691,6 +2703,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn unlink(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
+        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "unlink", parent, name);
         let data = self.find_inode(parent)?;
         let casefold_cache = self.lock_casefold_lookup_caches();
@@ -2942,6 +2955,8 @@ impl FileSystem for PassthroughFs {
         newname: &CStr,
         flags: u32,
     ) -> io::Result<()> {
+        validate_path_component(oldname)?;
+        validate_path_component(newname)?;
         let _trace = fs_trace!(self.tag, "rename", olddir, oldname, newdir, newname, flags);
 
         let old_inode = self.find_inode(olddir)?;
@@ -2981,6 +2996,7 @@ impl FileSystem for PassthroughFs {
         umask: u32,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
+        validate_path_component(name)?;
         let _trace = fs_trace!(
             self.tag,
             "mknod",
@@ -3035,6 +3051,7 @@ impl FileSystem for PassthroughFs {
         newparent: Inode,
         newname: &CStr,
     ) -> io::Result<Entry> {
+        validate_path_component(newname)?;
         let _trace = fs_trace!(self.tag, "link", inode, newparent, newname);
         let data = self.find_inode(inode)?;
         let new_inode = self.find_inode(newparent)?;
@@ -3070,6 +3087,7 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
+        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "symlink", parent, linkname, name, security_ctx);
         let data = self.find_inode(parent)?;
 
@@ -3709,6 +3727,7 @@ impl FileSystem for PassthroughFs {
         umask: u32,
         security_ctx: Option<&CStr>,
     ) -> io::Result<(Entry, Option<Self::Handle>, OpenOptions)> {
+        validate_path_component(name)?;
         let _trace = fs_trace!(
             self.tag,
             "atomic_open",
@@ -3925,14 +3944,15 @@ mod tests {
     fn symlink(
         fs: &PassthroughFs,
         linkname: &Path,
-        name: &Path,
+        path: &Path,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
-        let inode = 1;
+        let parent = path.parent().unwrap();
+        let filename = CString::new(path.file_name().unwrap().to_str().unwrap()).unwrap();
+        let parent_inode = lookup(fs, parent)?;
         let ctx = get_context();
-        let name = CString::new(name.to_str().unwrap()).unwrap();
         let linkname = CString::new(linkname.to_str().unwrap()).unwrap();
-        fs.symlink(ctx, &linkname, inode, &name, security_ctx)
+        fs.symlink(ctx, &linkname, parent_inode, &filename, security_ctx)
     }
 
     // In this ioctl inode,handle,flags,arg and out_size is irrelavant, set to empty value.
@@ -5106,5 +5126,32 @@ mod tests {
     #[test]
     fn test_atomic_open_create_o_append_writeback() {
         atomic_open_create_o_append(true);
+    }
+
+    #[test]
+    fn test_lookup_dotdot_escape() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+        let temp_dir = TempDir::new().unwrap();
+        let root_path = temp_dir.path().join("root");
+        std::fs::create_dir(&root_path).unwrap();
+
+        // Create a secret file in the parent of root
+        let secret_file = temp_dir.path().join("secret.txt");
+        std::fs::write(&secret_file, "top secret").unwrap();
+
+        let cfg = Config {
+            ..Default::default()
+        };
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.set_root_dir(root_path.to_str().unwrap().to_string())
+            .unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+        let ctx = get_context();
+
+        // 1. Lookup ".." from root (inode 1)
+        let dotdot = c"..";
+        let res = fs.lookup(ctx, 1, dotdot);
+        assert!(res.is_err(), "Lookup .. should be blocked!");
     }
 }

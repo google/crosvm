@@ -237,7 +237,7 @@ impl<F: FileSystem + Sync> Server<F> {
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
-        let name = bytes_to_cstr(&buf)?;
+        let name = bytes_to_path_component(&buf)?;
 
         match self
             .fs
@@ -352,7 +352,9 @@ impl<F: FileSystem + Sync> Server<F> {
         let name = iter
             .next()
             .ok_or(Error::MissingParameter)
-            .and_then(bytes_to_cstr)?;
+            .and_then(bytes_to_path_component)?;
+        // `linkname` is a symlink target, which can contain `/` and `..` so we use `bytes_to_cstr`
+        // instead of `bytes_to_path_component`.
         let linkname = iter
             .next()
             .ok_or(Error::MissingParameter)
@@ -394,7 +396,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let name = iter
             .next()
             .ok_or(Error::MissingParameter)
-            .and_then(bytes_to_cstr)?;
+            .and_then(bytes_to_path_component)?;
 
         let split_pos = name.to_bytes_with_nul().len();
         let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
@@ -432,7 +434,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let name = iter
             .next()
             .ok_or(Error::MissingParameter)
-            .and_then(bytes_to_cstr)?;
+            .and_then(bytes_to_path_component)?;
 
         let split_pos = name.to_bytes_with_nul().len();
         let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
@@ -499,7 +501,7 @@ impl<F: FileSystem + Sync> Server<F> {
         match self.fs.unlink(
             Context::from(in_header),
             in_header.nodeid.into(),
-            bytes_to_cstr(&name)?,
+            bytes_to_path_component(&name)?,
         ) {
             Ok(()) => reply_ok(None::<u8>, None, in_header.unique, w),
             Err(e) => reply_error(e, in_header.unique, w),
@@ -517,7 +519,7 @@ impl<F: FileSystem + Sync> Server<F> {
         match self.fs.rmdir(
             Context::from(in_header),
             in_header.nodeid.into(),
-            bytes_to_cstr(&name)?,
+            bytes_to_path_component(&name)?,
         ) {
             Ok(()) => reply_ok(None::<u8>, None, in_header.unique, w),
             Err(e) => reply_error(e, in_header.unique, w),
@@ -553,9 +555,9 @@ impl<F: FileSystem + Sync> Server<F> {
         match self.fs.rename(
             Context::from(in_header),
             in_header.nodeid.into(),
-            bytes_to_cstr(oldname)?,
+            bytes_to_path_component(oldname)?,
             newdir.into(),
-            bytes_to_cstr(newname)?,
+            bytes_to_path_component(newname)?,
             flags,
         ) {
             Ok(()) => reply_ok(None::<u8>, None, in_header.unique, w),
@@ -593,7 +595,7 @@ impl<F: FileSystem + Sync> Server<F> {
             Context::from(in_header),
             oldnodeid.into(),
             in_header.nodeid.into(),
-            bytes_to_cstr(&name)?,
+            bytes_to_path_component(&name)?,
         ) {
             Ok(entry) => {
                 let out = EntryOut::from(entry);
@@ -824,6 +826,7 @@ impl<F: FileSystem + Sync> Server<F> {
         match self.fs.setxattr(
             Context::from(in_header),
             in_header.nodeid.into(),
+            // Extended attribute names are not path components, so we use `bytes_to_cstr`.
             bytes_to_cstr(name)?,
             value,
             flags,
@@ -855,6 +858,7 @@ impl<F: FileSystem + Sync> Server<F> {
         match self.fs.getxattr(
             Context::from(in_header),
             in_header.nodeid.into(),
+            // Extended attribute names are not path components, so we use `bytes_to_cstr`.
             bytes_to_cstr(&name)?,
             size,
         ) {
@@ -918,6 +922,7 @@ impl<F: FileSystem + Sync> Server<F> {
 
         r.read_exact(&mut buf).map_err(Error::DecodeMessage)?;
 
+        // Extended attribute names are not path components, so we use `bytes_to_cstr`.
         let name = bytes_to_cstr(&buf)?;
 
         match self
@@ -1347,7 +1352,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let name = iter
             .next()
             .ok_or(Error::MissingParameter)
-            .and_then(bytes_to_cstr)?;
+            .and_then(bytes_to_path_component)?;
 
         let split_pos = name.to_bytes_with_nul().len();
         let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
@@ -1692,7 +1697,7 @@ impl<F: FileSystem + Sync> Server<F> {
         let name = iter
             .next()
             .ok_or(Error::MissingParameter)
-            .and_then(bytes_to_cstr)?;
+            .and_then(bytes_to_path_component)?;
 
         let split_pos = name.to_bytes_with_nul().len();
         let security_ctx = parse_selinux_xattr(&buf[split_pos..])?;
@@ -1868,10 +1873,31 @@ fn reply_error<W: Writer>(e: io::Error, unique: u64, mut w: W) -> Result<usize> 
     Ok(header.len as usize)
 }
 
+/// Converts a byte buffer to a `CStr` without validating path components.
+///
+/// Use `bytes_to_path_component` instead if the input is a path component.
 fn bytes_to_cstr(buf: &[u8]) -> Result<&CStr> {
     // Convert to a `CStr` first so that we can drop the '\0' byte at the end
     // and make sure there are no interior '\0' bytes.
     CStr::from_bytes_with_nul(buf).map_err(Error::InvalidCString)
+}
+
+fn is_safe_name(name: &CStr) -> bool {
+    let bytes = name.to_bytes();
+    if bytes == b".." || (bytes.contains(&b'/') && bytes != b"/") {
+        return false;
+    }
+    true
+}
+
+fn bytes_to_path_component(buf: &[u8]) -> Result<&CStr> {
+    let name = bytes_to_cstr(buf)?;
+    if !is_safe_name(name) {
+        return Err(Error::DecodeMessage(io::Error::from_raw_os_error(
+            libc::EINVAL,
+        )));
+    }
+    Ok(name)
 }
 
 fn add_dirent<W: Writer>(
@@ -1990,6 +2016,7 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
 
         cur_secctx_pos += size_of::<Secctx>();
 
+        // Extended attribute names and values are not path components, so we use `bytes_to_cstr`.
         let secctx_data = &buf[cur_secctx_pos..]
             .split_inclusive(|&c| c == b'\0')
             .take(2)
