@@ -349,19 +349,6 @@ verify_linux_builder("aarch64")
 verify_linux_builder("mingw64")
 verify_linux_builder("riscv64")
 
-verify_builder(
-    name = "chromeos_hatch",
-    dimensions = {
-        "os": "Ubuntu",
-        "cpu": "x86-64",
-    },
-    executable = luci.recipe(
-        name = "build_chromeos_hatch",
-    ),
-    category = "linux",
-    presubmit = False,
-)
-
 # Disabled due to b/396467061
 #verify_builder(
 #    name = "windows",
