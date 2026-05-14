@@ -679,6 +679,15 @@ pub fn create_fdt(
     create_memory_node(&mut fdt, guest_mem)?;
 
     let dma_pool_phandle = if let Some((swiotlb_addr, swiotlb_size)) = swiotlb {
+        // Some guests require this to be at least as big as their page size. Since we don't detect
+        // the guest page size right now, set it to 64k as a catch all. Note that the size is
+        // always in MBs, so the extra alignment is unlikely to have a negative effect.
+        let alignment = 64 * 1024;
+        assert!(swiotlb_size % alignment == 0);
+        if let Some(swiotlb_addr) = swiotlb_addr {
+            assert!(swiotlb_addr.0 % alignment == 0);
+        }
+
         let phandle = PHANDLE_RESTRICTED_DMA_POOL;
         reserved_memory_regions.push(ReservedMemoryRegion {
             address: swiotlb_addr,
@@ -686,7 +695,7 @@ pub fn create_fdt(
             phandle: Some(phandle),
             name: "restricted_dma_reserved",
             compatible: Some("restricted-dma-pool"),
-            alignment: Some(base::pagesize() as u64),
+            alignment: Some(alignment),
             no_map: false,
         });
         phandles.insert("restricted_dma_reserved", phandle);
