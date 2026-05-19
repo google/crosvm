@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -84,13 +83,7 @@ pub fn create_fdt(
     create_reserved_memory_node(&mut fdt, &reserved_memory_regions)?;
 
     // Done writing base FDT, now apply DT overlays
-    apply_device_tree_overlays(
-        &mut fdt,
-        device_tree_overlays,
-        vec![],
-        #[cfg(any(target_os = "android", target_os = "linux"))]
-        &BTreeMap::new(),
-    )?;
+    apply_device_tree_overlays(&mut fdt, &device_tree_overlays, &[], &BTreeMap::new())?;
 
     let fdt_final = fdt.finish()?;
 

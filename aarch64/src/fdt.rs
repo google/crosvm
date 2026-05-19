@@ -769,9 +769,8 @@ pub fn create_fdt(
     // Done writing base FDT, now apply DT overlays
     apply_device_tree_overlays(
         &mut fdt,
-        device_tree_overlays,
-        platform_dev_resources,
-        #[cfg(any(target_os = "android", target_os = "linux"))]
+        &device_tree_overlays,
+        &platform_dev_resources,
         &phandles,
     )?;
 

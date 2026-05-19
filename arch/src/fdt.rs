@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -34,12 +33,13 @@ pub struct DtbOverlay {
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
 pub fn apply_device_tree_overlays(
     fdt: &mut Fdt,
-    overlays: Vec<DtbOverlay>,
-    _devices: Vec<PlatformBusResources>,
+    overlays: &[DtbOverlay],
+    _devices: &[PlatformBusResources],
+    _phandles: &BTreeMap<&str, u32>,
 ) -> Result<()> {
-    for mut dtbo in overlays {
+    for dtbo in overlays {
         let mut buffer = Vec::new();
-        dtbo.file
+        (&dtbo.file)
             .read_to_end(&mut buffer)
             .map_err(Error::FdtIoError)?;
         let overlay = Fdt::from_blob(buffer.as_slice())?;
@@ -138,23 +138,18 @@ fn update_device_nodes(
 }
 
 /// Apply multiple device tree overlays to the base FDT.
-///
-/// # Arguments
-///
-/// * `fdt` - The base FDT
-/// * `overlays` - A vector of overlay files to apply
-/// * `devices` - A vector of device resource descriptors to amend the overlay nodes with
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn apply_device_tree_overlays(
     fdt: &mut Fdt,
-    overlays: Vec<DtbOverlay>,
-    mut devices: Vec<PlatformBusResources>,
+    overlays: &[DtbOverlay],
+    devices: &[PlatformBusResources],
     phandles: &BTreeMap<&str, u32>,
 ) -> Result<()> {
     let mut power_domain_count = 0;
-    for mut dtbo in overlays {
+    let mut devices: Vec<&_> = devices.iter().collect();
+    for dtbo in overlays {
         let mut buffer = Vec::new();
-        dtbo.file
+        (&dtbo.file)
             .read_to_end(&mut buffer)
             .map_err(Error::FdtIoError)?;
         let mut overlay = Fdt::from_blob(buffer.as_slice())?;
