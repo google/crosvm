@@ -149,6 +149,7 @@ pub fn apply_device_tree_overlays(
     mut devices: Vec<PlatformBusResources>,
     phandles: &BTreeMap<&str, u32>,
 ) -> Result<()> {
+    let mut power_domain_count = 0;
     for mut dtbo in overlays {
         let mut buffer = Vec::new();
         dtbo.file
@@ -168,7 +169,6 @@ pub fn apply_device_tree_overlays(
             }
         });
 
-        let mut power_domain_count = 0;
         // Update device nodes found in this overlay, and then apply the overlay.
         for (path, res) in node_paths.into_iter().zip(&devs_in_overlay) {
             update_device_nodes(path, &mut overlay, res, phandles, &mut power_domain_count)?;
