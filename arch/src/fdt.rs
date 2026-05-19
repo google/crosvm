@@ -10,10 +10,8 @@ use std::io::Read;
 use cros_fdt::apply_overlay;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use cros_fdt::Path;
+use cros_fdt::FdtNode;
 use cros_fdt::Result;
-#[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::IommuDevType;
 use devices::PlatformBusResources;
 use vm_memory::GuestAddress;
@@ -54,7 +52,7 @@ pub fn apply_device_tree_overlays(
     Ok(())
 }
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg_attr(not(any(target_os = "android", target_os = "linux")), allow(unused))]
 fn get_iommu_phandle(
     iommu_type: IommuDevType,
     id: Option<u32>,
@@ -73,7 +71,7 @@ fn get_iommu_phandle(
     .ok_or_else(|| Error::MissingIommuPhandle(format!("{iommu_type:?}"), id))
 }
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg_attr(not(any(target_os = "android", target_os = "linux")), allow(unused))]
 fn get_power_domain_phandle(offset: usize, phandles: &BTreeMap<&str, u32>) -> Result<u32> {
     phandles
         .get(format!("dev_pd{offset}").as_str())
@@ -83,22 +81,14 @@ fn get_power_domain_phandle(offset: usize, phandles: &BTreeMap<&str, u32>) -> Re
 
 // Find the device node at given path and update its `reg` and `interrupts` properties using
 // its platform resources.
-#[cfg(any(target_os = "android", target_os = "linux"))]
-fn update_device_nodes(
-    node_path: Path,
-    fdt: &mut Fdt,
+#[cfg_attr(not(any(target_os = "android", target_os = "linux")), allow(unused))]
+fn patch_fdt_node(
+    node: &mut FdtNode,
     resources: &PlatformBusResources,
     phandles: &BTreeMap<&str, u32>,
     power_domain_count: &mut usize,
 ) -> Result<()> {
     const GIC_FDT_IRQ_TYPE_SPI: u32 = 0;
-
-    let node = fdt.get_node_mut(node_path).ok_or_else(|| {
-        Error::InvalidPath(format!(
-            "cannot find FDT node for dt-symbol {}",
-            &resources.dt_symbol
-        ))
-    })?;
     let reg_val: Vec<u64> = resources
         .regions
         .iter()
@@ -168,7 +158,13 @@ pub fn apply_device_tree_overlays(
 
         // Update device nodes found in this overlay, and then apply the overlay.
         for (path, res) in node_paths.into_iter().zip(&devs_in_overlay) {
-            update_device_nodes(path, &mut overlay, res, phandles, &mut power_domain_count)?;
+            let node = overlay.get_node_mut(path).ok_or_else(|| {
+                Error::InvalidPath(format!(
+                    "cannot find FDT node for dt-symbol {}",
+                    &res.dt_symbol
+                ))
+            })?;
+            patch_fdt_node(node, res, phandles, &mut power_domain_count)?;
         }
 
         // Apply overlay, optionally filtered by label allowlist.
@@ -302,4 +298,161 @@ pub fn reserved_memory_regions_from_guest_mem(
             no_map: true,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_patch_fdt_node() {
+        let mut fdt = Fdt::new(&[]);
+        let root = fdt.root_mut();
+
+        let resources = PlatformBusResources {
+            dt_symbol: "test".to_string(),
+            regions: vec![(0x1000, 0x100)],
+            irqs: vec![(5, 1)],
+            iommus: vec![(IommuDevType::PkvmPviommu, Some(1), vec![10])],
+            requires_power_domain: true,
+        };
+
+        let mut phandles = BTreeMap::new();
+        phandles.insert("dev_pd0", 42);
+        phandles.insert("pviommu1", 43);
+
+        let mut power_domain_count = 0;
+
+        patch_fdt_node(root, &resources, &phandles, &mut power_domain_count).unwrap();
+
+        assert_eq!(root.get_prop("reg"), Some(vec![0x1000u64, 0x100]));
+        assert_eq!(root.get_prop("interrupts"), Some(vec![0u32, 5, 1]));
+        assert_eq!(root.get_prop("power-domains"), Some(vec![42u32]));
+        assert_eq!(root.get_prop("iommus"), Some(vec![43u32, 10]));
+        assert_eq!(power_domain_count, 1);
+    }
+
+    #[test]
+    fn test_patch_fdt_node_power_domain_offsets() {
+        let mut fdt = Fdt::new(&[]);
+        let root = fdt.root_mut();
+
+        let resources = PlatformBusResources {
+            dt_symbol: "test".to_string(),
+            regions: vec![],
+            irqs: vec![],
+            iommus: vec![],
+            requires_power_domain: true,
+        };
+
+        let mut phandles = BTreeMap::new();
+        phandles.insert("dev_pd1", 42);
+
+        let mut power_domain_count = 1;
+
+        patch_fdt_node(root, &resources, &phandles, &mut power_domain_count).unwrap();
+
+        assert_eq!(root.get_prop("power-domains"), Some(vec![42u32]));
+        assert_eq!(power_domain_count, 2);
+    }
+
+    #[test]
+    fn test_patch_fdt_node_multiple_properties() {
+        let mut fdt = Fdt::new(&[]);
+        let root = fdt.root_mut();
+
+        let resources = PlatformBusResources {
+            dt_symbol: "test".to_string(),
+            regions: vec![(0x1000, 0x100), (0x2000, 0x200)],
+            irqs: vec![(5, 1), (6, 2)],
+            iommus: vec![
+                (IommuDevType::PkvmPviommu, Some(1), vec![10]),
+                (IommuDevType::PkvmPviommu, Some(2), vec![20]),
+            ],
+            requires_power_domain: false,
+        };
+
+        let mut phandles = BTreeMap::new();
+        phandles.insert("pviommu1", 42);
+        phandles.insert("pviommu2", 43);
+
+        let mut power_domain_count = 0;
+
+        patch_fdt_node(root, &resources, &phandles, &mut power_domain_count).unwrap();
+
+        assert_eq!(
+            root.get_prop("reg"),
+            Some(vec![0x1000u64, 0x100, 0x2000, 0x200])
+        );
+        assert_eq!(root.get_prop("interrupts"), Some(vec![0u32, 5, 1, 0, 6, 2]));
+        assert_eq!(root.get_prop("iommus"), Some(vec![42u32, 10, 43, 20]));
+    }
+
+    #[test]
+    fn test_patch_fdt_node_non_root() {
+        let mut fdt = Fdt::new(&[]);
+        let root = fdt.root_mut();
+        let subnode = root.subnode_mut("subnode").unwrap();
+
+        let resources = PlatformBusResources {
+            dt_symbol: "test".to_string(),
+            regions: vec![(0x1000, 0x100)],
+            irqs: vec![],
+            iommus: vec![],
+            requires_power_domain: false,
+        };
+
+        let phandles = BTreeMap::new();
+        let mut power_domain_count = 0;
+
+        patch_fdt_node(subnode, &resources, &phandles, &mut power_domain_count).unwrap();
+
+        assert_eq!(subnode.get_prop("reg"), Some(vec![0x1000u64, 0x100]));
+    }
+
+    #[test]
+    fn test_patch_fdt_node_non_pkvm_iommu() {
+        let mut fdt = Fdt::new(&[]);
+        let root = fdt.root_mut();
+
+        let resources = PlatformBusResources {
+            dt_symbol: "test".to_string(),
+            regions: vec![],
+            irqs: vec![],
+            iommus: vec![(IommuDevType::VirtioIommu, Some(1), vec![10])],
+            requires_power_domain: false,
+        };
+
+        let phandles = BTreeMap::new();
+        let mut power_domain_count = 0;
+
+        let result = patch_fdt_node(root, &resources, &phandles, &mut power_domain_count);
+        assert!(matches!(
+            result,
+            Err(Error::MissingIommuPhandle(msg, id)) if msg == "VirtioIommu" && id == Some(1)
+        ));
+    }
+
+    #[test]
+    fn test_patch_fdt_node_missing_phandle() {
+        let mut fdt = Fdt::new(&[]);
+        let root = fdt.root_mut();
+
+        let resources = PlatformBusResources {
+            dt_symbol: "test".to_string(),
+            regions: vec![],
+            irqs: vec![],
+            iommus: vec![(IommuDevType::PkvmPviommu, Some(1), vec![10])],
+            requires_power_domain: false,
+        };
+
+        let phandles = BTreeMap::new();
+        let mut power_domain_count = 0;
+
+        let result = patch_fdt_node(root, &resources, &phandles, &mut power_domain_count);
+        assert!(matches!(
+            result,
+            Err(Error::MissingIommuPhandle(msg, id)) if msg == "PkvmPviommu" && id == Some(1)
+        ));
+    }
 }
