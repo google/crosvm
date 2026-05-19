@@ -211,6 +211,29 @@ pub enum IommuDevType {
     PkvmPviommu,
 }
 
+pub struct PlatformBusResources {
+    pub dt_symbol: String,        // DT symbol (label) assigned to the device
+    pub regions: Vec<(u64, u64)>, // (start address, size)
+    pub irqs: Vec<(u32, u32)>,    // (IRQ number, flags)
+    pub iommus: Vec<(IommuDevType, Option<u32>, Vec<u32>)>, // (IOMMU type, IOMMU identifier, IDs)
+    pub requires_power_domain: bool,
+}
+
+impl PlatformBusResources {
+    pub const IRQ_TRIGGER_EDGE: u32 = 1;
+    pub const IRQ_TRIGGER_LEVEL: u32 = 4;
+
+    pub fn new(symbol: String) -> Self {
+        Self {
+            dt_symbol: symbol,
+            regions: vec![],
+            irqs: vec![],
+            iommus: vec![],
+            requires_power_domain: false,
+        }
+    }
+}
+
 // Thread that handles commands sent to devices - such as snapshot, sleep, suspend
 // Created when the VM is first created, and re-created on resumption of the VM.
 pub fn create_devices_worker_thread(

@@ -8,8 +8,6 @@ use std::collections::BTreeMap;
 use arch::apply_device_tree_overlays;
 use arch::fdt::create_memory_node;
 use arch::DtbOverlay;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use arch::PlatformBusResources;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
 use cros_fdt::Result;
@@ -19,6 +17,7 @@ use devices::irqchip::AIA_APLIC_SIZE;
 use devices::irqchip::AIA_IMSIC_BASE;
 use devices::PciAddress;
 use devices::PciInterruptPin;
+use devices::PlatformBusResources;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -269,9 +268,7 @@ pub fn create_fdt(
     pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     pci_cfg: PciConfigRegion,
     pci_ranges: &[PciRange],
-    #[cfg(any(target_os = "android", target_os = "linux"))] platform_dev_resources: Vec<
-        PlatformBusResources,
-    >,
+    platform_dev_resources: Vec<PlatformBusResources>,
     num_vcpus: u32,
     fdt_load_offset: u64,
     aia_num_ids: usize,
@@ -298,7 +295,6 @@ pub fn create_fdt(
     apply_device_tree_overlays(
         &mut fdt,
         device_tree_overlays,
-        #[cfg(any(target_os = "android", target_os = "linux"))]
         platform_dev_resources,
         #[cfg(any(target_os = "android", target_os = "linux"))]
         &BTreeMap::new(),

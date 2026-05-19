@@ -83,8 +83,6 @@ pub use serial::GetSerialCmdlineError;
 pub use serial::SERIAL_ADDR;
 use sync::Condvar;
 use sync::Mutex;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-pub use sys::linux::PlatformBusResources;
 use thiserror::Error;
 use uuid::Uuid;
 use vm_control::BatControl;

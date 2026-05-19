@@ -16,13 +16,11 @@ use cros_fdt::Path;
 use cros_fdt::Result;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use devices::IommuDevType;
+use devices::PlatformBusResources;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionPurpose;
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use crate::sys::linux::PlatformBusResources;
 
 /// Device tree overlay file
 pub struct DtbOverlay {
@@ -34,7 +32,11 @@ pub struct DtbOverlay {
 
 /// Apply multiple device tree overlays to the base FDT.
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
-pub fn apply_device_tree_overlays(fdt: &mut Fdt, overlays: Vec<DtbOverlay>) -> Result<()> {
+pub fn apply_device_tree_overlays(
+    fdt: &mut Fdt,
+    overlays: Vec<DtbOverlay>,
+    _devices: Vec<PlatformBusResources>,
+) -> Result<()> {
     for mut dtbo in overlays {
         let mut buffer = Vec::new();
         dtbo.file

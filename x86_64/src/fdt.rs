@@ -87,7 +87,6 @@ pub fn create_fdt(
     apply_device_tree_overlays(
         &mut fdt,
         device_tree_overlays,
-        #[cfg(any(target_os = "android", target_os = "linux"))]
         vec![],
         #[cfg(any(target_os = "android", target_os = "linux"))]
         &BTreeMap::new(),

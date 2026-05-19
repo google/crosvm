@@ -17,8 +17,6 @@ use arch::fdt::ReservedMemoryRegion;
 use arch::serial::SerialDeviceInfo;
 use arch::CpuSet;
 use arch::DtbOverlay;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use arch::PlatformBusResources;
 use base::open_file_or_duplicate;
 use cros_fdt::Error;
 use cros_fdt::Fdt;
@@ -29,6 +27,7 @@ use devices::pl030::PL030_AMBA_ID;
 use devices::IommuDevType;
 use devices::PciAddress;
 use devices::PciInterruptPin;
+use devices::PlatformBusResources;
 use hypervisor::PsciVersion;
 use hypervisor::PSCI_0_2;
 use hypervisor::PSCI_1_0;
@@ -631,9 +630,7 @@ pub fn create_fdt(
     pci_irqs: Vec<(PciAddress, u32, PciInterruptPin)>,
     pci_cfg: PciConfigRegion,
     pci_ranges: &[PciRange],
-    #[cfg(any(target_os = "android", target_os = "linux"))] platform_dev_resources: Vec<
-        PlatformBusResources,
-    >,
+    platform_dev_resources: Vec<PlatformBusResources>,
     num_vcpus: u32,
     cpu_mpidr_generator: &impl Fn(usize) -> Option<u64>,
     vcpu_clusters: Vec<CpuSet>,
@@ -773,7 +770,6 @@ pub fn create_fdt(
     apply_device_tree_overlays(
         &mut fdt,
         device_tree_overlays,
-        #[cfg(any(target_os = "android", target_os = "linux"))]
         platform_dev_resources,
         #[cfg(any(target_os = "android", target_os = "linux"))]
         &phandles,
