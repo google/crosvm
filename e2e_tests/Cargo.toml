@@ -13,6 +13,7 @@ rand = { workspace = true }
 tempfile = "3"
 prebuilts = { workspace = true }
 base = { workspace = true }
+vm_control = { workspace = true }
 swap = { workspace = true }
 serde_json = { workspace = true }
 

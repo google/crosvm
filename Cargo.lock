@@ -1140,6 +1140,7 @@ dependencies = [
  "serde_json",
  "swap",
  "tempfile",
+ "vm_control",
 ]
 
 [[package]]

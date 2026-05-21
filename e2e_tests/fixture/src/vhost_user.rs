@@ -4,6 +4,8 @@
 
 //! Provides `VhostUserBackend`, a fixture of a vhost-user backend process.
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::process;
 use std::process::Command;
 use std::process::Stdio;
@@ -38,6 +40,8 @@ pub struct Config {
     cmd_type: CmdType,
     dev_name: String,
     extra_args: Vec<String>,
+    #[cfg(unix)]
+    pass_fds: Vec<std::os::unix::io::RawFd>,
 }
 
 impl Config {
@@ -46,12 +50,21 @@ impl Config {
             cmd_type,
             dev_name: name.to_string(),
             extra_args: Default::default(),
+            #[cfg(unix)]
+            pass_fds: Default::default(),
         }
     }
 
     /// Uses extra arguments for `crosvm (device|devices)`.
     pub fn extra_args(mut self, args: Vec<String>) -> Self {
         self.extra_args = args;
+        self
+    }
+
+    /// Forwards raw file descriptors to the child backend command.
+    #[cfg(unix)]
+    pub fn pass_fds(mut self, fds: Vec<std::os::unix::io::RawFd>) -> Self {
+        self.pass_fds = fds;
         self
     }
 }
@@ -83,6 +96,25 @@ impl VhostUserBackend {
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+
+        #[cfg(unix)]
+        {
+            let pass_fds = cfg.pass_fds.clone();
+            if !pass_fds.is_empty() {
+                // SAFETY: We only call async-signal-safe functions (`fcntl`) in `pre_exec`.
+                unsafe {
+                    cmd.pre_exec(move || {
+                        for &fd in &pass_fds {
+                            let flags = libc::fcntl(fd, libc::F_GETFD);
+                            if flags != -1 {
+                                libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+                            }
+                        }
+                        Ok(())
+                    });
+                }
+            }
+        }
 
         println!("$ {cmd:?}");
 

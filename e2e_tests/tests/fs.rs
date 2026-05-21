@@ -320,3 +320,164 @@ fn vhost_user_fs_without_sandbox_and_pivot_root() {
 
     copy_file_validate_ugid_mapping(vm, tag, temp_dir, mapped_uid, mapped_gid);
 }
+
+pub fn create_allowlist_fs_config(
+    socket: &Path,
+    shared_dir: &Path,
+    tag: &str,
+    allowlist_socket_path: &Path,
+) -> VuConfig {
+    let uid = base::geteuid();
+    let gid = base::getegid();
+    let socket_path = socket.to_str().unwrap();
+    let shared_dir_path = shared_dir.to_str().unwrap();
+    let allowlist_socket_path_str = allowlist_socket_path.to_str().unwrap();
+
+    let ugid_map_value = format!("0 0 {uid} {gid} 7 /");
+    let cfg_arg = format!("timeout=0,ugid_map='{ugid_map_value}'");
+
+    VuConfig::new(CmdType::Device, "vhost-user-fs").extra_args(vec![
+        "fs".to_string(),
+        format!("--socket-path={socket_path}"),
+        format!("--shared-dir={shared_dir_path}"),
+        format!("--tag={tag}"),
+        format!("--allowlist-socket-path={allowlist_socket_path_str}"),
+        format!("--cfg={cfg_arg}"),
+        "--disable-sandbox".to_string(),
+        "--skip-pivot-root=true".to_string(),
+    ])
+}
+
+/// Tests dynamic path filtering allowlist over control Unix socket.
+///
+/// Scenario:
+/// 1. Create directories named "allowed" (to be registered) and "blocked" (to remain blocked) on
+///    the host, each containing a test file.
+/// 2. Initialize a Unix socket pair for allowlist control.
+/// 3. Start the vhost-user-fs backend with the allowlist socket enabled, and boot a VM.
+/// 4. Mount the virtiofs share in the guest.
+/// 5. Verify that the "allowed" directory is initially inaccessible because the allowlist starts
+///    empty.
+/// 6. Dynamically grant access to `/allowed` via the control socket.
+/// 7. Verify that:
+///    - Reading the file inside `/allowed` (now accessible) succeeds.
+///    - Creating a new file inside `/allowed` (now writable) succeeds.
+///    - Reading the file inside `/blocked` (still inaccessible) fails.
+///    - Creating a new file inside `/blocked` (still non-writable) fails.
+/// 8. Dynamically revoke (remove) `/allowed` from the allowlist via the control socket.
+/// 9. Verify that the `/allowed` directory becomes inaccessible again.
+#[test]
+fn vhost_user_fs_allowlist() {
+    use base::Tube;
+    use base::UnixSeqpacket;
+    use vm_control::FsAllowlistCommand;
+    use vm_control::FsAllowlistResponse;
+
+    let socket = NamedTempFile::new().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
+
+    // Create allowed and blocked directories and files
+    let allowed_dir = temp_dir.path().join("allowed");
+    std::fs::create_dir(&allowed_dir).unwrap();
+    let allowed_file = allowed_dir.join("a.txt");
+    std::fs::write(&allowed_file, "allowed data").unwrap();
+
+    let blocked_dir = temp_dir.path().join("blocked");
+    std::fs::create_dir(&blocked_dir).unwrap();
+    let blocked_file = blocked_dir.join("b.txt");
+    std::fs::write(&blocked_file, "blocked data").unwrap();
+
+    // Create allowlist socket path
+    let allowlist_socket_path = temp_dir.path().join("allowlist.sock");
+
+    let config = Config::new();
+    let tag = "mtdtest";
+
+    let vu_config =
+        create_allowlist_fs_config(socket.path(), temp_dir.path(), tag, &allowlist_socket_path);
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let client_socket = UnixSeqpacket::connect(&allowlist_socket_path).unwrap();
+    let parent_tube = Tube::try_from(client_socket).unwrap();
+
+    let config = config.with_vhost_user("fs", socket.path());
+    let mut vm = TestVm::new(config).unwrap();
+
+    // Mount the directory
+    vm.exec_in_guest("mount -t virtiofs mtdtest /mnt").unwrap();
+
+    // Dynamic allowlist starts enabled but completely empty.
+    // So even '/allowed' should be inaccessible at first!
+    let lookup_initial = vm.exec_in_guest("cat /mnt/allowed/a.txt");
+    assert!(lookup_initial.is_err());
+
+    // Now let's dynamically grant access to (allow) the '/allowed' path!
+    // Note that PassthroughFs allowlist uses absolute paths starting with '/' relative to the root
+    // of the share. So the path of the allowed directory relative to the shared_dir root is
+    // "/allowed".
+    parent_tube
+        .send(&FsAllowlistCommand::AddPaths {
+            paths: vec!["/allowed".into()],
+        })
+        .unwrap();
+    let resp: FsAllowlistResponse = parent_tube.recv().unwrap();
+    assert!(matches!(resp, FsAllowlistResponse::Ok));
+
+    // Reading the file inside the now-accessible `/allowed` directory should succeed!
+    let lookup_allowed = vm.exec_in_guest("cat /mnt/allowed/a.txt").unwrap();
+    assert_eq!(lookup_allowed.stdout.trim(), "allowed data");
+
+    // Reading the blocked file should still fail (NotFound)!
+    let lookup_blocked = vm.exec_in_guest("cat /mnt/blocked/b.txt");
+    assert!(lookup_blocked.is_err());
+
+    // Creating a file inside the now-writable `/allowed` directory should succeed!
+    vm.exec_in_guest("echo -n 'new data' > /mnt/allowed/new.txt")
+        .unwrap();
+    let new_file_host = allowed_dir.join("new.txt");
+    assert_eq!(std::fs::read_to_string(new_file_host).unwrap(), "new data");
+
+    // Creating a file inside the blocked directory should fail!
+    let create_blocked = vm.exec_in_guest("echo -n 'new data' > /mnt/blocked/new.txt");
+    assert!(create_blocked.is_err());
+
+    // Dynamically revoke (remove) the `/allowed` path!
+    parent_tube
+        .send(&FsAllowlistCommand::RemovePaths {
+            paths: vec!["/allowed".into()],
+        })
+        .unwrap();
+    let resp: FsAllowlistResponse = parent_tube.recv().unwrap();
+    assert!(matches!(resp, FsAllowlistResponse::Ok));
+
+    // Now reading the file inside `/allowed` should fail again as it is no longer accessible!
+    let lookup_allowed_removed = vm.exec_in_guest("cat /mnt/allowed/a.txt");
+    assert!(lookup_allowed_removed.is_err());
+
+    // Sending an invalid path (traverses above root) should fail and return Err
+    parent_tube
+        .send(&FsAllowlistCommand::AddPaths {
+            paths: vec!["/allowed/../../..".into()],
+        })
+        .unwrap();
+    let resp: FsAllowlistResponse = parent_tube.recv().unwrap();
+    assert!(matches!(resp, FsAllowlistResponse::Err(_)));
+
+    // Removing a non-existent path should fail and return Err
+    parent_tube
+        .send(&FsAllowlistCommand::RemovePaths {
+            paths: vec!["/non_existent".into()],
+        })
+        .unwrap();
+    let resp: FsAllowlistResponse = parent_tube.recv().unwrap();
+    assert!(matches!(resp, FsAllowlistResponse::Err(_)));
+
+    // Removing an invalid path should fail and return Err
+    parent_tube
+        .send(&FsAllowlistCommand::RemovePaths {
+            paths: vec!["/allowed/../../..".into()],
+        })
+        .unwrap();
+    let resp: FsAllowlistResponse = parent_tube.recv().unwrap();
+    assert!(matches!(resp, FsAllowlistResponse::Err(_)));
+}

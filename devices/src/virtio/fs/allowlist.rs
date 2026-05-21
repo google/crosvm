@@ -93,7 +93,6 @@ impl TrieNode {
     }
 
     /// Returns true if any descendant of this node has an active access level.
-    #[allow(dead_code)]
     fn has_active_descendants(&self) -> bool {
         self.active_children_count > 0
     }
@@ -159,7 +158,6 @@ pub struct PathAllowlist {
 
 impl PathAllowlist {
     /// Creates a new `PathAllowlist`.
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             root: TrieNode::default(),
@@ -179,7 +177,6 @@ impl PathAllowlist {
     /// Adds a path to the allowed list. The path will be normalized before being added.
     /// Returns true if the path was valid and successfully added.
     /// Returns false if the path was invalid (e.g. traversed above root).
-    #[allow(dead_code)]
     pub fn add_path<P: AsRef<Path>>(&mut self, path: P) -> bool {
         let normalized = match normalize_lexically(path.as_ref()) {
             Some(p) => p,
@@ -219,7 +216,6 @@ impl PathAllowlist {
     /// Removes a path from the allowed list. The path will be normalized before removal.
     /// Returns true if the path was explicitly allowed and successfully removed (or demoted).
     /// Returns false if the path was not explicitly allowed.
-    #[allow(dead_code)]
     pub fn remove_path<P: AsRef<Path>>(&mut self, path: P) -> bool {
         let normalized = match normalize_lexically(path.as_ref()) {
             Some(p) => p,
