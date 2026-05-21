@@ -176,10 +176,8 @@ impl ACPIPMResource {
         let pm1 = self.pm1.clone();
         let gpe0 = self.gpe0.clone();
 
-        let acpi_event_ignored_gpe = Vec::new();
-
         self.worker_thread = Some(WorkerThread::start("ACPI PM worker", move |kill_evt| {
-            if let Err(e) = run_worker(sci_evt, kill_evt, pm1, gpe0, acpi_event_ignored_gpe) {
+            if let Err(e) = run_worker(sci_evt, kill_evt, pm1, gpe0) {
                 error!("{}", e);
             }
         }));
@@ -230,12 +228,9 @@ fn run_worker(
     kill_evt: Event,
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
-    _acpi_event_ignored_gpe: Vec<u32>,
 ) -> Result<(), ACPIPMError> {
-    let acpi_event_sock = crate::sys::get_acpi_event_sock()?;
     #[derive(EventToken)]
     enum Token {
-        AcpiEvent,
         InterruptResample,
         Kill,
     }
@@ -245,19 +240,11 @@ fn run_worker(
         (&kill_evt, Token::Kill),
     ])
     .map_err(ACPIPMError::CreateWaitContext)?;
-    if let Some(acpi_event_sock) = &acpi_event_sock {
-        wait_ctx
-            .add(acpi_event_sock, Token::AcpiEvent)
-            .map_err(ACPIPMError::CreateWaitContext)?;
-    }
 
     loop {
         let events = wait_ctx.wait().map_err(ACPIPMError::WaitError)?;
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
-                Token::AcpiEvent => {
-                    crate::sys::acpi_event_run(&sci_evt, &acpi_event_sock);
-                }
                 Token::InterruptResample => {
                     sci_evt.clear_resample();
 
