@@ -30,7 +30,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::MutexGuard;
-#[cfg(feature = "fs_permission_translation")]
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -85,6 +84,7 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
+use crate::virtio::fs::allowlist::PathAllowlist;
 #[cfg(feature = "arc_quota")]
 use crate::virtio::fs::arc_ioctl::FsPathXattrDataBuffer;
 #[cfg(feature = "arc_quota")]
@@ -863,6 +863,7 @@ pub struct PassthroughFs {
     // capability for mount namespaces and pivot_root. This lack of isolation means that
     // root_dir defaults to the path provided via "--shared-dir".
     root_dir: String,
+    allowlist: Option<Arc<RwLock<PathAllowlist>>>,
 }
 
 impl std::fmt::Debug for PassthroughFs {
@@ -943,6 +944,7 @@ impl PassthroughFs {
             xattr_paths: RwLock::new(Vec::new()),
             cfg,
             root_dir: "/".to_string(),
+            allowlist: None,
         };
 
         #[cfg(feature = "fs_runtime_ugid_map")]
@@ -954,6 +956,53 @@ impl PassthroughFs {
             passthroughfs
         );
         Ok(passthroughfs)
+    }
+
+    #[cfg(test)]
+    pub fn set_allowlist(&mut self, allowlist: Option<Arc<RwLock<PathAllowlist>>>) {
+        self.allowlist = allowlist;
+    }
+
+    fn is_path_accessible(&self, path: &str) -> bool {
+        self.allowlist
+            .as_ref()
+            .map(|al| al.read().unwrap().is_accessible(path))
+            .unwrap_or(true)
+    }
+
+    /// Validates and resolves a write path component against the dynamic path allowlist.
+    ///
+    /// This function enforces security boundaries by performing the following checks:
+    /// 1. Checks if the `name` component does not contain malicious patterns (e.g., `..` or `/`).
+    /// 2. Converts the `name` from a `CStr` to a UTF-8 string slice, failing with `EILSEQ` if
+    ///    invalid.
+    /// 3. Checks if the allowlist authorizes write access for the resolved path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `io::Error` if any validation or authorization check fails:
+    /// * `EINVAL` - If `name` contains `..` or `/`.
+    /// * `EILSEQ` - If `name` is not valid UTF-8.
+    /// * `EACCES` - If the dynamic allowlist does not grant full write access to the resolved path.
+    fn authorize_write_path(&self, parent_path: &str, name: &CStr) -> io::Result<String> {
+        validate_path_component(name)?;
+        let name_str = name
+            .to_str()
+            .map_err(|_| io::Error::from_raw_os_error(libc::EILSEQ))?;
+        let path = if parent_path.is_empty() || parent_path == "/" {
+            format!("/{name_str}")
+        } else {
+            format!("{parent_path}/{name_str}")
+        };
+        let is_writable = self
+            .allowlist
+            .as_ref()
+            .map(|al| al.read().unwrap().is_writable(&path))
+            .unwrap_or(true);
+        if !is_writable {
+            return Err(io::Error::from_raw_os_error(libc::EACCES));
+        }
+        Ok(path)
     }
 
     #[cfg(feature = "fs_runtime_ugid_map")]
@@ -2403,6 +2452,10 @@ impl FileSystem for PassthroughFs {
         );
         let _trace = fs_trace!(self.tag, "lookup", parent, path);
 
+        if !self.is_path_accessible(&path) {
+            return Err(io::Error::from_raw_os_error(libc::ENOENT));
+        }
+
         let mut res = self.do_lookup_with_casefold_fallback(&data, name);
 
         // FUSE takes a inode=0 as a request to do negative dentry cache.
@@ -2478,9 +2531,9 @@ impl FileSystem for PassthroughFs {
         umask: u32,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
-        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "mkdir", parent, name, mode, umask, security_ctx);
         let data = self.find_inode(parent)?;
+        self.authorize_write_path(&data.path, name)?;
 
         let _ctx = security_ctx
             .filter(|ctx| *ctx != UNLABELED_CSTR)
@@ -2500,9 +2553,6 @@ impl FileSystem for PassthroughFs {
             let casefold_cache = self.lock_casefold_lookup_caches();
             let _scoped_umask = ScopedUmask::new(umask);
 
-            if name.to_bytes().contains(&b'/') {
-                return Err(io::Error::from_raw_os_error(libc::EINVAL));
-            }
             // SAFETY: this doesn't modify any memory and we check the return value.
             syscall!(unsafe { libc::mkdirat(data.as_raw_descriptor(), name.as_ptr(), mode) })?;
             if let Some(mut c) = casefold_cache {
@@ -2513,9 +2563,9 @@ impl FileSystem for PassthroughFs {
     }
 
     fn rmdir(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
-        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "rmdir", parent, name);
         let data = self.find_inode(parent)?;
+        self.authorize_write_path(&data.path, name)?;
         let casefold_cache = self.lock_casefold_lookup_caches();
         // TODO(b/278691962): If ascii_casefold is enabled, we need to call
         // `get_case_unfolded_name()` to get the actual name to be unlinked.
@@ -2537,16 +2587,32 @@ impl FileSystem for PassthroughFs {
         let _trace = fs_trace!(self.tag, "readdir", inode, handle, size, offset);
         let buf = vec![0; size as usize].into_boxed_slice();
 
-        if self.zero_message_opendir.load(Ordering::Relaxed) {
+        // Identify the absolute path of the directory being read.
+        // This path is required to construct full paths for each directory entry
+        // during filtering.
+        let (parent_path, mut read_dir) = if self.zero_message_opendir.load(Ordering::Relaxed) {
             let data = self.find_inode(inode)?;
-            ReadDir::new(&*data, offset as libc::off64_t, buf)
+            let path = data.path.clone();
+            let dir_guard = data.file.lock();
+            let read_dir = ReadDir::new(&*dir_guard, offset as libc::off64_t, buf)?;
+            (path, read_dir)
         } else {
             let data = self.find_handle(handle, inode)?;
+            let inode_data = self.find_inode(data.inode)?;
+            let path = inode_data.path.clone();
+            let dir_guard = data.file.lock();
+            let read_dir = ReadDir::new(&*dir_guard, offset as libc::off64_t, buf)?;
+            (path, read_dir)
+        };
 
-            let dir = data.file.lock();
-
-            ReadDir::new(&*dir, offset as libc::off64_t, buf)
+        // If an allowlist is configured, inject the allowlist context into the ReadDir
+        // iterator to enable directory entry filtering (hiding unauthorized files).
+        if let Some(allowlist) = &self.allowlist {
+            let allowlist_clone = allowlist.read().unwrap().clone();
+            read_dir = read_dir.with_allowlist(parent_path, allowlist_clone);
         }
+
+        Ok(read_dir)
     }
 
     fn open(
@@ -2656,7 +2722,6 @@ impl FileSystem for PassthroughFs {
         umask: u32,
         security_ctx: Option<&CStr>,
     ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
-        validate_path_component(name)?;
         let _trace = fs_trace!(
             self.tag,
             "create",
@@ -2668,6 +2733,7 @@ impl FileSystem for PassthroughFs {
             security_ctx
         );
         let data = self.find_inode(parent)?;
+        let path = self.authorize_write_path(&data.path, name)?;
 
         let _ctx = security_ctx
             .filter(|ctx| *ctx != UNLABELED_CSTR)
@@ -2689,9 +2755,6 @@ impl FileSystem for PassthroughFs {
         // file descriptor for create.
         let create_flags = (flags | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW)
             & !(libc::O_DIRECT | libc::O_PATH);
-        if name.to_bytes().contains(&b'/') {
-            return Err(io::Error::from_raw_os_error(libc::EINVAL));
-        }
 
         let file = {
             let _scoped_umask = ScopedUmask::new(umask);
@@ -2711,11 +2774,6 @@ impl FileSystem for PassthroughFs {
         };
 
         let st = stat(&file)?;
-        let path = format!(
-            "{}/{}",
-            data.path.clone(),
-            name.to_str().unwrap_or("<non UTF-8 str>")
-        );
         let entry = self.add_entry(file, st, create_flags, path);
 
         let (handle, opts) = if self.zero_message_open.load(Ordering::Relaxed) {
@@ -2736,9 +2794,9 @@ impl FileSystem for PassthroughFs {
     }
 
     fn unlink(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
-        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "unlink", parent, name);
         let data = self.find_inode(parent)?;
+        self.authorize_write_path(&data.path, name)?;
         let casefold_cache = self.lock_casefold_lookup_caches();
         // TODO(b/278691962): If ascii_casefold is enabled, we need to call
         // `get_case_unfolded_name()` to get the actual name to be unlinked.
@@ -2988,12 +3046,12 @@ impl FileSystem for PassthroughFs {
         newname: &CStr,
         flags: u32,
     ) -> io::Result<()> {
-        validate_path_component(oldname)?;
-        validate_path_component(newname)?;
         let _trace = fs_trace!(self.tag, "rename", olddir, oldname, newdir, newname, flags);
-
         let old_inode = self.find_inode(olddir)?;
         let new_inode = self.find_inode(newdir)?;
+        // Both old and new names must be writable.
+        self.authorize_write_path(&old_inode.path, oldname)?;
+        self.authorize_write_path(&new_inode.path, newname)?;
         {
             let casefold_cache = self.lock_casefold_lookup_caches();
 
@@ -3029,7 +3087,6 @@ impl FileSystem for PassthroughFs {
         umask: u32,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
-        validate_path_component(name)?;
         let _trace = fs_trace!(
             self.tag,
             "mknod",
@@ -3041,6 +3098,7 @@ impl FileSystem for PassthroughFs {
             security_ctx
         );
         let data = self.find_inode(parent)?;
+        self.authorize_write_path(&data.path, name)?;
 
         let _ctx = security_ctx
             .filter(|ctx| *ctx != UNLABELED_CSTR)
@@ -3084,10 +3142,10 @@ impl FileSystem for PassthroughFs {
         newparent: Inode,
         newname: &CStr,
     ) -> io::Result<Entry> {
-        validate_path_component(newname)?;
         let _trace = fs_trace!(self.tag, "link", inode, newparent, newname);
         let data = self.find_inode(inode)?;
         let new_inode = self.find_inode(newparent)?;
+        self.authorize_write_path(&new_inode.path, newname)?;
 
         let path = CString::new(format!("self/fd/{}", data.as_raw_descriptor()))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -3120,9 +3178,9 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         security_ctx: Option<&CStr>,
     ) -> io::Result<Entry> {
-        validate_path_component(name)?;
         let _trace = fs_trace!(self.tag, "symlink", parent, linkname, name, security_ctx);
         let data = self.find_inode(parent)?;
+        self.authorize_write_path(&data.path, name)?;
 
         let _ctx = security_ctx
             .filter(|ctx| *ctx != UNLABELED_CSTR)
@@ -3846,6 +3904,150 @@ mod tests {
     use crate::virtio::fs::arc_ioctl::FS_IOCTL_XATTR_VALUE_MAX_LEN;
 
     const UNITTEST_LOCK_NAME: &str = "passthroughfs_unittest_lock";
+
+    #[test]
+    fn test_passthrough_fs_allowlist() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(
+            &temp_dir,
+            &["allowed", "blocked"],
+            &["allowed/a.txt", "blocked/b.txt"],
+        );
+
+        let cfg = Default::default();
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::new()));
+        fs.set_allowlist(Some(allowlist.clone()));
+
+        let allowed_path = temp_dir
+            .path()
+            .join("allowed")
+            .to_string_lossy()
+            .into_owned();
+        allowlist.write().unwrap().add_path(allowed_path);
+
+        // 1. Verify Lookups of allowed paths succeed
+        assert!(lookup(&fs, &temp_dir.path().join("allowed")).is_ok());
+        assert!(lookup(&fs, &temp_dir.path().join("allowed/a.txt")).is_ok());
+
+        // 2. Verify Lookups of blocked paths fail with NotFound (ENOENT)
+        let blocked_err = lookup(&fs, &temp_dir.path().join("blocked"))
+            .expect_err("blocked directory must not be accessible");
+        assert_eq!(blocked_err.kind(), io::ErrorKind::NotFound);
+
+        let blocked_file_err = lookup(&fs, &temp_dir.path().join("blocked/b.txt"))
+            .expect_err("blocked file must not be accessible");
+        assert_eq!(blocked_file_err.kind(), io::ErrorKind::NotFound);
+
+        // 3. Verify Write/Creation of allowed paths succeed
+        assert!(create(&fs, &temp_dir.path().join("allowed/new_file.txt")).is_ok());
+
+        // 4. Verify Write/Creation inside a blocked directory fails with NotFound (because the
+        //    parent directory cannot be resolved/looked up)
+        let blocked_dir_write_err = create(&fs, &temp_dir.path().join("blocked/new_file.txt"))
+            .expect_err("parent directory must not be lookupable");
+        assert_eq!(blocked_dir_write_err.kind(), io::ErrorKind::NotFound);
+
+        // 5. Verify Write/Creation directly in the ancestor directory (root/temp_dir) fails with
+        //    PermissionDenied (EACCES)
+        // (the parent directory lookup succeeds because ancestors are allowed, but the write itself
+        // is blocked)
+        let ancestor_write_err = create(&fs, &temp_dir.path().join("new_file_in_ancestor.txt"))
+            .expect_err("ancestor directory must not be writable");
+        assert_eq!(ancestor_write_err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn test_passthrough_fs_revocation() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["allowed"], &["allowed/a.txt"]);
+
+        // Write some data to the file
+        let file_path = temp_dir.path().join("allowed/a.txt");
+        std::fs::write(&file_path, b"hello revocation").unwrap();
+
+        let cfg = Default::default();
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::new()));
+        fs.set_allowlist(Some(allowlist.clone()));
+
+        let allowed_path = temp_dir
+            .path()
+            .join("allowed")
+            .to_string_lossy()
+            .into_owned();
+        allowlist.write().unwrap().add_path(allowed_path.clone());
+
+        // 1. Lookup & Open allowed file to get Inode and Handle
+        let inode = lookup(&fs, &file_path).expect("lookup failed");
+        let ctx = get_context();
+        let (handle, _) = fs
+            .open(ctx, inode, libc::O_RDONLY as u32)
+            .expect("open failed");
+        let handle = handle.expect("no handle returned");
+
+        // 2. Remove path from allowlist
+        allowlist.write().unwrap().remove_path(&allowed_path);
+
+        // 3. Verify that reading from the already open handle still succeeds
+        struct DummyWriter {
+            data: Vec<u8>,
+        }
+        impl io::Write for DummyWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.data.extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        impl ZeroCopyWriter for DummyWriter {
+            fn write_from(&mut self, f: &mut File, count: usize, off: u64) -> io::Result<usize> {
+                use std::os::unix::fs::FileExt;
+                let mut buf = vec![0; count];
+                let n = f.read_at(&mut buf, off)?;
+                self.data.extend_from_slice(&buf[..n]);
+                Ok(n)
+            }
+        }
+
+        let mut writer = DummyWriter { data: Vec::new() };
+        let read_bytes = fs
+            .read(
+                ctx,
+                inode,
+                handle,
+                &mut writer,
+                16,
+                0,
+                None,
+                libc::O_RDONLY as u32,
+            )
+            .expect("read failed");
+
+        assert_eq!(read_bytes, 16);
+        assert_eq!(writer.data, b"hello revocation");
+
+        // 4. Verify that new lookup of the file now fails
+        let lookup_res = lookup(&fs, &file_path);
+        assert!(lookup_res.is_err());
+        assert_eq!(lookup_res.unwrap_err().kind(), io::ErrorKind::NotFound);
+    }
 
     // Create an instance of `Context` with valid uid, gid, and pid.
     // The correct ids are necessary for test cases where new files are created.
@@ -5186,5 +5388,228 @@ mod tests {
         let dotdot = c"..";
         let res = fs.lookup(ctx, 1, dotdot);
         assert!(res.is_err(), "Lookup .. should be blocked!");
+    }
+
+    #[test]
+    fn test_passthrough_fs_create_validation() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["allowed"], &[]);
+
+        let cfg = Default::default();
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::new()));
+        fs.set_allowlist(Some(allowlist.clone()));
+
+        allowlist.write().unwrap().add_path(
+            temp_dir
+                .path()
+                .join("allowed")
+                .to_string_lossy()
+                .into_owned(),
+        );
+
+        let allowed_inode = lookup(&fs, &temp_dir.path().join("allowed")).unwrap();
+        let ctx = get_context();
+
+        // Creation with a name containing '..' should fail with EINVAL
+        let invalid_name = CString::new("..").unwrap();
+        let res = fs.create(
+            ctx,
+            allowed_inode,
+            &invalid_name,
+            0o666,
+            libc::O_RDWR as u32,
+            0,
+            None,
+        );
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().raw_os_error().unwrap(), libc::EINVAL);
+    }
+
+    #[test]
+    fn test_passthrough_fs_rename_validation() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["allowed"], &["allowed/a.txt"]);
+
+        let cfg = Default::default();
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+
+        let allowed_inode = lookup(&fs, &temp_dir.path().join("allowed")).unwrap();
+        let ctx = get_context();
+
+        // Rename with '..' in newname should fail with EINVAL
+        let oldname = CString::new("a.txt").unwrap();
+        let invalid_newname = CString::new("../blocked.txt").unwrap();
+
+        let res = fs.rename(
+            ctx,
+            allowed_inode,
+            &oldname,
+            allowed_inode,
+            &invalid_newname,
+            0,
+        );
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().raw_os_error().unwrap(), libc::EINVAL);
+    }
+
+    #[test]
+    fn test_passthrough_fs_symlink_authorization() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["allowed"], &[]);
+
+        let cfg = Default::default();
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::new()));
+        fs.set_allowlist(Some(allowlist.clone()));
+
+        allowlist.write().unwrap().add_path(
+            temp_dir
+                .path()
+                .join("allowed")
+                .to_string_lossy()
+                .into_owned(),
+        );
+
+        // Get Inode of the shared root (which is an ancestor, hence not writable)
+        let root_inode = lookup(&fs, temp_dir.path()).unwrap();
+        let ctx = get_context();
+
+        // Symlink creation in the shared root (not writable) should fail with EACCES
+        let linkname = CString::new("allowed/a.txt").unwrap();
+        let symlink_name = CString::new("malicious_link").unwrap();
+
+        let res = fs.symlink(ctx, &linkname, root_inode, &symlink_name, None);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().raw_os_error().unwrap(), libc::EACCES);
+    }
+
+    #[test]
+    fn test_passthrough_fs_link_authorization() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["allowed"], &["allowed/a.txt"]);
+
+        let cfg = Default::default();
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::new()));
+        fs.set_allowlist(Some(allowlist.clone()));
+
+        allowlist.write().unwrap().add_path(
+            temp_dir
+                .path()
+                .join("allowed")
+                .to_string_lossy()
+                .into_owned(),
+        );
+
+        let file_inode = lookup(&fs, &temp_dir.path().join("allowed/a.txt")).unwrap();
+        let root_inode = lookup(&fs, temp_dir.path()).unwrap(); // Directory not writable
+        let ctx = get_context();
+
+        // Hardlink creation in a non-writable directory should fail with EACCES
+        let link_name = CString::new("malicious_hardlink").unwrap();
+        let res = fs.link(ctx, file_inode, root_inode, &link_name);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().raw_os_error().unwrap(), libc::EACCES);
+    }
+
+    #[test]
+    fn test_passthrough_fs_mknod_authorization() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        create_test_data(&temp_dir, &["allowed"], &[]);
+
+        let cfg = Default::default();
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::new()));
+        fs.set_allowlist(Some(allowlist.clone()));
+
+        allowlist.write().unwrap().add_path(
+            temp_dir
+                .path()
+                .join("allowed")
+                .to_string_lossy()
+                .into_owned(),
+        );
+
+        let root_inode = lookup(&fs, temp_dir.path()).unwrap(); // Directory not writable
+        let ctx = get_context();
+
+        // mknod creation in a non-writable directory should fail with EACCES
+        let name = CString::new("malicious_fifo").unwrap();
+        let res = fs.mknod(ctx, root_inode, &name, 0o666 | libc::S_IFIFO, 0, 0, None);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().raw_os_error().unwrap(), libc::EACCES);
+    }
+
+    #[test]
+    fn test_passthrough_fs_non_utf8_bypass() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        let cfg = Default::default();
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::new()));
+        fs.set_allowlist(Some(allowlist.clone()));
+
+        // Register the fallback string path in allowlist
+        let bypass_path = temp_dir
+            .path()
+            .join("<non UTF-8 path>")
+            .to_string_lossy()
+            .into_owned();
+        allowlist.write().unwrap().add_path(bypass_path);
+
+        let root_inode = lookup(&fs, temp_dir.path()).unwrap();
+        let ctx = get_context();
+
+        // SAFETY: The vector [0xff] does not contain any interior null bytes, which satisfies
+        // CString's safety invariant.
+        let non_utf8_name = unsafe { CString::from_vec_unchecked(vec![0xff]) };
+        let res = fs.create(
+            ctx,
+            root_inode,
+            &non_utf8_name,
+            0o666,
+            libc::O_RDWR as u32,
+            0,
+            None,
+        );
+
+        // We expect it to be blocked by allowlist (EACCES) because the root directory itself is not
+        // writable. However, due to the unwrap_or("<non UTF-8 path>") bug, it will match
+        // the registered bypass path and bypass the allowlist check.
+        assert!(res.is_err(), "Should fail because root is not writable");
+        assert_eq!(
+            res.unwrap_err().raw_os_error().unwrap(),
+            libc::EILSEQ,
+            "Should fail with EILSEQ for non-UTF8 name"
+        );
     }
 }

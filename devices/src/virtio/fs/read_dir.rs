@@ -16,6 +16,8 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
+use crate::virtio::fs::allowlist::PathAllowlist;
+
 #[repr(C, packed)]
 #[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
 struct LinuxDirent64 {
@@ -29,6 +31,14 @@ pub struct ReadDir<P> {
     buf: P,
     current: usize,
     end: usize,
+    allowlist_context: Option<(String, PathAllowlist)>,
+}
+
+impl<P> ReadDir<P> {
+    pub fn with_allowlist(mut self, parent_path: String, allowlist: PathAllowlist) -> Self {
+        self.allowlist_context = Some((parent_path, allowlist));
+        self
+    }
 }
 
 impl<P: DerefMut<Target = [u8]>> ReadDir<P> {
@@ -59,6 +69,7 @@ impl<P: DerefMut<Target = [u8]>> ReadDir<P> {
             buf,
             current: 0,
             end: res as usize,
+            allowlist_context: None,
         })
     }
 }
@@ -72,33 +83,60 @@ impl<P> ReadDir<P> {
 
 impl<P: Deref<Target = [u8]>> DirectoryIterator for ReadDir<P> {
     fn next(&mut self) -> Option<DirEntry> {
-        let rem = &self.buf[self.current..self.end];
-        if rem.is_empty() {
-            return None;
+        loop {
+            let rem = &self.buf[self.current..self.end];
+            if rem.is_empty() {
+                return None;
+            }
+
+            let (dirent64, back) = LinuxDirent64::read_from_prefix(rem)
+                .expect("unable to get LinuxDirent64 from slice");
+
+            let namelen = dirent64.d_reclen as usize - size_of::<LinuxDirent64>();
+            debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");
+
+            let name = strip_padding(&back[..namelen]);
+            let entry = DirEntry {
+                ino: dirent64.d_ino,
+                offset: dirent64.d_off as u64,
+                type_: dirent64.d_ty as u32,
+                name,
+            };
+
+            debug_assert!(
+                rem.len() >= dirent64.d_reclen as usize,
+                "rem is smaller than `d_reclen`"
+            );
+            self.current += dirent64.d_reclen as usize;
+
+            // Apply dynamic path allowlist filtering.
+            // If the resolved full path of an entry is not accessible according to the allowlist,
+            // we skip the entry (hide it from directory listings).
+            if let Some((parent_path, allowlist)) = &self.allowlist_context {
+                let name_str = match entry.name.to_str() {
+                    Ok(s) => s,
+                    Err(_) => {
+                        // Skip entries with invalid UTF-8 names since they cannot be
+                        // validated against the string-based allowlist.
+                        base::debug!("Skipping non-UTF-8 directory entry: {:?}", entry.name);
+                        continue;
+                    }
+                };
+                if name_str != "." && name_str != ".." {
+                    let full_path = if parent_path == "/" {
+                        format!("/{name_str}")
+                    } else {
+                        format!("{parent_path}/{name_str}")
+                    };
+                    if !allowlist.is_accessible(&full_path) {
+                        // Skip this entry and check the next one (hide from guest)
+                        continue;
+                    }
+                }
+            }
+
+            return Some(entry);
         }
-
-        let (dirent64, back) =
-            LinuxDirent64::read_from_prefix(rem).expect("unable to get LinuxDirent64 from slice");
-
-        let namelen = dirent64.d_reclen as usize - size_of::<LinuxDirent64>();
-        debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");
-
-        // The kernel will pad the name with additional nul bytes until it is 8-byte aligned so
-        // we need to strip those off here.
-        let name = strip_padding(&back[..namelen]);
-        let entry = DirEntry {
-            ino: dirent64.d_ino,
-            offset: dirent64.d_off as u64,
-            type_: dirent64.d_ty as u32,
-            name,
-        };
-
-        debug_assert!(
-            rem.len() >= dirent64.d_reclen as usize,
-            "rem is smaller than `d_reclen`"
-        );
-        self.current += dirent64.d_reclen as usize;
-        Some(entry)
     }
 }
 

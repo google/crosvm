@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![allow(dead_code)] // TODO: remove this once integrated
-
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
