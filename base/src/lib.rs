@@ -102,7 +102,7 @@ cfg_if::cfg_if! {
         pub use linux::{
             block_signal, clear_signal, get_blocked_signals, new_pipe_full,
             register_rt_signal_handler, signal, unblock_signal, Killable, SIGRTMIN,
-            AcpiNotifyEvent, NetlinkGenericSocket, SignalFd, Terminal,
+            SignalFd, Terminal,
         };
 
         pub use linux::{

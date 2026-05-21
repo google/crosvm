@@ -50,10 +50,6 @@ pub enum ACPIPMError {
     /// Error while waiting for events.
     #[error("failed to wait for events: {0}")]
     WaitError(SysError),
-    #[error("Did not find group_id corresponding to acpi_mc_group")]
-    AcpiMcGroupError,
-    #[error("Failed to create and bind NETLINK_GENERIC socket for acpi_mc_group: {0}")]
-    AcpiEventSockError(base::Error),
     #[error("GPE {0} is out of bound")]
     GpeOutOfBound(u32),
 }
