@@ -25,7 +25,6 @@ pub enum PlatformDeviceId {
     VmWatchdog = 17,
     Pflash = 18,
     VirtioMmio = 19,
-    AcAdapter = 20,
     VirtualPmc = 21,
     VirtCpufreq = 22,
     FwCfg = 23,

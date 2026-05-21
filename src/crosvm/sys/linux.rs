@@ -1585,8 +1585,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
     Ok(VmComponents {
         #[cfg(target_arch = "x86_64")]
-        ac_adapter: cfg.ac_adapter,
-        #[cfg(target_arch = "x86_64")]
         break_linux_pci_config_io: cfg.break_linux_pci_config_io,
         memory_size: cfg
             .memory

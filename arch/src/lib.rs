@@ -468,8 +468,6 @@ pub fn derive_vcpu_properties(
 /// create a `RunnableLinuxVm`.
 #[sorted]
 pub struct VmComponents {
-    #[cfg(all(target_arch = "x86_64", unix))]
-    pub ac_adapter: bool,
     pub acpi_sdts: Vec<SDT>,
     pub android_fstab: Option<File>,
     pub boot_cpu: usize,

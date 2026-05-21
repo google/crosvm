@@ -800,13 +800,6 @@ impl TryFrom<GpuParameters> for FixedGpuParameters {
 #[derive(FromArgs, Default)]
 #[argh(subcommand, name = "run", description = "Start a new crosvm instance")]
 pub struct RunCommand {
-    #[cfg(all(target_arch = "x86_64", unix))]
-    #[argh(switch)]
-    /// enable AC adapter device
-    /// It purpose is to emulate ACPI ACPI0003 device, replicate and propagate the
-    /// ac adapter status from the host to the guest.
-    pub ac_adapter: Option<bool>,
-
     #[argh(option, arg_name = "PATH")]
     /// path to user provided ACPI table
     pub acpi_table: Vec<PathBuf>,
@@ -3063,10 +3056,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.battery_config = cmd.battery;
-        #[cfg(all(target_arch = "x86_64", unix))]
-        {
-            cfg.ac_adapter = cmd.ac_adapter.unwrap_or_default();
-        }
 
         #[cfg(feature = "gdb")]
         {

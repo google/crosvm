@@ -36,7 +36,6 @@ use vm_control::PmeNotify;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
 
-use crate::ac_adapter::AcAdapter;
 use crate::pci::pm::PmConfig;
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -131,8 +130,6 @@ pub struct ACPIPMResource {
     gpe0: Arc<Mutex<GpeResource>>,
     #[serde(serialize_with = "serialize_arc_mutex")]
     pci: Arc<Mutex<PciResource>>,
-    #[serde(skip_serializing)]
-    acdc: Option<Arc<Mutex<AcAdapter>>>,
 }
 
 #[derive(Deserialize)]
@@ -148,7 +145,6 @@ impl ACPIPMResource {
         sci_evt: IrqLevelEvent,
         suspend_tube: Arc<Mutex<SendTube>>,
         exit_evt_wrtube: SendTube,
-        acdc: Option<Arc<Mutex<AcAdapter>>>,
     ) -> ACPIPMResource {
         let pm1 = Pm1Resource {
             status: 0,
@@ -176,7 +172,6 @@ impl ACPIPMResource {
             pm1: Arc::new(Mutex::new(pm1)),
             gpe0: Arc::new(Mutex::new(gpe0)),
             pci: Arc::new(Mutex::new(pci)),
-            acdc,
         }
     }
 
@@ -184,12 +179,11 @@ impl ACPIPMResource {
         let sci_evt = self.sci_evt.try_clone().expect("failed to clone event");
         let pm1 = self.pm1.clone();
         let gpe0 = self.gpe0.clone();
-        let acdc = self.acdc.clone();
 
         let acpi_event_ignored_gpe = Vec::new();
 
         self.worker_thread = Some(WorkerThread::start("ACPI PM worker", move |kill_evt| {
-            if let Err(e) = run_worker(sci_evt, kill_evt, pm1, gpe0, acpi_event_ignored_gpe, acdc) {
+            if let Err(e) = run_worker(sci_evt, kill_evt, pm1, gpe0, acpi_event_ignored_gpe) {
                 error!("{}", e);
             }
         }));
@@ -241,7 +235,6 @@ fn run_worker(
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
     acpi_event_ignored_gpe: Vec<u32>,
-    arced_ac_adapter: Option<Arc<Mutex<AcAdapter>>>,
 ) -> Result<(), ACPIPMError> {
     let acpi_event_sock = crate::sys::get_acpi_event_sock()?;
     #[derive(EventToken)]
@@ -272,7 +265,6 @@ fn run_worker(
                         &acpi_event_sock,
                         &gpe0,
                         &acpi_event_ignored_gpe,
-                        &arced_ac_adapter,
                     );
                 }
                 Token::InterruptResample => {
@@ -806,7 +798,6 @@ mod tests {
             get_irq_evt(),
             Arc::new(Mutex::new(get_send_tube())),
             get_send_tube(),
-            None,
         ),
         modify_device
     );

@@ -575,8 +575,6 @@ mod serde_serial_params {
 #[derive(Serialize, Deserialize)]
 #[remain::sorted]
 pub struct Config {
-    #[cfg(all(target_arch = "x86_64", unix))]
-    pub ac_adapter: bool,
     pub acpi_tables: Vec<PathBuf>,
     #[cfg(feature = "android_display")]
     pub android_display_service: Option<String>,
@@ -811,8 +809,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            #[cfg(all(target_arch = "x86_64", unix))]
-            ac_adapter: false,
             acpi_tables: Vec::new(),
             #[cfg(feature = "android_display")]
             android_display_service: None,

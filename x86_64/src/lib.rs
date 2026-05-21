@@ -1250,8 +1250,6 @@ impl arch::LinuxArch for X8664arch {
             &mut resume_notify_devices,
             #[cfg(feature = "swap")]
             swap_controller,
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            components.ac_adapter,
             guest_suspended_cvar,
             &pci_irqs,
         )?;
@@ -2194,7 +2192,6 @@ impl X8664arch {
         max_bus: u8,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
         #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
-        #[cfg(any(target_os = "android", target_os = "linux"))] ac_adapter: bool,
         guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
         pci_irqs: &[(PciAddress, u32, PciInterruptPin)],
     ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
@@ -2252,38 +2249,6 @@ impl X8664arch {
 
         let pm_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
 
-        #[cfg(any(target_os = "android", target_os = "linux"))]
-        let acdc = if ac_adapter {
-            // Allocate GPE for AC adapter notfication
-            let gpe = resources.allocate_gpe().ok_or(Error::AllocateGpe)?;
-
-            let alloc = resources.get_anon_alloc();
-            let mmio_base = resources
-                .allocate_mmio(
-                    devices::ac_adapter::ACDC_VIRT_MMIO_SIZE,
-                    alloc,
-                    "AcAdapter".to_string(),
-                    resources::AllocOptions::new().align(devices::ac_adapter::ACDC_VIRT_MMIO_SIZE),
-                )
-                .unwrap();
-            let ac_adapter_dev = devices::ac_adapter::AcAdapter::new(mmio_base, gpe);
-            let ac_dev = Arc::new(Mutex::new(ac_adapter_dev));
-            mmio_bus
-                .insert(
-                    ac_dev.clone(),
-                    mmio_base,
-                    devices::ac_adapter::ACDC_VIRT_MMIO_SIZE,
-                )
-                .unwrap();
-
-            ac_dev.lock().to_aml_bytes(&mut amls);
-            Some(ac_dev)
-        } else {
-            None
-        };
-        #[cfg(windows)]
-        let acdc = None;
-
         //Virtual PMC
         if let Some(guest_suspended_cvar) = guest_suspended_cvar {
             let alloc = resources.get_anon_alloc();
@@ -2312,7 +2277,6 @@ impl X8664arch {
             pm_sci_evt.try_clone().map_err(Error::CloneEvent)?,
             suspend_tube,
             vm_evt_wrtube,
-            acdc,
         );
         pmresource.to_aml_bytes(&mut amls);
         irq_chip
