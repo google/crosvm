@@ -51,6 +51,7 @@ pub mod passthrough;
 mod read_dir;
 mod worker;
 
+pub use allowlist::PathAllowlist;
 pub use config::CachePolicy;
 pub use config::Config;
 use fuse::Server;

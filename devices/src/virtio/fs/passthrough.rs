@@ -958,7 +958,6 @@ impl PassthroughFs {
         Ok(passthroughfs)
     }
 
-    #[cfg(test)]
     pub fn set_allowlist(&mut self, allowlist: Option<Arc<RwLock<PathAllowlist>>>) {
         self.allowlist = allowlist;
     }

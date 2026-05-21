@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::os::fd::OwnedFd;
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -13,7 +14,9 @@ use base::linux::max_open_files;
 use base::sys::wait_for_pid;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
+use base::IntoRawDescriptor;
 use base::RawDescriptor;
+use base::UnixSeqpacketListener;
 use cros_async::Executor;
 use jail::create_base_minijail;
 use jail::create_base_minijail_without_pivot_root;
@@ -136,13 +139,23 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
         }
     }
     let ex = Executor::new().context("Failed to create executor")?;
-    let fs_device = FsBackend::new(
+
+    let mut allowlist_listener_fd = None;
+    if let Some(ref path) = opts.allowlist_socket_path {
+        let listener =
+            UnixSeqpacketListener::bind(path).context("failed to bind allowlist socket")?;
+        let fd = OwnedFd::from(listener).into_raw_descriptor();
+        allowlist_listener_fd = Some(fd);
+    }
+
+    let mut fs_device = FsBackend::new(
         &opts.tag,
         opts.shared_dir
             .to_str()
             .expect("Failed to convert opts.shared_dir to str()"),
         opts.skip_pivot_root,
         opts.cfg,
+        allowlist_listener_fd,
     )?;
 
     let mut keep_rds = fs_device.keep_rds.clone();
@@ -151,6 +164,9 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
     let conn =
         BackendConnection::from_opts(opts.socket.as_deref(), opts.socket_path.as_deref(), opts.fd)?;
     keep_rds.push(conn.as_raw_descriptor());
+    if let Some(fd) = allowlist_listener_fd {
+        keep_rds.push(fd);
+    }
 
     base::syslog::push_descriptors(&mut keep_rds);
     cros_tracing::push_descriptors!(&mut keep_rds);
@@ -169,6 +185,7 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
     match pid {
         0 => {
             // Child process runs the device and exits, not returns.
+            fs_device.start_allowlist_listener();
             if let Err(e) = ex.run_until(conn.run_backend(fs_device, &ex)) {
                 error!("Error in vhost-user-fs device: {:#}", e);
                 std::process::exit(1);

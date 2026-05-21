@@ -234,6 +234,18 @@ pub enum DiskControlResult {
     Err(SysError),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum FsAllowlistCommand {
+    AddPaths { paths: Vec<PathBuf> },
+    RemovePaths { paths: Vec<PathBuf> },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum FsAllowlistResponse {
+    Ok,
+    Err(String),
+}
+
 /// Net control commands for adding and removing tap devices.
 #[cfg(feature = "pci-hotplug")]
 #[derive(Serialize, Deserialize, Debug)]

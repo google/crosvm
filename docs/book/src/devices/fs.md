@@ -52,3 +52,63 @@ files between host and guest.
 
 You can refer to the [advanced usage](../running_crosvm/advanced_usage.md#with-virtiofs) page for
 the instructions on how to run virtio-fs as rootfs.
+
+## Dynamic Path Allowlist
+
+Crosvm supports dynamically updating the path allowlist for virtio-fs at runtime via a Unix domain
+socket. This allows host-side processes to grant or revoke access to specific paths in the shared
+directory after the VM has started.
+
+To enable this feature, start the vhost-user-fs device with the `--allowlist-socket-path` option:
+
+```sh
+crosvm device fs \
+  --allowlist-socket-path /path/to/allowlist.sock \
+  --tag my_shared_tag \
+  --shared-dir /path/to/share \
+  --socket-path /path/to/vhost.sock
+```
+
+### Wire Protocol
+
+The control socket communicates using JSON-serialized structured messages over `SOCK_SEQPACKET`.
+
+All paths specified in the commands must be **relative to the shared directory root, starting with
+`/`**. For example, if the shared directory is `/path/to/share` on the host, and you want to allow
+access to `/path/to/share/foo/bar`, you must specify `/foo/bar` in the command.
+
+#### Request Format
+
+Requests are sent as JSON objects representing the `FsAllowlistCommand` enum.
+
+- **Add Paths**: Add one or more paths to the allowlist.
+  ```json
+  {
+    "AddPaths": {
+      "paths": ["/path/in/shared/dir", "/another/path"]
+    }
+  }
+  ```
+- **Remove Paths**: Remove one or more paths from the allowlist.
+  ```json
+  {
+    "RemovePaths": {
+      "paths": ["/path/in/shared/dir"]
+    }
+  }
+  ```
+
+#### Response Format
+
+Responses are JSON objects representing the `FsAllowlistResponse` enum.
+
+- **Success**:
+  ```json
+  "Ok"
+  ```
+- **Error**:
+  ```json
+  {
+    "Err": "Detailed error message"
+  }
+  ```

@@ -7,14 +7,19 @@ mod sys;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use anyhow::bail;
 use argh::FromArgs;
 use base::error;
 use base::info;
 use base::warn;
+use base::AsRawDescriptor;
+use base::FromRawDescriptor;
 use base::RawDescriptor;
+use base::SafeDescriptor;
 use base::Tube;
+use base::UnixSeqpacketListener;
 use base::WorkerThread;
 use data_model::Le32;
 use fuse::Server;
@@ -23,6 +28,8 @@ use snapshot::AnySnapshot;
 use sync::Mutex;
 pub use sys::start_device as run_fs_device;
 use virtio_sys::virtio_fs::virtio_fs_config;
+use vm_control::FsAllowlistCommand;
+use vm_control::FsAllowlistResponse;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
@@ -33,6 +40,7 @@ use crate::virtio::copy_config;
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
 use crate::virtio::fs::passthrough::PassthroughFs;
 use crate::virtio::fs::Config;
+use crate::virtio::fs::PathAllowlist;
 use crate::virtio::fs::Worker;
 use crate::virtio::vhost_user_backend::handler::Error as DeviceError;
 use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
@@ -40,13 +48,128 @@ use crate::virtio::Queue;
 
 const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
 
-struct FsBackend {
+pub(crate) struct FsBackend {
     server: Arc<fuse::Server<PassthroughFs>>,
     tag: String,
     avail_features: u64,
     workers: BTreeMap<usize, WorkerThread<Queue>>,
     keep_rds: Vec<RawDescriptor>,
     unmap_guest_memory_on_fork: bool,
+    allowlist_socket_fd: Option<SafeDescriptor>,
+    allowlist: Option<Arc<RwLock<PathAllowlist>>>,
+}
+
+/// Runs a listener thread that processes allowlist control commands from a Unix socket.
+///
+/// # Protocol Specification
+///
+/// The control socket communicates using JSON-serialized structured messages over `SOCK_SEQPACKET`
+/// (wrapped in a `crosvm::base::Tube`).
+///
+/// * **Request Format (`FsAllowlistCommand`)**:
+///   - `{"AddPaths": {"paths": ["/absolute/path"]}}` (to add paths to the allowlist)
+///   - `{"RemovePaths": {"paths": ["/absolute/path"]}}` (to remove paths from the allowlist)
+/// * **Response Format (`FsAllowlistResponse`)**:
+///   - `"Ok"` (success)
+///   - `{"Err": "error message details"}` (error)
+fn handle_client_session(tube: Tube, allowlist: &Arc<RwLock<PathAllowlist>>) {
+    loop {
+        match tube.recv::<FsAllowlistCommand>() {
+            Ok(cmd) => {
+                let result = match cmd {
+                    FsAllowlistCommand::AddPaths { paths } => {
+                        info!("Allowlist socket: Add paths {:?}", paths);
+                        let mut al_guard = allowlist.write().expect(
+                            "Allowlist lock poisoned during write (add_paths). Terminating.",
+                        );
+                        let mut al_clone = al_guard.clone();
+                        let mut success = true;
+                        for path in &paths {
+                            if !al_clone.add_path(path) {
+                                error!("Allowlist socket: Failed to add invalid path: {:?}", path);
+                                success = false;
+                                break;
+                            }
+                        }
+                        if success {
+                            *al_guard = al_clone;
+                            FsAllowlistResponse::Ok
+                        } else {
+                            FsAllowlistResponse::Err("Failed to add one or more paths".to_string())
+                        }
+                    }
+                    FsAllowlistCommand::RemovePaths { paths } => {
+                        info!("Allowlist socket: Remove paths {:?}", paths);
+                        let mut al_guard = allowlist.write().expect(
+                            "Allowlist lock poisoned during write (remove_paths). Terminating.",
+                        );
+                        let mut al_clone = al_guard.clone();
+                        let mut success = true;
+                        for path in &paths {
+                            if !al_clone.remove_path(path) {
+                                error!("Allowlist socket: Failed to remove path: {:?}", path);
+                                success = false;
+                                break;
+                            }
+                        }
+                        if success {
+                            *al_guard = al_clone;
+                            FsAllowlistResponse::Ok
+                        } else {
+                            FsAllowlistResponse::Err(
+                                "Failed to remove one or more paths".to_string(),
+                            )
+                        }
+                    }
+                };
+
+                if let Err(e) = tube.send(&result) {
+                    error!("Allowlist socket: Failed to send response: {}", e);
+                }
+            }
+            Err(base::TubeError::Disconnected) => {
+                info!("Allowlist socket: Client disconnected");
+                break;
+            }
+            Err(e) => {
+                error!("Allowlist socket: Error reading from control socket: {}", e);
+                break;
+            }
+        }
+    }
+}
+
+fn run_allowlist_listener(fd: SafeDescriptor, allowlist: Arc<RwLock<PathAllowlist>>) {
+    let path = format!("/proc/self/fd/{}", fd.as_raw_descriptor());
+    let listener = match UnixSeqpacketListener::bind(&path) {
+        Ok(l) => l,
+        Err(e) => {
+            error!(
+                "Allowlist socket: Failed to re-create listener from fd: {}",
+                e
+            );
+            return;
+        }
+    };
+
+    loop {
+        match listener.accept() {
+            Ok(seqpacket) => {
+                let tube = match Tube::try_from(seqpacket) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!("Allowlist socket: Failed to create Tube: {}", e);
+                        continue;
+                    }
+                };
+                handle_client_session(tube, &allowlist);
+            }
+            Err(e) => {
+                error!("Allowlist socket: Accept failed: {}", e);
+                break;
+            }
+        }
+    }
 }
 
 impl FsBackend {
@@ -56,6 +179,7 @@ impl FsBackend {
         shared_dir: &str,
         skip_pivot_root: bool,
         cfg: Option<Config>,
+        allowlist_socket_fd: Option<RawDescriptor>,
     ) -> anyhow::Result<Self> {
         if tag.len() > FS_MAX_TAG_LEN {
             bail!(
@@ -83,8 +207,24 @@ impl FsBackend {
             fs.set_root_dir(shared_dir.to_string())?;
         }
 
+        let allowlist_socket_fd = allowlist_socket_fd.map(|fd| {
+            // SAFETY: safe because we own the file descriptor and nobody else is using it.
+            unsafe { SafeDescriptor::from_raw_descriptor(fd) }
+        });
+
+        let allowlist = if allowlist_socket_fd.is_some() {
+            let al = Arc::new(RwLock::new(PathAllowlist::new()));
+            fs.set_allowlist(Some(al.clone()));
+            Some(al)
+        } else {
+            None
+        };
+
         let mut keep_rds: Vec<RawDescriptor> = [0, 1, 2].to_vec();
         keep_rds.append(&mut fs.keep_rds());
+        if let Some(ref fd) = allowlist_socket_fd {
+            keep_rds.push(fd.as_raw_descriptor());
+        }
 
         let server = Arc::new(Server::new(fs));
 
@@ -95,7 +235,25 @@ impl FsBackend {
             workers: Default::default(),
             keep_rds,
             unmap_guest_memory_on_fork,
+            allowlist_socket_fd,
+            allowlist,
         })
+    }
+
+    pub fn start_allowlist_listener(&mut self) {
+        if let Some(fd) = self.allowlist_socket_fd.take() {
+            if let Some(allowlist) = &self.allowlist {
+                let allowlist = allowlist.clone();
+                let result = std::thread::Builder::new()
+                    .name("fs_allowlist_listener".to_string())
+                    .spawn(move || {
+                        run_allowlist_listener(fd, allowlist);
+                    });
+                if let Err(e) = result {
+                    error!("Failed to spawn allowlist listener thread: {}", e);
+                }
+            }
+        }
     }
 }
 
@@ -202,6 +360,11 @@ pub struct Options {
     /// file descriptor of a connected vhost-user socket.
     /// If this flag is set, --socket-path cannot be specified.
     fd: Option<RawDescriptor>,
+    #[argh(option, arg_name = "PATH")]
+    /// path to the Unix domain socket for dynamically controlling the path allowlist.
+    /// Communicates over SOCK_SEQPACKET using JSON. See crosvm book (devices/fs.html) for
+    /// protocol.
+    allowlist_socket_path: Option<PathBuf>,
 
     #[argh(option, arg_name = "TAG")]
     /// the virtio-fs tag
@@ -259,4 +422,89 @@ pub struct Options {
     /// enforce isolation and control access to directories.
     #[allow(dead_code)]
     skip_pivot_root: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_run_allowlist_listener() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let socket_path = temp_dir.path().join("test.sock");
+        let listener = UnixSeqpacketListener::bind(&socket_path).unwrap();
+        let allowlist = Arc::new(RwLock::new(PathAllowlist::default()));
+
+        use std::os::fd::OwnedFd;
+        let fd = SafeDescriptor::from(OwnedFd::from(listener));
+        let fd_clone = fd.try_clone().unwrap();
+
+        let allowlist_clone = allowlist.clone();
+        let handle = std::thread::spawn(move || {
+            run_allowlist_listener(fd, allowlist_clone);
+        });
+
+        use base::UnixSeqpacket;
+        let client_socket = UnixSeqpacket::connect(&socket_path).unwrap();
+        let client_tube = Tube::try_from(client_socket).unwrap();
+
+        // 1. Send a valid AddPaths command (multiple paths)
+        client_tube
+            .send(&FsAllowlistCommand::AddPaths {
+                paths: vec!["/allowed_path1".into(), "/allowed_path2".into()],
+            })
+            .unwrap();
+        let resp: FsAllowlistResponse = client_tube.recv().unwrap();
+        assert!(matches!(resp, FsAllowlistResponse::Ok));
+
+        // Verify paths are added
+        {
+            let al = allowlist.read().unwrap();
+            assert!(al.is_accessible("/allowed_path1"));
+            assert!(al.is_accessible("/allowed_path2"));
+        }
+
+        // 2. Send a valid RemovePaths command (multiple paths)
+        client_tube
+            .send(&FsAllowlistCommand::RemovePaths {
+                paths: vec!["/allowed_path1".into(), "/allowed_path2".into()],
+            })
+            .unwrap();
+        let resp: FsAllowlistResponse = client_tube.recv().unwrap();
+        assert!(matches!(resp, FsAllowlistResponse::Ok));
+
+        // Verify paths are removed
+        {
+            let al = allowlist.read().unwrap();
+            assert!(!al.is_accessible("/allowed_path1"));
+            assert!(!al.is_accessible("/allowed_path2"));
+        }
+
+        // 3. Send AddPaths with one invalid path (atomic rollback test)
+        client_tube
+            .send(&FsAllowlistCommand::AddPaths {
+                paths: vec!["/valid_but_rolled_back".into(), "/a/../../..".into()],
+            })
+            .unwrap();
+        let resp: FsAllowlistResponse = client_tube.recv().unwrap();
+        assert!(matches!(resp, FsAllowlistResponse::Err(_)));
+
+        // Verify that even the valid path was NOT added due to rollback
+        {
+            let al = allowlist.read().unwrap();
+            assert!(!al.is_accessible("/valid_but_rolled_back"));
+        }
+
+        // Close client tube to terminate listener
+        drop(client_tube);
+
+        // Force close the listener socket to break the accept loop
+        // SAFETY: safe because we own fd_clone and we are just shutting down the socket
+        unsafe {
+            libc::shutdown(fd_clone.as_raw_descriptor(), libc::SHUT_RDWR);
+        }
+
+        let join_res = handle.join();
+        assert!(join_res.is_ok(), "Listener thread panicked!");
+    }
 }
