@@ -8,7 +8,6 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::Event;
-use vm_control::GpeNotify;
 use vm_control::PmeNotify;
 
 use crate::bus::HotPlugBus;
@@ -204,23 +203,6 @@ impl HotPlugBus for PcieRootPort {
 
     fn get_hotplug_key(&self) -> Option<HotPlugKey> {
         None
-    }
-}
-
-impl GpeNotify for PcieRootPort {
-    fn notify(&mut self) {
-        if !self.pcie_port.hotplug_implemented() {
-            return;
-        }
-
-        if self.pcie_port.is_host() {
-            self.pcie_port.prepare_hotplug();
-        }
-
-        if self.pcie_port.should_trigger_pme() {
-            self.pcie_port
-                .inject_pme(self.pcie_port.get_address().unwrap().pme_requester_id());
-        }
     }
 }
 

@@ -188,11 +188,6 @@ impl Display for VmRunMode {
     }
 }
 
-// Trait for devices that get notification on specific GPE trigger
-pub trait GpeNotify: Send {
-    fn notify(&mut self) {}
-}
-
 // Trait for devices that get notification on specific PCI PME
 pub trait PmeNotify: Send {
     fn notify(&mut self, _requester_id: u16) {}
@@ -204,7 +199,6 @@ pub trait PmResource {
     fn rtc_evt(&mut self, _clear_evt: Event) {}
     fn gpe_evt(&mut self, _gpe: u32, _clear_evt: Option<Event>) {}
     fn pme_evt(&mut self, _requester_id: u16) {}
-    fn register_gpe_notify_dev(&mut self, _gpe: u32, _notify_dev: Arc<Mutex<dyn GpeNotify>>) {}
     fn register_pme_notify_dev(&mut self, _bus: u8, _notify_dev: Arc<Mutex<dyn PmeNotify>>) {}
 }
 

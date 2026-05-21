@@ -29,7 +29,6 @@ use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::DeviceId;
-use vm_control::GpeNotify;
 use vm_control::PlatformDeviceId;
 use vm_control::PmResource;
 use vm_control::PmeNotify;
@@ -89,8 +88,6 @@ struct Pm1ResourceSerializable {
 pub(crate) struct GpeResource {
     pub(crate) status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
-    #[serde(skip_serializing)]
-    pub(crate) gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
     // For each triggered GPE, a vector of events to check when resampling
     // sci_evt. If any events are un-signaled, then sci_evt should be re-asserted.
     #[serde(skip_serializing)]
@@ -156,7 +153,6 @@ impl ACPIPMResource {
         let gpe0 = GpeResource {
             status: Default::default(),
             enable: Default::default(),
-            gpe_notify: BTreeMap::new(),
             pending_clear_evts: BTreeMap::new(),
             suspend_tube: suspend_tube.clone(),
         };
@@ -234,7 +230,7 @@ fn run_worker(
     kill_evt: Event,
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
-    acpi_event_ignored_gpe: Vec<u32>,
+    _acpi_event_ignored_gpe: Vec<u32>,
 ) -> Result<(), ACPIPMError> {
     let acpi_event_sock = crate::sys::get_acpi_event_sock()?;
     #[derive(EventToken)]
@@ -260,12 +256,7 @@ fn run_worker(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::AcpiEvent => {
-                    crate::sys::acpi_event_run(
-                        &sci_evt,
-                        &acpi_event_sock,
-                        &gpe0,
-                        &acpi_event_ignored_gpe,
-                    );
+                    crate::sys::acpi_event_run(&sci_evt, &acpi_event_sock);
                 }
                 Token::InterruptResample => {
                     sci_evt.clear_resample();
@@ -484,16 +475,6 @@ impl PmResource for ACPIPMResource {
         if let Some(root_ports) = pci.pme_notify.get_mut(&bus) {
             for root_port in root_ports {
                 root_port.lock().notify(requester_id);
-            }
-        }
-    }
-
-    fn register_gpe_notify_dev(&mut self, gpe: u32, notify_dev: Arc<Mutex<dyn GpeNotify>>) {
-        let mut gpe0 = self.gpe0.lock();
-        match gpe0.gpe_notify.get_mut(&gpe) {
-            Some(v) => v.push(notify_dev),
-            None => {
-                gpe0.gpe_notify.insert(gpe, vec![notify_dev]);
             }
         }
     }

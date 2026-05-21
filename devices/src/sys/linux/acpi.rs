@@ -2,18 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::Arc;
-
-use base::debug;
 use base::error;
 use base::info;
 use base::AcpiNotifyEvent;
 use base::NetlinkGenericSocket;
-use sync::Mutex;
 
 use crate::acpi::ACPIPMError;
-use crate::acpi::GpeResource;
-use crate::acpi::ACPIPM_GPE_MAX;
 use crate::IrqLevelEvent;
 
 pub(crate) fn get_acpi_event_sock() -> Result<Option<NetlinkGenericSocket>, ACPIPMError> {
@@ -54,8 +48,6 @@ fn get_acpi_event_group() -> Option<u32> {
 pub(crate) fn acpi_event_run(
     _sci_evt: &IrqLevelEvent,
     acpi_event_sock: &Option<NetlinkGenericSocket>,
-    gpe0: &Arc<Mutex<GpeResource>>,
-    ignored_gpe: &[u32],
 ) {
     let acpi_event_sock = acpi_event_sock.as_ref().unwrap();
     let nl_msg = match acpi_event_sock.recv() {
@@ -67,34 +59,12 @@ pub(crate) fn acpi_event_run(
     };
 
     for netlink_message in nl_msg.iter() {
-        let acpi_event = match AcpiNotifyEvent::new(netlink_message) {
+        let _acpi_event = match AcpiNotifyEvent::new(netlink_message) {
             Ok(evt) => evt,
             Err(e) => {
                 error!("Received netlink message is not an acpi_event, error {}", e);
                 continue;
             }
         };
-        match acpi_event.device_class.as_str() {
-            "gpe" => {
-                acpi_event_handle_gpe(acpi_event.data, acpi_event._type, gpe0, ignored_gpe);
-            }
-            c => debug!("ignored acpi event {}", c),
-        };
-    }
-}
-
-fn acpi_event_handle_gpe(
-    gpe_number: u32,
-    _type: u32,
-    gpe0: &Arc<Mutex<GpeResource>>,
-    ignored_gpe: &[u32],
-) {
-    // If gpe event fired in the host, notify registered GpeNotify listeners
-    if _type == 0 && gpe_number <= ACPIPM_GPE_MAX as u32 && !ignored_gpe.contains(&gpe_number) {
-        if let Some(notify_devs) = gpe0.lock().gpe_notify.get(&gpe_number) {
-            for notify_dev in notify_devs.iter() {
-                notify_dev.lock().notify();
-            }
-        }
     }
 }

@@ -1194,9 +1194,7 @@ struct HotPlugStub {
     hotplug_buses: BTreeMap<u8, Arc<Mutex<dyn HotPlugBus>>>,
     /// Bus ranges of devices for virtio-iommu.
     iommu_bus_ranges: Vec<RangeInclusive<u32>>,
-    /// Map from gpe index to GpeNotify devices.
-    gpe_notify_devs: BTreeMap<u32, Arc<Mutex<dyn GpeNotify>>>,
-    /// Map from bus index to GpeNotify devices.
+    /// Map from bus index to PmeNotify devices.
     pme_notify_devs: BTreeMap<u8, Arc<Mutex<dyn PmeNotify>>>,
 }
 
@@ -1207,7 +1205,6 @@ impl HotPlugStub {
         Self {
             hotplug_buses: BTreeMap::new(),
             iommu_bus_ranges: Vec::new(),
-            gpe_notify_devs: BTreeMap::new(),
             pme_notify_devs: BTreeMap::new(),
         }
     }
@@ -2536,9 +2533,6 @@ fn run_vm(
         }
 
         if let Some(pm) = &linux.pm {
-            for (gpe, notify_dev) in hp_stub.gpe_notify_devs.into_iter() {
-                pm.lock().register_gpe_notify_dev(gpe, notify_dev);
-            }
             for (bus, notify_dev) in hp_stub.pme_notify_devs.into_iter() {
                 pm.lock().register_pme_notify_dev(bus, notify_dev);
             }
