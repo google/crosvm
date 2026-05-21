@@ -137,6 +137,11 @@ def main():
     parser.add_argument(
         "--build-profile", help="Select compile profile, default to release.", default="release"
     )
+    parser.add_argument(
+        "--appimage",
+        action="store_true",
+        help="Enable AppImage compatibility features (e.g. sandboxing workarounds)",
+    )
     pgo_group = parser.add_mutually_exclusive_group()
     pgo_group.add_argument(
         "--profile-generate",
@@ -168,6 +173,8 @@ def main():
         exclude_args += ["--exclude=" + s for s in DO_NOT_BUILD_RISCV64]
 
     features = build_target.feature_flag
+    if args.appimage:
+        features += ",appimage"
     cargo_args = [
         "--profile",
         args.build_profile,

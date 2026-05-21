@@ -237,6 +237,19 @@ pub fn create_sandbox_minijail(
             (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
             "size=67108864",
         )?;
+
+        #[cfg(feature = "appimage")]
+        if let Ok(appdir) = std::env::var("APPDIR") {
+            let appdir_path = Path::new(&appdir);
+            let canonical_path = appdir_path.canonicalize().with_context(|| {
+                format!("failed to canonicalize APPDIR path: {:?}", appdir_path)
+            })?;
+            if !canonical_path.starts_with("/tmp") {
+                bail!("APPDIR path {:?} is not under /tmp", canonical_path);
+            }
+            jail.mount_bind(&canonical_path, &canonical_path, false)
+                .context("failed to bind mount APPDIR into jail")?;
+        }
     }
     if let Some((uid_map, gid_map)) = config.ugid_map {
         jail.uidmap(uid_map).context("error setting UID map")?;

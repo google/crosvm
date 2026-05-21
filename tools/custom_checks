@@ -90,6 +90,7 @@ def check_rust_lockfiles(*files: str):
 
 # These crosvm features are currently not built upstream. Do not add to this list.
 KNOWN_DISABLED_FEATURES = [
+    "appimage",
     "default-no-sandbox",
     "gvm",
     "libvda",

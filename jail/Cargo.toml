@@ -13,6 +13,7 @@ harness = false
 
 [features]
 seccomp_trace = []
+appimage = []
 
 [dependencies]
 anyhow = { workspace = true }

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=crosvm
+Comment=ChromeOS Virtual Machine Monitor
+Exec=crosvm
+Icon=logo_512
+Categories=System;Emulator;
+Terminal=true

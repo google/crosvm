@@ -215,6 +215,9 @@ windows = { version = "=0.61.1" }
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
 default = ["audio", "balloon", "document-features", "gpu", "qcow", "usb", "libvda-stub", "net", "slirp"]
 
+## Enables packaging compatibility with sandboxed AppImage
+appimage = ["jail/appimage"]
+
 ## Enables support for the Android [sparse image format](https://android.googlesource.com/platform/system/core/+/HEAD/libsparse/sparse_format.h)
 ## in the block device.
 android-sparse = ["disk/android-sparse"]

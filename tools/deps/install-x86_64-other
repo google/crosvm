@@ -38,6 +38,14 @@ rustup toolchain install nightly --profile minimal --component rustfmt
 # Cargo extension to install binary packages from github
 curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v1.4.4/cargo-binstall-x86_64-unknown-linux-gnu.tgz | tar -xzvvf - -C ${CARGO_HOME:-~/.cargo}/bin
 
+# Install linuxdeploy if not already available
+if ! command -v linuxdeploy &>/dev/null; then
+    BIN_DIR="${PIPX_BIN_DIR:-$HOME/.local/bin}"
+    mkdir -p "$BIN_DIR"
+    curl -L -o "$BIN_DIR/linuxdeploy" https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
+    chmod +x "$BIN_DIR/linuxdeploy"
+fi
+
 # The bindgen tool is required to build a crosvm dependency.
 cargo binstall --no-confirm bindgen-cli --version "0.71.0"
 

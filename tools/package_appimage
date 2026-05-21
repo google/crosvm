@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+# Copyright 2026 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from impl.common import (
+    CROSVM_ROOT,
+    Triple,
+    chdir,
+    run_main,
+    verbose,
+)
+
+USAGE = """\
+Package crosvm as an AppImage.
+
+This script packages a pre-built crosvm binary (and its dynamic dependencies)
+into an AppImage. The binary should be built with the `appimage` feature enabled
+to ensure sandboxing works correctly inside the AppImage.
+
+Example:
+    $ ./tools/build_release --appimage --strip
+    $ ./tools/package_appimage
+"""
+
+
+def detect_libgbm(build_target):
+    try:
+        libdir = subprocess.check_output(
+            ["pkg-config", "--variable=libdir", "gbm"], stderr=subprocess.DEVNULL, text=True
+        ).strip()
+        if libdir:
+            path = Path(libdir) / "libgbm.so.1"
+            if path.exists():
+                return path
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Fallback to expected container path
+    path = Path(f"/usr/lib/{build_target.arch}-linux-gnu/libgbm.so.1")
+    if path.exists():
+        return path
+
+    return None
+
+
+def verify_minigbm(path: Path) -> bool:
+    """Verifies if the library at path is indeed minigbm (not Mesa gbm)."""
+    # Check for minigbm-specific symbol
+    symbol = "minigbm_create_default_device"
+
+    # Try nm
+    try:
+        output = subprocess.check_output(
+            ["nm", "-D", str(path)], stderr=subprocess.DEVNULL, text=True
+        )
+        if symbol in output:
+            return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Failed to use nm to verify linked gbm is minigbm")
+
+    return False
+
+
+def main():
+    parser = argparse.ArgumentParser(usage=USAGE)
+    parser.add_argument(
+        "--binary",
+        type=Path,
+        help="Path to the crosvm binary to package. If not specified, it will be auto-detected.",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Directory to place the generated AppImage. Defaults to <crosvm_root>/target.",
+    )
+    args = parser.parse_args()
+
+    chdir(CROSVM_ROOT)
+
+    # 1. Determine build target (only host packaging is supported)
+    build_target = Triple.host_default()
+
+    # 2. Locate binary
+    binary_path = args.binary
+    if not binary_path:
+        target_dir = build_target.target_dir
+        binary_path = target_dir / str(build_target) / "release" / "crosvm"
+
+        # Fallback if we didn't specify target during build
+        if not binary_path.exists():
+            binary_path = target_dir / "release" / "crosvm"
+
+    if not binary_path or not binary_path.exists():
+        sys.exit(
+            f"Error: Could not find crosvm binary at {binary_path}. "
+            "Please build it first with `./tools/build_release --appimage` "
+            "or specify the path with `--binary`."
+        )
+
+    print(f"Using binary: {binary_path}")
+
+    # 3. Locate linuxdeploy
+    linuxdeploy_cmd = "linuxdeploy"
+    if not shutil.which(linuxdeploy_cmd):
+        sys.exit(
+            "Error: `linuxdeploy` not found in PATH.\n"
+            "Please run `./tools/deps/install-x86_64-other` to install it."
+        )
+
+    # 4. Determine output directory and packaging working directory
+    pkg_workdir = CROSVM_ROOT / "target"
+    output_dir = args.output_dir or pkg_workdir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pkg_workdir.mkdir(parents=True, exist_ok=True)
+
+    # 5. Prepare AppDir (under pkg_workdir to avoid polluting root)
+    appdir_path = pkg_workdir / "crosvm.AppDir"
+    if appdir_path.exists():
+        shutil.rmtree(appdir_path)
+
+    # Clean old AppImages in output_dir to avoid confusion
+    for img in output_dir.glob("crosvm-*.AppImage"):
+        print(f"Removing old AppImage: {img.name}")
+        img.unlink()
+
+    # 6. Run linuxdeploy
+    desktop_file = CROSVM_ROOT / "tools/impl/appimage/crosvm.desktop"
+    if not desktop_file.exists():
+        sys.exit(f"Error: Desktop file not found at {desktop_file}")
+
+    icon_file = CROSVM_ROOT / "logo/logo_512.png"
+    if not icon_file.exists():
+        sys.exit("Error: Icon file logo_512.png not found")
+
+    env = os.environ.copy()
+    env["APPIMAGE_EXTRACT_AND_RUN"] = "1"
+
+    # Look for runtime in pkg_workdir
+    local_runtime = pkg_workdir / "runtime-x86_64"
+    if local_runtime.exists():
+        env["LDAI_RUNTIME_FILE"] = str(local_runtime)
+        print(f"Using local AppImage runtime: {local_runtime}")
+
+    # Force deploy libgbm (minigbm). crosvm depends on minigbm and does not support
+    # standard Mesa GBM (it requires minigbm-specific symbols like gbm_bo_get_map_info).
+    # Since linuxdeploy excludes libgbm by default, we must explicitly package it.
+    libgbm_path = detect_libgbm(build_target)
+    if not libgbm_path:
+        sys.exit("Error: libgbm.so.1 not found. crosvm requires minigbm.")
+
+    if not verify_minigbm(libgbm_path):
+        sys.exit(
+            f"Error: Found libgbm at {libgbm_path} but it is not minigbm. crosvm requires minigbm."
+        )
+
+    cmd_args = [
+        linuxdeploy_cmd,
+        f"--executable={binary_path}",
+        f"--appdir={appdir_path}",
+        "--output=appimage",
+        f"--desktop-file={desktop_file}",
+        f"--icon-file={icon_file}",
+    ]
+
+    if libgbm_path:
+        cmd_args.append(f"--library={libgbm_path}")
+
+    if verbose():
+        print("Running:", " ".join(cmd_args))
+
+    try:
+        # Run in output_dir so the AppImage is generated directly there
+        subprocess.check_call(cmd_args, cwd=output_dir, env=env)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"Error: linuxdeploy failed with exit code {e.returncode}")
+
+    print(f"AppImage successfully packaged at: {output_dir}")
+
+
+if __name__ == "__main__":
+    run_main(main)
