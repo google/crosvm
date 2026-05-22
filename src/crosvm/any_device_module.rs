@@ -84,5 +84,6 @@ declare_any_virtio_device_module! {
         Vsock(device_virtio_vsock::VirtioVsockModule),
         #[cfg(feature = "net")]
         Net(device_virtio_net::NetParameters),
+        Scsi(devices::virtio::VirtioScsiModule),
     }
 }

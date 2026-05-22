@@ -2561,8 +2561,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         disks.sort_by_key(|d| d.index);
         cfg.disks = disks.into_iter().map(|d| d.disk_option).collect();
 
-        cfg.scsis = cmd.scsi_block;
-
         cfg.pmems = cmd.pmem;
 
         if !cmd.pmem_device.is_empty() || !cmd.rw_pmem_device.is_empty() {
@@ -2595,8 +2593,8 @@ impl TryFrom<RunCommand> for super::config::Config {
             .filter(|(_, d)| d.root)
             .map(|(i, d)| (format_disk_letter("/dev/vd", i), d.read_only));
 
-        let virtio_scsi_root_devs = cfg
-            .scsis
+        let virtio_scsi_root_devs = cmd
+            .scsi_block
             .iter()
             .enumerate()
             .filter(|(_, s)| s.root)
@@ -2624,6 +2622,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             if root_devs.next().is_some() {
                 return Err("only one root disk can be specified".to_string());
             }
+        }
+
+        if !cmd.scsi_block.is_empty() {
+            cfg.virtio_device_modules
+                .push(devices::virtio::VirtioScsiModule::new(cmd.scsi_block).into());
         }
 
         #[cfg(any(target_os = "android", target_os = "linux"))]

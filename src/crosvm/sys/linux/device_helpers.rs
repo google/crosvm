@@ -47,7 +47,6 @@ use devices::virtio::memory_mapper::BasicMemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
 #[cfg(feature = "pvclock")]
 use devices::virtio::pvclock::PvClock;
-use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
@@ -295,35 +294,6 @@ impl VirtioDeviceBuilder for DiskConfig<'_> {
         keep_rds.extend(block.keep_rds());
 
         Ok(block)
-    }
-}
-
-pub struct ScsiConfig<'a>(pub &'a [ScsiOption]);
-
-impl<'a> VirtioDeviceBuilder for &'a ScsiConfig<'a> {
-    const NAME: &'static str = "scsi";
-
-    fn create_virtio_device(
-        self,
-        protection_type: ProtectionType,
-    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        let base_features = virtio::base_features(protection_type);
-        let disks = self
-            .0
-            .iter()
-            .map(|op| {
-                info!("Trying to attach a scsi device: {}", op.path.display());
-                let file = op.open()?;
-                Ok(virtio::ScsiDiskConfig {
-                    file,
-                    block_size: op.block_size,
-                    read_only: op.read_only,
-                })
-            })
-            .collect::<anyhow::Result<_>>()?;
-        let controller = virtio::ScsiController::new(base_features, disks)
-            .context("failed to create a scsi controller")?;
-        Ok(Box::new(controller))
     }
 }
 

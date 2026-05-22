@@ -419,15 +419,6 @@ fn create_virtio_devices(
         ));
     }
 
-    if !cfg.scsis.is_empty() {
-        let scsi_config = ScsiConfig(&cfg.scsis);
-        devs.push((
-            "scsi",
-            scsi_config
-                .create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?,
-        ));
-    }
-
     for (index, pmem_disk) in cfg.pmems.iter().enumerate() {
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
         add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));

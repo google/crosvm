@@ -4,8 +4,13 @@
 
 use std::path::PathBuf;
 
+use anyhow::Context;
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::virtio::VirtioDevice;
+use crate::VirtioDeviceArgs;
+use crate::VirtioDeviceModule;
 
 pub(crate) mod sys;
 
@@ -42,6 +47,55 @@ pub struct ScsiOption {
     /// adding specific command-line options.
     #[serde(default)]
     pub root: bool,
+}
+
+/// Module for creating a Virtio SCSI controller device.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct VirtioScsiModule {
+    pub disks: Vec<ScsiOption>,
+}
+
+impl VirtioScsiModule {
+    pub fn new(disks: Vec<ScsiOption>) -> Self {
+        Self { disks }
+    }
+}
+
+impl VirtioDeviceModule for VirtioScsiModule {
+    fn sort_name(&self) -> &'static str {
+        "scsi"
+    }
+
+    fn create(&self, args: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let base_features = crate::virtio::base_features(args.protection_type);
+        let disks = self
+            .disks
+            .iter()
+            .map(|op| {
+                base::info!("Trying to attach a scsi device: {}", op.path.display());
+                Ok(DiskConfig {
+                    file: op.open()?,
+                    block_size: op.block_size,
+                    read_only: op.read_only,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let controller =
+            Controller::new(base_features, disks).context("failed to create a scsi controller")?;
+        Ok(Box::new(controller))
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn create_jail(
+        &self,
+        jail_config: &jail::JailConfig,
+    ) -> anyhow::Result<Option<minijail::Minijail>> {
+        let jail = jail::simple_jail(
+            Some(jail_config),
+            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file("scsi"),
+        )?;
+        Ok(jail)
+    }
 }
 
 #[cfg(test)]
