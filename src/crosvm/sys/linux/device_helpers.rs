@@ -24,7 +24,6 @@ use anyhow::Result;
 use arch::VirtioDeviceStub;
 use base::linux::MemfdSeals;
 use base::sys::SharedMemoryLinux;
-use base::ReadNotifier;
 use base::*;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
@@ -1034,19 +1033,16 @@ pub fn create_video_device(
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub fn register_video_device(
     backend: VideoBackendType,
-    devs: &mut Vec<VirtioDeviceStub>,
+    devs: &mut Vec<(&'static str, VirtioDeviceStub)>,
     video_tube: Tube,
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,
     typ: VideoDeviceType,
 ) -> Result<()> {
-    devs.push(create_video_device(
-        backend,
-        protection_type,
-        jail_config,
-        typ,
-        video_tube,
-    )?);
+    devs.push((
+        "video",
+        create_video_device(backend, protection_type, jail_config, typ, video_tube)?,
+    ));
     Ok(())
 }
 

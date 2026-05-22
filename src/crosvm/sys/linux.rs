@@ -142,6 +142,8 @@ use devices::PvPanicPciDevice;
 #[cfg(feature = "pci-hotplug")]
 use devices::ResourceCarrier;
 use devices::StubPciDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use devices::VirtioPciDevice;
 #[cfg(feature = "usb")]
 use devices::XhciController;
@@ -250,12 +252,15 @@ fn create_virtio_devices(
             }
         }
 
-        devs.push(create_wayland_device(
-            cfg.protection_type,
-            cfg.jail_config.as_ref(),
-            &cfg.wayland_socket_paths,
-            wl_resource_bridge,
-        )?);
+        devs.push((
+            "wayland",
+            create_wayland_device(
+                cfg.protection_type,
+                cfg.jail_config.as_ref(),
+                &cfg.wayland_socket_paths,
+                wl_resource_bridge,
+            )?,
+        ));
     }
 
     #[cfg(all(feature = "media", feature = "video-decoder"))]
@@ -343,10 +348,13 @@ fn create_virtio_devices(
                     virtio::base_features(cfg.protection_type),
                 )
                 .context("failed to set up mouse device")?;
-                devs.push(VirtioDeviceStub {
-                    dev: Box::new(dev),
-                    jail: simple_jail(cfg.jail_config.as_ref(), "input_device")?,
-                });
+                devs.push((
+                    "multi_touch",
+                    VirtioDeviceStub {
+                        dev: Box::new(dev),
+                        jail: simple_jail(cfg.jail_config.as_ref(), "input_device")?,
+                    },
+                ));
                 event_devices.push(EventDevice::touchscreen(event_device_socket));
             }
             if cfg.display_window_keyboard {
@@ -361,25 +369,31 @@ fn create_virtio_devices(
                     virtio::base_features(cfg.protection_type),
                 )
                 .context("failed to set up keyboard device")?;
-                devs.push(VirtioDeviceStub {
-                    dev: Box::new(dev),
-                    jail: simple_jail(cfg.jail_config.as_ref(), "input_device")?,
-                });
+                devs.push((
+                    "window_keyboard",
+                    VirtioDeviceStub {
+                        dev: Box::new(dev),
+                        jail: simple_jail(cfg.jail_config.as_ref(), "input_device")?,
+                    },
+                ));
                 event_devices.push(EventDevice::keyboard(event_device_socket));
             }
 
             let (gpu_control_host_tube, gpu_control_device_tube) =
                 Tube::pair().context("failed to create gpu tube")?;
             add_control_tube(AnyControlTube::Gpu(gpu_control_host_tube));
-            devs.push(create_gpu_device(
-                cfg,
-                vm_evt_wrtube,
-                gpu_control_device_tube,
-                resource_bridges,
-                render_server_fd,
-                has_vfio_gfx_device,
-                event_devices,
-            )?);
+            devs.push((
+                "gpu",
+                create_gpu_device(
+                    cfg,
+                    vm_evt_wrtube,
+                    gpu_control_device_tube,
+                    resource_bridges,
+                    render_server_fd,
+                    has_vfio_gfx_device,
+                    event_devices,
+                )?,
+            ));
         }
     }
 
@@ -390,39 +404,44 @@ fn create_virtio_devices(
     {
         let dev =
             param.create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?;
-        devs.push(dev);
+        devs.push(("console", dev));
     }
 
     for disk in &cfg.disks {
         let (disk_host_tube, disk_device_tube) = Tube::pair().context("failed to create tube")?;
         add_control_tube(AnyControlTube::Disk(disk_host_tube));
         let disk_config = DiskConfig::new(disk, Some(disk_device_tube));
-        devs.push(
+        devs.push((
+            "disk",
             disk_config
                 .create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?,
-        );
+        ));
     }
 
     if !cfg.scsis.is_empty() {
         let scsi_config = ScsiConfig(&cfg.scsis);
-        devs.push(
+        devs.push((
+            "scsi",
             scsi_config
                 .create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?,
-        );
+        ));
     }
 
     for (index, pmem_disk) in cfg.pmems.iter().enumerate() {
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
         add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
-        devs.push(create_pmem_device(
-            cfg.protection_type,
-            cfg.jail_config.as_ref(),
-            vm,
-            resources,
-            pmem_disk,
-            index,
-            pmem_device_tube,
-        )?);
+        devs.push((
+            "pmem",
+            create_pmem_device(
+                cfg.protection_type,
+                cfg.jail_config.as_ref(),
+                vm,
+                resources,
+                pmem_disk,
+                index,
+                pmem_device_tube,
+            )?,
+        ));
     }
 
     for (index, pmem_ext2) in cfg.pmem_ext2.iter().enumerate() {
@@ -437,23 +456,26 @@ fn create_virtio_devices(
         });
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
         add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
-        devs.push(create_pmem_ext2_device(
-            cfg.protection_type,
-            cfg.jail_config.as_ref(),
-            resources,
-            pmem_ext2,
-            index,
-            vm_memory_client,
-            pmem_device_tube,
-            worker_process_pids,
-        )?);
+        devs.push((
+            "pmem_ext2",
+            create_pmem_ext2_device(
+                cfg.protection_type,
+                cfg.jail_config.as_ref(),
+                resources,
+                pmem_ext2,
+                index,
+                vm_memory_client,
+                pmem_device_tube,
+                worker_process_pids,
+            )?,
+        ));
     }
 
     if cfg.rng {
-        devs.push(create_virtio_rng_device(
-            cfg.protection_type,
-            cfg.jail_config.as_ref(),
-        )?);
+        devs.push((
+            "rng",
+            create_virtio_rng_device(cfg.protection_type, cfg.jail_config.as_ref())?,
+        ));
     }
 
     #[cfg(feature = "pvclock")]
@@ -501,17 +523,17 @@ fn create_virtio_devices(
             frequency,
             suspend_tube,
         )?;
-        devs.push(dev);
+        devs.push(("pvclock", dev));
         info!("virtio-pvclock is enabled for this vm");
     }
 
     #[cfg(feature = "vtpm")]
     {
         if cfg.vtpm_proxy {
-            devs.push(create_vtpm_proxy_device(
-                cfg.protection_type,
-                cfg.jail_config.as_ref(),
-            )?);
+            devs.push((
+                "vtpm",
+                create_vtpm_proxy_device(cfg.protection_type, cfg.jail_config.as_ref())?,
+            ));
         }
     }
 
@@ -675,7 +697,7 @@ fn create_virtio_devices(
                 dev
             }
         };
-        devs.push(input_dev);
+        devs.push(("input", input_dev));
     }
 
     #[cfg(feature = "balloon")]
@@ -727,29 +749,32 @@ fn create_virtio_devices(
             expose_with_viommu: false,
         });
 
-        devs.push(create_balloon_device(
-            cfg.protection_type,
-            cfg.jail_config.as_ref(),
-            balloon_device_tube,
-            balloon_inflate_tube,
-            init_balloon_size,
-            VmMemoryClient::new(dynamic_mapping_device_tube),
-            balloon_features,
-            #[cfg(feature = "registered_events")]
-            Some(
-                registered_evt_q
-                    .try_clone()
-                    .context("failed to clone registered_evt_q tube")?,
-            ),
-            cfg.balloon_ws_num_bins,
-        )?);
+        devs.push((
+            "balloon",
+            create_balloon_device(
+                cfg.protection_type,
+                cfg.jail_config.as_ref(),
+                balloon_device_tube,
+                balloon_inflate_tube,
+                init_balloon_size,
+                VmMemoryClient::new(dynamic_mapping_device_tube),
+                balloon_features,
+                #[cfg(feature = "registered_events")]
+                Some(
+                    registered_evt_q
+                        .try_clone()
+                        .context("failed to clone registered_evt_q tube")?,
+                ),
+                cfg.balloon_ws_num_bins,
+            )?,
+        ));
     }
 
     #[cfg(feature = "net")]
     for opt in &cfg.net {
         let dev =
             opt.create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?;
-        devs.push(dev);
+        devs.push(("net", dev));
     }
 
     #[cfg(feature = "audio")]
@@ -760,12 +785,15 @@ fn create_virtio_devices(
             add_control_tube(AnyControlTube::Snd(snd_host_tube));
             let mut snd_params = virtio_snd.clone();
             snd_params.card_index = card_index;
-            devs.push(create_virtio_snd_device(
-                cfg.protection_type,
-                cfg.jail_config.as_ref(),
-                snd_params,
-                snd_device_tube,
-            )?);
+            devs.push((
+                "snd",
+                create_virtio_snd_device(
+                    cfg.protection_type,
+                    cfg.jail_config.as_ref(),
+                    snd_params,
+                    snd_device_tube,
+                )?,
+            ));
         }
     }
 
@@ -773,24 +801,30 @@ fn create_virtio_devices(
     #[cfg(feature = "media")]
     {
         for v4l2_device in &cfg.v4l2_proxy {
-            devs.push(create_v4l2_device(cfg.protection_type, v4l2_device)?);
+            devs.push((
+                "v4l2",
+                create_v4l2_device(cfg.protection_type, v4l2_device)?,
+            ));
         }
     }
 
     #[cfg(feature = "media")]
     if cfg.simple_media_device {
-        devs.push(create_simple_media_device(cfg.protection_type)?);
+        devs.push(("media", create_simple_media_device(cfg.protection_type)?));
     }
 
     #[cfg(all(feature = "media", feature = "video-decoder"))]
     {
         for (tube, backend) in media_adapter_cfg {
-            devs.push(create_virtio_media_adapter(
-                cfg.protection_type,
-                cfg.jail_config.as_ref(),
-                tube,
-                backend,
-            )?);
+            devs.push((
+                "media_adapter",
+                create_virtio_media_adapter(
+                    cfg.protection_type,
+                    cfg.jail_config.as_ref(),
+                    tube,
+                    backend,
+                )?,
+            ));
         }
     }
 
@@ -823,20 +857,24 @@ fn create_virtio_devices(
     }
 
     if let Some(vsock_config) = &cfg.vsock {
-        devs.push(
+        devs.push((
+            "vsock",
             vsock_config
                 .create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?,
-        );
+        ));
     }
 
     #[cfg(target_arch = "aarch64")]
     {
         if cfg.vhost_scmi {
-            devs.push(create_vhost_scmi_device(
-                cfg.protection_type,
-                cfg.jail_config.as_ref(),
-                cfg.vhost_scmi_device.clone(),
-            )?);
+            devs.push((
+                "vhost_scmi",
+                create_vhost_scmi_device(
+                    cfg.protection_type,
+                    cfg.jail_config.as_ref(),
+                    cfg.vhost_scmi_device.clone(),
+                )?,
+            ));
         }
     }
 
@@ -852,12 +890,29 @@ fn create_virtio_devices(
             p9_cfg,
         } = shared_dir;
 
-        let dev = match kind {
+        match kind {
             SharedDirKind::FS => {
                 let (host_tube, device_tube) = Tube::pair().context("failed to create tube")?;
                 add_control_tube(AnyControlTube::Fs(host_tube));
 
-                create_fs_device(
+                devs.push((
+                    "fs",
+                    create_fs_device(
+                        cfg.protection_type,
+                        cfg.jail_config.as_ref(),
+                        *ugid,
+                        uid_map,
+                        gid_map,
+                        src,
+                        tag,
+                        fs_cfg.clone(),
+                        device_tube,
+                    )?,
+                ));
+            }
+            SharedDirKind::P9 => devs.push((
+                "9p",
+                create_9p_device(
                     cfg.protection_type,
                     cfg.jail_config.as_ref(),
                     *ugid,
@@ -865,43 +920,91 @@ fn create_virtio_devices(
                     gid_map,
                     src,
                     tag,
-                    fs_cfg.clone(),
-                    device_tube,
-                )?
-            }
-            SharedDirKind::P9 => create_9p_device(
-                cfg.protection_type,
-                cfg.jail_config.as_ref(),
-                *ugid,
-                uid_map,
-                gid_map,
-                src,
-                tag,
-                p9_cfg.clone(),
-            )?,
+                    p9_cfg.clone(),
+                )?,
+            )),
         };
-        devs.push(dev);
     }
 
     #[cfg(feature = "audio")]
     if let Some(path) = &cfg.sound {
-        devs.push(create_sound_device(
-            path,
-            cfg.protection_type,
-            cfg.jail_config.as_ref(),
-        )?);
+        devs.push((
+            "sound",
+            create_sound_device(path, cfg.protection_type, cfg.jail_config.as_ref())?,
+        ));
+    }
+
+    for virtio_device_module in &cfg.virtio_device_modules {
+        let mut args = VirtioDeviceArgs {
+            vm: vm as &dyn Vm,
+            resources,
+            add_control_tube,
+            protection_type: cfg.protection_type,
+        };
+        let dev = virtio_device_module
+            .create(&mut args)
+            .context("failed to create virtio device")?;
+        let jail = if let Some(jail_config) = cfg.jail_config.as_ref() {
+            virtio_device_module
+                .create_jail(jail_config)
+                .context("failed to create jail")?
+        } else {
+            None
+        };
+        devs.push((
+            virtio_device_module.sort_name(),
+            VirtioDeviceStub { dev, jail },
+        ));
     }
 
     for opt in &cfg.vhost_user {
-        devs.push(create_vhost_user_frontend(
-            cfg.protection_type,
-            opt,
-            cfg.vhost_user_connect_timeout_ms,
-            vm_evt_wrtube.try_clone()?,
-        )?);
+        devs.push((
+            "vhost_user",
+            create_vhost_user_frontend(
+                cfg.protection_type,
+                opt,
+                cfg.vhost_user_connect_timeout_ms,
+                vm_evt_wrtube.try_clone()?,
+            )?,
+        ));
     }
 
-    Ok(devs)
+    // Sort the devices to match a legacy ordering (the order affects PCI addresses etc). This
+    // allows us to move devices to the VirtioDeviceModule style without side effects.
+    //
+    // Doesn't provide a complete ordering, for example, all the input devices are aliased together
+    // and so the order between them will be determined by the cmdline processing code, which
+    // matches legacy behavior.
+    let device_order = [
+        "wayland",
+        "multi_touch",
+        "window_keyboard",
+        "console",
+        "disk",
+        "scsi",
+        "pmem",
+        "pmem_ext2",
+        "rng",
+        "pvclock",
+        "vtpm",
+        "input",
+        "balloon",
+        "net",
+        "snd",
+        "v4l2",
+        "media",
+        "media_adapter",
+        "video",
+        "vsock",
+        "vhost_scmi",
+        "fs",
+        "9p",
+        "sound",
+        "vhost_user",
+    ];
+    devs.sort_by_key(|(name, _)| device_order.iter().position(|s| s == name).unwrap_or(9999));
+
+    Ok(devs.into_iter().map(|(_, dev)| dev).collect())
 }
 
 fn create_devices(

@@ -101,6 +101,8 @@ use devices::GvmIrqChip;
 #[cfg(target_arch = "aarch64")]
 use devices::IrqChip;
 use devices::UserspaceIrqChip;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use devices::VirtioPciDevice;
 #[cfg(feature = "whpx")]
 use devices::WhpxSplitIrqChip;
@@ -477,6 +479,8 @@ fn create_vsock_device(cfg: &Config) -> DeviceResult {
 
 fn create_virtio_devices(
     cfg: &mut Config,
+    vm: &dyn VmArch,
+    resources: &mut SystemAllocator,
     vm_evt_wrtube: &SendTube,
     add_control_tube: &mut dyn FnMut(AnyControlTube),
     initial_audio_session_states: &mut Vec<InitialAudioSessionState>,
@@ -493,18 +497,17 @@ fn create_virtio_devices(
             let (disk_host_tube, disk_device_tube) =
                 Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
             add_control_tube(AnyControlTube::Disk(disk_host_tube));
-            devs.push(create_block_device(cfg, disk, disk_device_tube)?);
+            devs.push(("block", create_block_device(cfg, disk, disk_device_tube)?));
         }
     } else {
         info!("Starting up vhost user block backends...");
         for _disk in &cfg.disks {
             let disk_device_tube = cfg.block_vhost_user_tube.remove(0);
             let connection = Connection::from(disk_device_tube);
-            devs.push(create_vhost_user_block_device(
-                cfg,
-                connection,
-                vm_evt_wrtube.try_clone()?,
-            )?);
+            devs.push((
+                "block",
+                create_vhost_user_block_device(cfg, connection, vm_evt_wrtube.try_clone()?)?,
+            ));
         }
     }
 
@@ -514,19 +517,22 @@ fn create_virtio_devices(
         .filter(|(_k, v)| v.hardware == SerialHardware::VirtioConsole)
     {
         let dev = create_console_device(cfg, param)?;
-        devs.push(dev);
+        devs.push(("console", dev));
     }
 
     #[cfg(feature = "audio")]
     {
         let snd_split_configs = std::mem::take(&mut cfg.snd_split_configs);
         for mut snd_split_cfg in snd_split_configs.into_iter() {
-            devs.push(create_virtio_snd_device(
-                cfg,
-                &mut snd_split_cfg,
-                add_control_tube,
-                vm_evt_wrtube.try_clone()?,
-            )?);
+            devs.push((
+                "snd",
+                create_virtio_snd_device(
+                    cfg,
+                    &mut snd_split_cfg,
+                    add_control_tube,
+                    vm_evt_wrtube.try_clone()?,
+                )?,
+            ));
             if let Some(vmm_config) = snd_split_cfg.vmm_config {
                 let initial_audio_session_state = InitialAudioSessionState {
                     audio_client_guid: vmm_config.audio_client_guid,
@@ -545,16 +551,15 @@ fn create_virtio_devices(
         product::push_pvclock_device(cfg, &mut devs, tsc_frequency, device);
     }
 
-    devs.push(create_virtio_rng_device(cfg)?);
+    devs.push(("rng", create_virtio_rng_device(cfg)?));
 
     #[cfg(feature = "slirp")]
     if let Some(net_vhost_user_tube) = cfg.net_vhost_user_tube.take() {
         let connection = Connection::from(net_vhost_user_tube);
-        devs.push(create_vhost_user_net_device(
-            cfg,
-            connection,
-            vm_evt_wrtube.try_clone()?,
-        )?);
+        devs.push((
+            "net",
+            create_vhost_user_net_device(cfg, connection, vm_evt_wrtube.try_clone()?)?,
+        ));
     }
 
     #[cfg(feature = "balloon")]
@@ -570,16 +575,19 @@ fn create_virtio_devices(
             expose_with_viommu: false,
         });
 
-        devs.push(create_balloon_device(
-            cfg,
-            balloon_device_tube,
-            dynamic_mapping_device_tube,
-            inflate_tube,
-            init_balloon_size,
-        )?);
+        devs.push((
+            "balloon",
+            create_balloon_device(
+                cfg,
+                balloon_device_tube,
+                dynamic_mapping_device_tube,
+                inflate_tube,
+                init_balloon_size,
+            )?,
+        ));
     }
 
-    devs.push(create_vsock_device(cfg)?);
+    devs.push(("vsock", create_vsock_device(cfg)?));
 
     #[cfg(feature = "gpu")]
     let event_devices = if let Some(InputEventSplitConfig {
@@ -619,24 +627,65 @@ fn create_virtio_devices(
 
     #[cfg(feature = "gpu")]
     if let Some(gpu_vmm_config) = cfg.gpu_vmm_config.take() {
-        devs.push(create_virtio_gpu_device(
-            cfg,
-            gpu_vmm_config,
-            event_devices,
-            &mut wndproc_thread,
-            add_control_tube,
-            vm_evt_wrtube.try_clone()?,
-        )?);
+        devs.push((
+            "gpu",
+            create_virtio_gpu_device(
+                cfg,
+                gpu_vmm_config,
+                event_devices,
+                &mut wndproc_thread,
+                add_control_tube,
+                vm_evt_wrtube.try_clone()?,
+            )?,
+        ));
     }
 
-    Ok(devs)
+    for virtio_device_module in &cfg.virtio_device_modules {
+        let mut args = VirtioDeviceArgs {
+            vm: vm as &dyn Vm,
+            resources,
+            add_control_tube,
+            protection_type: cfg.protection_type,
+        };
+        let dev = virtio_device_module
+            .create(&mut args)
+            .context("failed to create virtio device")?;
+        devs.push((
+            virtio_device_module.sort_name(),
+            VirtioDeviceStub { dev, jail: None },
+        ));
+    }
+
+    // Sort the devices to match a legacy ordering (the order affects PCI addresses etc). This
+    // allows us to move devices to the VirtioDeviceModule style without side effects.
+    //
+    // Doesn't provide a complete ordering, for example, all the input devices are aliased together
+    // and so the order between them will be determined by the cmdline processing code, which
+    // matches legacy behavior.
+    let device_order = [
+        "block",
+        "console",
+        "snd",
+        "pvclock",
+        "rng",
+        "net",
+        "balloon",
+        "vsock",
+        "multi_touch",
+        "mouse",
+        "window_keyboard",
+        "gpu",
+    ];
+    devs.sort_by_key(|(name, _)| device_order.iter().position(|s| s == name).unwrap_or(9999));
+
+    Ok(devs.into_iter().map(|(_, dev)| dev).collect())
 }
 
 #[cfg(feature = "gpu")]
 fn create_virtio_input_event_devices(
     cfg: &Config,
     mut input_event_vmm_config: InputEventVmmConfig,
-) -> DeviceResult<Vec<VirtioDeviceStub>> {
+) -> DeviceResult<Vec<(&'static str, VirtioDeviceStub)>> {
     let mut devs = Vec::new();
 
     // Iterate event devices, create the VMM end.
@@ -668,14 +717,17 @@ fn create_virtio_input_event_devices(
                         height = cfg.display_input_height;
                     }
                 }
-                devs.push(create_multi_touch_device(
-                    cfg,
-                    pipe,
-                    width.unwrap_or(DEFAULT_TOUCH_DEVICE_WIDTH),
-                    height.unwrap_or(DEFAULT_TOUCH_DEVICE_HEIGHT),
-                    name.as_deref(),
-                    idx as u32,
-                )?);
+                devs.push((
+                    "multi_touch",
+                    create_multi_touch_device(
+                        cfg,
+                        pipe,
+                        width.unwrap_or(DEFAULT_TOUCH_DEVICE_WIDTH),
+                        height.unwrap_or(DEFAULT_TOUCH_DEVICE_HEIGHT),
+                        name.as_deref(),
+                        idx as u32,
+                    )?,
+                ));
             }
             _ => {}
         }
@@ -685,7 +737,7 @@ fn create_virtio_input_event_devices(
     product::push_mouse_device(cfg, &mut input_event_vmm_config, &mut devs)?;
 
     for (idx, pipe) in input_event_vmm_config.mouse_pipes.drain(..).enumerate() {
-        devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
+        devs.push(("mouse", create_mouse_device(cfg, pipe, idx as u32)?));
     }
 
     let keyboard_pipe = input_event_vmm_config
@@ -699,10 +751,13 @@ fn create_virtio_input_event_devices(
     )
     .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
 
-    devs.push(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    });
+    devs.push((
+        "window_keyboard",
+        VirtioDeviceStub {
+            dev: Box::new(dev),
+            jail: None,
+        },
+    ));
 
     Ok(devs)
 }
@@ -782,7 +837,8 @@ fn create_virtio_snd_device(
 
 fn create_devices(
     cfg: &mut Config,
-    mem: &GuestMemory,
+    vm: &dyn VmArch,
+    resources: &mut SystemAllocator,
     exit_evt_wrtube: &SendTube,
     add_control_tube: &mut dyn FnMut(AnyControlTube),
     initial_audio_session_states: &mut Vec<InitialAudioSessionState>,
@@ -792,6 +848,8 @@ fn create_devices(
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
         cfg,
+        vm,
+        resources,
         exit_evt_wrtube,
         add_control_tube,
         initial_audio_session_states,
@@ -832,7 +890,7 @@ fn create_devices(
 
         let dev = Box::new(
             VirtioPciDevice::new(
-                mem.clone(),
+                vm.get_memory().clone(),
                 stub.dev,
                 msi_device_tube,
                 cfg.disable_virtio_intx,
@@ -2598,7 +2656,8 @@ fn run_vm(
 
     let pci_devices = create_devices(
         &mut cfg,
-        vm.get_memory(),
+        &*vm,
+        &mut sys_allocator,
         &vm_evt_wrtube,
         &mut add_control_tube,
         &mut initial_audio_session_states,

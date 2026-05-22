@@ -5,6 +5,7 @@
 //! The root level module that includes the config and aggregate of the submodules for running said
 //! configs.
 
+pub mod any_device_module;
 pub mod cmdline;
 pub mod config;
 #[cfg(feature = "gdb")]

@@ -14,6 +14,7 @@ mod bus_stats;
 pub mod cmos;
 #[cfg(target_arch = "x86_64")]
 mod debugcon;
+pub mod device_module;
 mod fw_cfg;
 mod i8042;
 mod irq_event;
@@ -81,6 +82,8 @@ pub use self::bus::HotPlugKey;
 pub use self::bus_stats::BusStatistics;
 #[cfg(target_arch = "x86_64")]
 pub use self::debugcon::Debugcon;
+pub use self::device_module::VirtioDeviceArgs;
+pub use self::device_module::VirtioDeviceModule;
 pub use self::fw_cfg::Error as FwCfgError;
 pub use self::fw_cfg::FwCfgDevice;
 pub use self::fw_cfg::FwCfgItemType;

@@ -233,7 +233,7 @@ pub(crate) fn setup_metrics_reporting() -> Result<()> {
 pub(super) fn push_mouse_device(
     _cfg: &Config,
     #[cfg(feature = "gpu")] _input_event_vmm_config: &mut InputEventVmmConfig,
-    _devs: &mut [VirtioDeviceStub],
+    _devs: &mut [(&'static str, VirtioDeviceStub)],
 ) -> Result<()> {
     Ok(())
 }
@@ -241,7 +241,7 @@ pub(super) fn push_mouse_device(
 #[cfg(feature = "pvclock")]
 pub(super) fn push_pvclock_device(
     _cfg: &Config,
-    _devs: &mut [VirtioDeviceStub],
+    _devs: &mut [(&'static str, VirtioDeviceStub)],
     _tsc_frequency: u64,
     _tube: Tube,
 ) {
