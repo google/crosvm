@@ -82,5 +82,7 @@ declare_any_virtio_device_module! {
         #[cfg(feature = "vtpm")]
         Tpm(device_virtio_tpm::VirtioTpmModule),
         Vsock(device_virtio_vsock::VirtioVsockModule),
+        #[cfg(feature = "net")]
+        Net(devices::virtio::NetParameters),
     }
 }

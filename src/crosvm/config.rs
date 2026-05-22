@@ -50,8 +50,6 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThrea
 #[cfg(all(windows, feature = "audio"))]
 use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 use devices::virtio::DeviceType;
-#[cfg(feature = "net")]
-use devices::virtio::NetParameters;
 use devices::FwCfgParameters;
 use devices::PciAddress;
 use devices::PflashParameters;
@@ -715,8 +713,6 @@ pub struct Config {
     pub name: Option<String>,
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     pub nested: NestedConfig,
-    #[cfg(feature = "net")]
-    pub net: Vec<NetParameters>,
     #[cfg(windows)]
     pub net_vhost_user_tube: Option<Tube>,
     pub no_i8042: bool,
@@ -958,8 +954,6 @@ impl Default for Config {
             name: None,
             #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
             nested: NestedConfig::default(),
-            #[cfg(feature = "net")]
-            net: Vec::new(),
             #[cfg(windows)]
             net_vhost_user_tube: None,
             no_i8042: false,

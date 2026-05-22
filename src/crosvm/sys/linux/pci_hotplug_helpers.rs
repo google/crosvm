@@ -16,8 +16,6 @@ use devices::VirtioPciDevice;
 use hypervisor::ProtectionType;
 use vm_memory::GuestMemory;
 
-use crate::crosvm::sys::linux::VirtioDeviceBuilder;
-
 /// Builds HotPlugPci from NetResourceCarrier and NetLocalParameters.
 pub fn build_hotplug_net_device(
     net_carrier_device: NetResourceCarrier,
@@ -28,7 +26,7 @@ pub fn build_hotplug_net_device(
         .context("PCI address not allocated")?;
     let virtio_device = net_carrier_device
         .net_param
-        .create_virtio_device(net_local_parameters.protection_type)
+        .create_net_device(net_local_parameters.protection_type)
         .context("create virtio device")?;
     let mut virtio_pci_device = VirtioPciDevice::new(
         net_local_parameters.guest_memory,

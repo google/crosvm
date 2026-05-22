@@ -39,6 +39,8 @@ use devices::virtio::ipc_memory_mapper::create_ipc_mapper;
 use devices::virtio::ipc_memory_mapper::CreateIpcMapperRet;
 use devices::virtio::memory_mapper::BasicMemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
+#[cfg(feature = "net")]
+use devices::virtio::net::create_tap_for_net_device;
 #[cfg(feature = "pvclock")]
 use devices::virtio::pvclock::PvClock;
 use devices::virtio::scsi::ScsiOption;
@@ -52,11 +54,7 @@ use devices::virtio::vhost_user_backend::VhostUserVsockDevice;
 use devices::virtio::Console;
 use devices::virtio::MemSlotConfig;
 #[cfg(feature = "net")]
-use devices::virtio::NetError;
-#[cfg(feature = "net")]
 use devices::virtio::NetParameters;
-#[cfg(feature = "net")]
-use devices::virtio::NetParametersMode;
 use devices::virtio::PmemConfig;
 use devices::virtio::VhostUserFrontend;
 use devices::virtio::VirtioDevice;
@@ -74,12 +72,6 @@ use hypervisor::ProtectionType;
 use hypervisor::Vm;
 use jail::*;
 use minijail::Minijail;
-#[cfg(feature = "net")]
-use net_util::sys::linux::Tap;
-#[cfg(feature = "net")]
-use net_util::MacAddress;
-#[cfg(feature = "net")]
-use net_util::TapTCommon;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
@@ -762,39 +754,7 @@ impl VirtioDeviceBuilder for &NetParameters {
         self,
         protection_type: ProtectionType,
     ) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        let vq_pairs = self.vq_pairs.unwrap_or(1);
-        let multi_vq = vq_pairs > 1 && self.vhost_net.is_none();
-
-        let features = virtio::base_features(protection_type);
-        let (tap, mac) = create_tap_for_net_device(&self.mode, multi_vq)?;
-
-        Ok(if let Some(vhost_net) = &self.vhost_net {
-            Box::new(
-                virtio::vhost::Net::<_, vhost::Net<_>>::new(
-                    &vhost_net.device,
-                    features,
-                    tap,
-                    mac,
-                    self.packed_queue,
-                    self.pci_address,
-                    self.mrg_rxbuf,
-                )
-                .context("failed to set up virtio-vhost networking")?,
-            ) as Box<dyn VirtioDevice>
-        } else {
-            Box::new(
-                virtio::Net::new(
-                    features,
-                    tap,
-                    vq_pairs,
-                    mac,
-                    self.packed_queue,
-                    self.pci_address,
-                    self.mrg_rxbuf,
-                )
-                .context("failed to set up virtio networking")?,
-            ) as Box<dyn VirtioDevice>
-        })
+        self.create_net_device(protection_type)
     }
 
     fn create_jail(
@@ -807,7 +767,6 @@ impl VirtioDeviceBuilder for &NetParameters {
         } else {
             "net"
         };
-
         simple_jail(jail_config, &virtio_transport.seccomp_policy_file(policy))
     }
 
@@ -824,46 +783,6 @@ impl VirtioDeviceBuilder for &NetParameters {
         keep_rds.extend(backend.as_raw_descriptors());
 
         Ok(Box::new(backend))
-    }
-}
-
-/// Create a new tap interface based on NetParametersMode.
-#[cfg(feature = "net")]
-fn create_tap_for_net_device(
-    mode: &NetParametersMode,
-    multi_vq: bool,
-) -> DeviceResult<(Tap, Option<MacAddress>)> {
-    match mode {
-        NetParametersMode::TapName { tap_name, mac } => {
-            let tap = Tap::new_with_name(tap_name.as_bytes(), true, multi_vq)
-                .map_err(NetError::TapOpen)?;
-            Ok((tap, *mac))
-        }
-        NetParametersMode::TapFd { tap_fd, mac } => {
-            // SAFETY:
-            // Safe because we ensure that we get a unique handle to the fd.
-            let tap = unsafe {
-                Tap::from_raw_descriptor(
-                    validate_raw_descriptor(*tap_fd)
-                        .context("failed to validate tap descriptor")?,
-                )
-                .context("failed to create tap device")?
-            };
-            Ok((tap, *mac))
-        }
-        NetParametersMode::RawConfig {
-            host_ip,
-            netmask,
-            mac,
-        } => {
-            let tap = Tap::new(true, multi_vq).map_err(NetError::TapOpen)?;
-            tap.set_ip_addr(*host_ip).map_err(NetError::TapSetIp)?;
-            tap.set_netmask(*netmask).map_err(NetError::TapSetNetmask)?;
-            tap.set_mac_address(*mac)
-                .map_err(NetError::TapSetMacAddress)?;
-            tap.enable().map_err(NetError::TapEnable)?;
-            Ok((tap, None))
-        }
     }
 }
 

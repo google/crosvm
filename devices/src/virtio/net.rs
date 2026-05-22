@@ -28,6 +28,7 @@ use base::WaitContext;
 use base::WorkerThread;
 use data_model::Le16;
 use data_model::Le64;
+use hypervisor::ProtectionType;
 use net_util::Error as TapError;
 use net_util::MacAddress;
 use net_util::TapT;
@@ -35,6 +36,8 @@ use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub use sys::linux::create_tap_for_net_device;
 use thiserror::Error as ThisError;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use virtio_sys::virtio_net;
@@ -57,6 +60,8 @@ use super::Queue;
 use super::Reader;
 use super::VirtioDevice;
 use crate::PciAddress;
+use crate::VirtioDeviceArgs;
+use crate::VirtioDeviceModule;
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -828,6 +833,83 @@ where
             .field("acked_features", &self.acked_features)
             .field("mtu", &self.mtu)
             .finish()
+    }
+}
+
+impl NetParameters {
+    pub fn create_net_device(
+        &self,
+        protection_type: ProtectionType,
+    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        {
+            let vq_pairs = self.vq_pairs.unwrap_or(1);
+            let multi_vq = vq_pairs > 1 && self.vhost_net.is_none();
+
+            let features = crate::virtio::base_features(protection_type);
+            let (tap, mac) = create_tap_for_net_device(&self.mode, multi_vq)?;
+
+            let dev = if let Some(vhost_net) = &self.vhost_net {
+                Box::new(
+                    crate::virtio::vhost::Net::<_, ::vhost::Net<_>>::new(
+                        &vhost_net.device,
+                        features,
+                        tap,
+                        mac,
+                        self.packed_queue,
+                        self.pci_address,
+                        self.mrg_rxbuf,
+                    )
+                    .context("failed to set up virtio-vhost networking")?,
+                ) as Box<dyn VirtioDevice>
+            } else {
+                Box::new(
+                    Net::new(
+                        features,
+                        tap,
+                        vq_pairs,
+                        mac,
+                        self.packed_queue,
+                        self.pci_address,
+                        self.mrg_rxbuf,
+                    )
+                    .context("failed to set up virtio networking")?,
+                ) as Box<dyn VirtioDevice>
+            };
+            Ok(dev)
+        }
+        #[cfg(windows)]
+        {
+            let _ = protection_type;
+            anyhow::bail!("net device not supported on Windows");
+        }
+    }
+}
+
+impl VirtioDeviceModule for NetParameters {
+    fn sort_name(&self) -> &'static str {
+        "net"
+    }
+
+    fn create(&self, args: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        self.create_net_device(args.protection_type)
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn create_jail(
+        &self,
+        jail_config: &jail::JailConfig,
+    ) -> anyhow::Result<Option<minijail::Minijail>> {
+        let policy = if self.vhost_net.is_some() {
+            "vhost_net"
+        } else {
+            "net"
+        };
+        let jail = jail::simple_jail(
+            Some(jail_config),
+            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file(policy),
+        )?;
+        Ok(jail)
     }
 }
 

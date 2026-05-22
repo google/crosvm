@@ -7,22 +7,66 @@ use std::io::Write;
 use std::mem;
 use std::result;
 
+use anyhow::Context;
 use base::error;
+use base::validate_raw_descriptor;
 use base::warn;
 use base::EventType;
 use base::ReadNotifier;
 use base::WaitContext;
+use net_util::sys::linux::Tap;
 use net_util::TapT;
+use net_util::TapTCommon;
 use virtio_sys::virtio_net;
 use virtio_sys::virtio_net::virtio_net_hdr;
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use zerocopy::IntoBytes;
 
+use super::super::super::net::MacAddress;
 use super::super::super::net::NetError;
+use super::super::super::net::NetParametersMode;
 use super::super::super::net::Token;
 use super::super::super::net::Worker;
 use super::super::super::Queue;
 use super::PendingBuffer;
+
+pub fn create_tap_for_net_device(
+    mode: &NetParametersMode,
+    multi_vq: bool,
+) -> anyhow::Result<(Tap, Option<MacAddress>)> {
+    match mode {
+        NetParametersMode::TapName { tap_name, mac } => {
+            let tap = Tap::new_with_name(tap_name.as_bytes(), true, multi_vq)
+                .map_err(NetError::TapOpen)?;
+            Ok((tap, *mac))
+        }
+        NetParametersMode::TapFd { tap_fd, mac } => {
+            // SAFETY:
+            // Safe because we ensure that we get a unique handle to the fd.
+            let tap = unsafe {
+                Tap::from_raw_descriptor(
+                    validate_raw_descriptor(*tap_fd)
+                        .context("failed to validate tap descriptor")?,
+                )
+                .context("failed to create tap device")?
+            };
+            Ok((tap, *mac))
+        }
+        NetParametersMode::RawConfig {
+            host_ip,
+            netmask,
+            mac,
+        } => {
+            let tap = Tap::new(true, multi_vq).map_err(NetError::TapOpen)?;
+            tap.set_ip_addr(*host_ip).map_err(NetError::TapSetIp)?;
+            tap.set_netmask(*netmask).map_err(NetError::TapSetNetmask)?;
+            tap.set_mac_address(*mac)
+                .map_err(NetError::TapSetMacAddress)?;
+            tap.enable().map_err(NetError::TapEnable)?;
+            Ok((tap, None))
+        }
+    }
+}
 
 // Ensure that the tap interface has the correct flags and sets the offload and VNET header size
 // to the appropriate values.

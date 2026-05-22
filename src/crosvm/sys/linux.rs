@@ -756,13 +756,6 @@ fn create_virtio_devices(
         ));
     }
 
-    #[cfg(feature = "net")]
-    for opt in &cfg.net {
-        let dev =
-            opt.create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?;
-        devs.push(("net", dev));
-    }
-
     #[cfg(feature = "audio")]
     {
         for (card_index, virtio_snd) in cfg.virtio_snds.iter().enumerate() {
