@@ -78,23 +78,6 @@ macro_rules! declare_any_virtio_device_module {
 declare_any_virtio_device_module! {
     #[derive(Serialize, Deserialize)]
     pub enum AnyVirtioDeviceModule {
-        Placeholder(PlaceholderModule),
-    }
-}
-
-// TODO: Delete when the first real module is added.
-#[derive(Serialize, Deserialize)]
-pub struct PlaceholderModule;
-
-impl VirtioDeviceModule for PlaceholderModule {
-    fn sort_name(&self) -> &'static str {
-        unreachable!()
-    }
-    fn create(&self, _cx: &mut VirtioDeviceArgs<'_>) -> Result<Box<dyn VirtioDevice>> {
-        unreachable!()
-    }
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn create_jail(&self, _jail_config: &JailConfig) -> Result<Option<Minijail>> {
-        unreachable!()
+        Rng(devices::virtio::VirtioRngModule),
     }
 }

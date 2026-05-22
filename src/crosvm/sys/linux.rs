@@ -471,13 +471,6 @@ fn create_virtio_devices(
         ));
     }
 
-    if cfg.rng {
-        devs.push((
-            "rng",
-            create_virtio_rng_device(cfg.protection_type, cfg.jail_config.as_ref())?,
-        ));
-    }
-
     #[cfg(feature = "pvclock")]
     if cfg.pvclock {
         // pvclock gets a tube for handling suspend/resume requests from the main thread.

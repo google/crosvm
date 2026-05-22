@@ -403,16 +403,6 @@ fn create_vhost_user_net_device(
     })
 }
 
-fn create_virtio_rng_device(cfg: &Config) -> DeviceResult {
-    let dev = virtio::Rng::new(virtio::base_features(cfg.protection_type))
-        .exit_context(Exit::RngDeviceNew, "failed to set up rng")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    })
-}
-
 fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult {
     let mut keep_rds = Vec::new();
     let evt = Event::new().exit_context(Exit::CreateEvent, "failed to create event")?;
@@ -550,8 +540,6 @@ fn create_virtio_devices(
         add_control_tube(AnyControlTube::PvClock(host));
         product::push_pvclock_device(cfg, &mut devs, tsc_frequency, device);
     }
-
-    devs.push(("rng", create_virtio_rng_device(cfg)?));
 
     #[cfg(feature = "slirp")]
     if let Some(net_vhost_user_tube) = cfg.net_vhost_user_tube.take() {

@@ -413,19 +413,6 @@ pub fn create_vhost_user_frontend(
     })
 }
 
-pub fn create_virtio_rng_device(
-    protection_type: ProtectionType,
-    jail_config: Option<&JailConfig>,
-) -> DeviceResult {
-    let dev =
-        virtio::Rng::new(virtio::base_features(protection_type)).context("failed to set up rng")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: simple_jail(jail_config, "rng_device")?,
-    })
-}
-
 #[cfg(feature = "audio")]
 pub fn create_virtio_snd_device(
     protection_type: ProtectionType,

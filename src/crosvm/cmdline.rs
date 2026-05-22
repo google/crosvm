@@ -2843,7 +2843,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.acpi_tables = cmd.acpi_table;
 
         cfg.usb = !cmd.no_usb.unwrap_or_default();
-        cfg.rng = !cmd.no_rng.unwrap_or_default();
 
         #[cfg(feature = "balloon")]
         {
@@ -3090,8 +3089,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         if !matches!(cfg.protection_type, ProtectionType::Unprotected) {
             // USB devices only work for unprotected VMs.
             cfg.usb = false;
-            // Protected VMs can't trust the RNG device, so don't provide it.
-            cfg.rng = false;
         }
 
         cfg.battery_config = cmd.battery;
@@ -3223,6 +3220,14 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.name = cmd.name;
+
+        if !cmd.no_rng.unwrap_or_default()
+            // Protected VMs can't trust the RNG device, so don't provide it.
+            && matches!(cfg.protection_type, ProtectionType::Unprotected)
+        {
+            cfg.virtio_device_modules
+                .push(devices::virtio::VirtioRngModule.into());
+        }
 
         // Now do validation of constructed config
         super::config::validate_config(&mut cfg)?;
