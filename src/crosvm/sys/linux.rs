@@ -841,14 +841,6 @@ fn create_virtio_devices(
         }
     }
 
-    if let Some(vsock_config) = &cfg.vsock {
-        devs.push((
-            "vsock",
-            vsock_config
-                .create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?,
-        ));
-    }
-
     #[cfg(target_arch = "aarch64")]
     {
         if cfg.vhost_scmi {

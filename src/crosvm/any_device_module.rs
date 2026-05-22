@@ -81,5 +81,6 @@ declare_any_virtio_device_module! {
         Rng(device_virtio_rng::VirtioRngModule),
         #[cfg(feature = "vtpm")]
         Tpm(device_virtio_tpm::VirtioTpmModule),
+        Vsock(devices::virtio::VirtioVsockModule),
     }
 }

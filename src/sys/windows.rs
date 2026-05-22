@@ -211,8 +211,6 @@ pub(crate) use crate::sys::windows::product::num_input_sound_streams;
 use crate::sys::windows::product::spawn_anti_tamper_thread;
 use crate::sys::windows::product::MetricEventType;
 
-const DEFAULT_GUEST_CID: u64 = 3;
-
 // by default, if enabled, the balloon WS features will use 4 bins.
 const VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS: u8 = 4;
 
@@ -451,28 +449,6 @@ fn create_balloon_device(
     })
 }
 
-fn create_vsock_device(cfg: &Config) -> DeviceResult {
-    // We only support a single guest, so we can confidently assign a default
-    // CID if one isn't provided. We choose the lowest non-reserved value.
-    let dev = virtio::vsock::Vsock::new(
-        cfg.vsock
-            .as_ref()
-            .map(|cfg| cfg.cid)
-            .unwrap_or(DEFAULT_GUEST_CID),
-        cfg.host_guid.clone(),
-        virtio::base_features(cfg.protection_type),
-    )
-    .exit_context(
-        Exit::UserspaceVsockDeviceNew,
-        "failed to create userspace vsock device",
-    )?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    })
-}
-
 fn create_virtio_devices(
     cfg: &mut Config,
     vm: &dyn VmArch,
@@ -581,8 +557,6 @@ fn create_virtio_devices(
             )?,
         ));
     }
-
-    devs.push(("vsock", create_vsock_device(cfg)?));
 
     #[cfg(feature = "gpu")]
     let event_devices = if let Some(InputEventSplitConfig {

@@ -12,6 +12,10 @@ use serde_keyvalue::FromKeyValues;
 pub use vsock::Vsock;
 pub use vsock::VsockError;
 
+use crate::virtio::VirtioDevice;
+use crate::VirtioDeviceArgs;
+use crate::VirtioDeviceModule;
+
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, FromKeyValues)]
 #[serde(deny_unknown_fields)]
 // Configuration for a Vsock device.
@@ -24,6 +28,33 @@ impl VsockConfig {
     /// Create a new vsock configuration.
     pub fn new(cid: u64) -> Self {
         Self { cid }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct VirtioVsockModule {
+    config: VsockConfig,
+    host_guid: Option<String>,
+}
+
+impl VirtioVsockModule {
+    pub fn new(config: VsockConfig, host_guid: Option<String>) -> Self {
+        Self { config, host_guid }
+    }
+}
+
+impl VirtioDeviceModule for VirtioVsockModule {
+    fn sort_name(&self) -> &'static str {
+        "vsock"
+    }
+
+    fn create(&self, args: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let dev = Vsock::new(
+            self.config.cid,
+            self.host_guid.clone(),
+            crate::virtio::base_features(args.protection_type),
+        )?;
+        Ok(Box::new(dev))
     }
 }
 

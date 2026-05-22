@@ -102,6 +102,7 @@ pub use self::virtio_pci_device::PciCapabilityType;
 pub use self::virtio_pci_device::VirtioPciCap;
 pub use self::virtio_pci_device::VirtioPciDevice;
 pub use self::virtio_pci_device::VirtioPciShmCap;
+pub use self::vsock::VirtioVsockModule;
 #[cfg(feature = "pvclock")]
 pub use self::DeviceType::Pvclock;
 

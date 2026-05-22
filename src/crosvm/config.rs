@@ -49,7 +49,6 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfi
 use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadSplitConfig;
 #[cfg(all(windows, feature = "audio"))]
 use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
-use devices::virtio::vsock::VsockConfig;
 use devices::virtio::DeviceType;
 #[cfg(feature = "net")]
 use devices::virtio::NetParameters;
@@ -821,8 +820,6 @@ pub struct Config {
     #[cfg(feature = "audio")]
     #[serde(skip)]
     pub virtio_snds: Vec<SndParameters>,
-    pub vsock: Option<VsockConfig>,
-
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     #[cfg(all(windows, feature = "gpu"))]
     pub window_procedure_thread_split_config: Option<WindowProcedureThreadSplitConfig>,
@@ -1040,7 +1037,6 @@ impl Default for Config {
             vhost_scmi_device: PathBuf::from(VHOST_SCMI_PATH),
             vhost_user: Vec::new(),
             vhost_user_connect_timeout_ms: None,
-            vsock: None,
             #[cfg(feature = "video-decoder")]
             video_dec: Vec::new(),
             #[cfg(feature = "video-encoder")]

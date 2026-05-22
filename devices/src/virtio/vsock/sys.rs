@@ -14,4 +14,5 @@ cfg_if::cfg_if! {
     }
 }
 
+pub use platform::VirtioVsockModule;
 pub use platform::VsockConfig;

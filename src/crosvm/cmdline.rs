@@ -2702,11 +2702,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.socket_path = Some(socket_path);
         }
 
-        cfg.vsock = cmd.vsock;
+        let mut vsock = cmd.vsock;
 
         // Legacy vsock options.
         if let Some(cid) = cmd.cid {
-            if cfg.vsock.is_some() {
+            if vsock.is_some() {
                 return Err(
                     "`cid` and `vsock` cannot be specified together. Use `vsock` only.".to_string(),
                 );
@@ -2728,7 +2728,22 @@ impl TryFrom<RunCommand> for super::config::Config {
                 },
             );
 
-            cfg.vsock = Some(legacy_vsock_config);
+            vsock = Some(legacy_vsock_config);
+        }
+
+        // Windows enabled vsock with CID=3 by default.
+        #[cfg(windows)]
+        vsock.get_or_insert(VsockConfig::new(3));
+
+        if let Some(vsock) = vsock {
+            cfg.virtio_device_modules.push(
+                devices::virtio::VirtioVsockModule::new(
+                    vsock,
+                    #[cfg(windows)]
+                    cfg.host_guid.clone(),
+                )
+                .into(),
+            );
         }
 
         #[cfg(any(target_os = "android", target_os = "linux"))]

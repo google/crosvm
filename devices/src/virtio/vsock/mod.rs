@@ -9,5 +9,6 @@
 //! implementation to the kernel.
 
 mod sys;
+pub use sys::VirtioVsockModule;
 pub use sys::Vsock;
 pub use sys::VsockConfig;
