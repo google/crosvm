@@ -520,16 +520,6 @@ fn create_virtio_devices(
         info!("virtio-pvclock is enabled for this vm");
     }
 
-    #[cfg(feature = "vtpm")]
-    {
-        if cfg.vtpm_proxy {
-            devs.push((
-                "vtpm",
-                create_vtpm_proxy_device(cfg.protection_type, cfg.jail_config.as_ref())?,
-            ));
-        }
-    }
-
     let mut keyboard_idx = 0;
     let mut mouse_idx = 0;
     let mut rotary_idx = 0;

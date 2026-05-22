@@ -79,5 +79,7 @@ declare_any_virtio_device_module! {
     #[derive(Serialize, Deserialize)]
     pub enum AnyVirtioDeviceModule {
         Rng(device_virtio_rng::VirtioRngModule),
+        #[cfg(feature = "vtpm")]
+        Tpm(devices::virtio::VirtioTpmModule),
     }
 }

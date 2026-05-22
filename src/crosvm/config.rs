@@ -821,8 +821,7 @@ pub struct Config {
     #[serde(skip)]
     pub virtio_snds: Vec<SndParameters>,
     pub vsock: Option<VsockConfig>,
-    #[cfg(feature = "vtpm")]
-    pub vtpm_proxy: bool,
+
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     #[cfg(all(windows, feature = "gpu"))]
     pub window_procedure_thread_split_config: Option<WindowProcedureThreadSplitConfig>,
@@ -1057,8 +1056,6 @@ impl Default for Config {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             #[cfg(feature = "media")]
             v4l2_proxy: Vec::new(),
-            #[cfg(feature = "vtpm")]
-            vtpm_proxy: false,
             wayland_socket_paths: BTreeMap::new(),
             #[cfg(windows)]
             window_procedure_thread_split_config: None,

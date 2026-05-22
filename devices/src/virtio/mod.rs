@@ -97,6 +97,8 @@ pub use self::scsi::DiskConfig as ScsiDiskConfig;
 pub use self::tpm::Tpm;
 #[cfg(feature = "vtpm")]
 pub use self::tpm::TpmBackend;
+#[cfg(feature = "vtpm")]
+pub use self::tpm::VirtioTpmModule;
 pub use self::vhost_user_frontend::VhostUserFrontend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;

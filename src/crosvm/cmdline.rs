@@ -2730,7 +2730,10 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "vtpm")]
         {
-            cfg.vtpm_proxy = cmd.vtpm_proxy.unwrap_or_default();
+            if cmd.vtpm_proxy.unwrap_or_default() {
+                cfg.virtio_device_modules
+                    .push(devices::virtio::VirtioTpmModule::new().into());
+            }
         }
 
         cfg.virtio_input = cmd.input;
