@@ -2916,7 +2916,11 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "audio")]
         {
-            cfg.virtio_snds = cmd.virtio_snd;
+            for (i, mut snd) in cmd.virtio_snd.into_iter().enumerate() {
+                snd.card_index = i;
+                cfg.virtio_device_modules
+                    .push(devices::virtio::VirtioSndModule::new(snd).into());
+            }
         }
 
         #[cfg(feature = "gpu")]

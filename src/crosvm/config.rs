@@ -35,8 +35,6 @@ use devices::serial_device::SerialParameters;
 use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::gpu::GpuParameters;
-#[cfg(feature = "audio")]
-use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(all(windows, feature = "gpu"))]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuBackendConfig;
 #[cfg(all(windows, feature = "gpu"))]
@@ -813,9 +811,6 @@ pub struct Config {
     #[serde(default)]
     pub virtio_device_modules: Vec<AnyVirtioDeviceModule>,
     pub virtio_input: Vec<InputDeviceOption>,
-    #[cfg(feature = "audio")]
-    #[serde(skip)]
-    pub virtio_snds: Vec<SndParameters>,
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     #[cfg(all(windows, feature = "gpu"))]
     pub window_procedure_thread_split_config: Option<WindowProcedureThreadSplitConfig>,
@@ -1043,8 +1038,6 @@ impl Default for Config {
             virt_cpufreq_v2: false,
             virtio_device_modules: Vec::new(),
             virtio_input: Vec::new(),
-            #[cfg(feature = "audio")]
-            virtio_snds: Vec::new(),
             #[cfg(any(target_os = "android", target_os = "linux"))]
             #[cfg(feature = "media")]
             v4l2_proxy: Vec::new(),

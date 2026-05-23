@@ -736,26 +736,6 @@ fn create_virtio_devices(
         ));
     }
 
-    #[cfg(feature = "audio")]
-    {
-        for (card_index, virtio_snd) in cfg.virtio_snds.iter().enumerate() {
-            let (snd_host_tube, snd_device_tube) =
-                Tube::pair().context("failed to create tube for snd")?;
-            add_control_tube(AnyControlTube::Snd(snd_host_tube));
-            let mut snd_params = virtio_snd.clone();
-            snd_params.card_index = card_index;
-            devs.push((
-                "snd",
-                create_virtio_snd_device(
-                    cfg.protection_type,
-                    cfg.jail_config.as_ref(),
-                    snd_params,
-                    snd_device_tube,
-                )?,
-            ));
-        }
-    }
-
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[cfg(feature = "media")]
     {

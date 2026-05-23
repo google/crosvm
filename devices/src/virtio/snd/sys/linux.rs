@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(feature = "audio_cras")]
+use std::path::Path;
+
 #[cfg(feature = "audio_aaudio")]
 use android_audio::AndroidAudioStreamSourceGenerator;
 use async_trait::async_trait;
@@ -17,10 +20,16 @@ use base::set_rt_prio_limit;
 use base::set_rt_round_robin;
 use cros_async::Executor;
 use futures::channel::mpsc::UnboundedSender;
+use jail::create_sandbox_minijail;
+use jail::JailConfig;
+use jail::RunAsUser;
+use jail::SandboxConfig;
+use jail::MAX_OPEN_FILES_DEFAULT;
 #[cfg(feature = "audio_cras")]
 use libcras::CrasStreamSourceGenerator;
 #[cfg(feature = "audio_cras")]
 use libcras::CrasStreamType;
+use minijail::Minijail;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -33,6 +42,7 @@ use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::parameters::Error as ParametersError;
 use crate::virtio::snd::parameters::Parameters;
+use crate::virtio::snd::parameters::StreamSourceBackend as Backend;
 
 const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 
@@ -247,4 +257,37 @@ impl PlaybackBufferWriter for UnixBufferWriter {
     fn endpoint_period_bytes(&self) -> usize {
         self.guest_period_bytes
     }
+}
+
+pub fn create_jail(
+    params: &Parameters,
+    jail_config: &JailConfig,
+) -> anyhow::Result<Option<Minijail>> {
+    let backend = params.backend;
+    let policy = match backend {
+        Backend::NULL | Backend::FILE => "snd_null_device",
+        #[cfg(feature = "audio_aaudio")]
+        Backend::Sys(StreamSourceBackend::AAUDIO) => "snd_aaudio_device",
+        #[cfg(feature = "audio_cras")]
+        Backend::Sys(StreamSourceBackend::CRAS) => "snd_cras_device",
+        #[cfg(not(any(feature = "audio_cras", feature = "audio_aaudio")))]
+        _ => unreachable!(),
+    };
+
+    let mut config = SandboxConfig::new(jail_config, policy);
+    #[cfg(feature = "audio_cras")]
+    if backend == Backend::Sys(StreamSourceBackend::CRAS) {
+        config.bind_mounts = true;
+    }
+    // TODO(b/267574679): running as current_user may not be required for snd device.
+    config.run_as = RunAsUser::CurrentUser;
+    #[allow(unused_mut)]
+    let mut jail =
+        create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
+    #[cfg(feature = "audio_cras")]
+    if backend == Backend::Sys(StreamSourceBackend::CRAS) {
+        let run_cras_path = Path::new("/run/cras");
+        jail.mount_bind(run_cras_path, run_cras_path, true)?;
+    }
+    Ok(Some(jail))
 }

@@ -86,5 +86,7 @@ declare_any_virtio_device_module! {
         Net(device_virtio_net::NetParameters),
         Scsi(device_virtio_scsi::VirtioScsiModule),
         Block(device_virtio_block::DiskOption),
+        #[cfg(feature = "audio")]
+        Snd(devices::virtio::VirtioSndModule),
     }
 }

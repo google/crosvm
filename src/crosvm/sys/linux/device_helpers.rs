@@ -47,8 +47,6 @@ use devices::virtio::memory_mapper::BasicMemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
 #[cfg(feature = "pvclock")]
 use devices::virtio::pvclock::PvClock;
-#[cfg(feature = "audio")]
-use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
 use devices::virtio::vhost_user_backend::VhostUserVsockDevice;
@@ -373,60 +371,6 @@ pub fn create_vhost_user_frontend(
         dev: Box::new(dev),
         // no sandbox here because virtqueue handling is exported to a different process.
         jail: None,
-    })
-}
-
-#[cfg(feature = "audio")]
-pub fn create_virtio_snd_device(
-    protection_type: ProtectionType,
-    jail_config: Option<&JailConfig>,
-    snd_params: SndParameters,
-    snd_device_tube: Tube,
-) -> DeviceResult {
-    let backend = snd_params.backend;
-    let dev = virtio::snd::common_backend::VirtioSnd::new(
-        virtio::base_features(protection_type),
-        snd_params,
-        snd_device_tube,
-    )
-    .context("failed to create cras sound device")?;
-
-    use virtio::snd::parameters::StreamSourceBackend as Backend;
-
-    let policy = match backend {
-        Backend::NULL | Backend::FILE => "snd_null_device",
-        #[cfg(feature = "audio_aaudio")]
-        Backend::Sys(virtio::snd::sys::StreamSourceBackend::AAUDIO) => "snd_aaudio_device",
-        #[cfg(feature = "audio_cras")]
-        Backend::Sys(virtio::snd::sys::StreamSourceBackend::CRAS) => "snd_cras_device",
-        #[cfg(not(any(feature = "audio_cras", feature = "audio_aaudio")))]
-        _ => unreachable!(),
-    };
-
-    let jail = if let Some(jail_config) = jail_config {
-        let mut config = SandboxConfig::new(jail_config, policy);
-        #[cfg(feature = "audio_cras")]
-        if backend == Backend::Sys(virtio::snd::sys::StreamSourceBackend::CRAS) {
-            config.bind_mounts = true;
-        }
-        // TODO(b/267574679): running as current_user may not be required for snd device.
-        config.run_as = RunAsUser::CurrentUser;
-        #[allow(unused_mut)]
-        let mut jail =
-            create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
-        #[cfg(feature = "audio_cras")]
-        if backend == Backend::Sys(virtio::snd::sys::StreamSourceBackend::CRAS) {
-            let run_cras_path = Path::new("/run/cras");
-            jail.mount_bind(run_cras_path, run_cras_path, true)?;
-        }
-        Some(jail)
-    } else {
-        None
-    };
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail,
     })
 }
 

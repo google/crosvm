@@ -75,6 +75,8 @@ pub use self::queue::split_descriptor_chain::SplitDescriptorChain;
 pub use self::queue::PeekedDescriptorChain;
 pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
+#[cfg(feature = "audio")]
+pub use self::snd::VirtioSndModule;
 pub use self::vhost_user_frontend::VhostUserFrontend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;
