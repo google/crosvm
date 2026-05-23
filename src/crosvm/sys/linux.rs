@@ -408,17 +408,6 @@ fn create_virtio_devices(
         devs.push(("console", dev));
     }
 
-    for disk in &cfg.disks {
-        let (disk_host_tube, disk_device_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(AnyControlTube::Disk(disk_host_tube));
-        let disk_config = DiskConfig::new(disk, Some(disk_device_tube));
-        devs.push((
-            "disk",
-            disk_config
-                .create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?,
-        ));
-    }
-
     for (index, pmem_disk) in cfg.pmems.iter().enumerate() {
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
         add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
@@ -943,7 +932,7 @@ fn create_virtio_devices(
         "window_keyboard",
         "gpu",
         "console",
-        "disk",
+        "block",
         "scsi",
         "pmem",
         "pmem_ext2",

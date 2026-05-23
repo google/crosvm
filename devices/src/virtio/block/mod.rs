@@ -6,13 +6,20 @@
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
+use anyhow::Context;
+use base::Tube;
 use cros_async::ExecutorKind;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
+use vm_control::AnyControlTube;
 
+use crate::virtio;
+use crate::virtio::VirtioDevice;
 use crate::PciAddress;
+use crate::VirtioDeviceArgs;
+use crate::VirtioDeviceModule;
 
 pub mod asynchronous;
 pub mod sys;
@@ -161,6 +168,43 @@ impl Default for DiskOption {
             pci_address: None,
             dontcache: false,
         }
+    }
+}
+
+impl VirtioDeviceModule for DiskOption {
+    fn sort_name(&self) -> &'static str {
+        "block"
+    }
+
+    fn create(&self, args: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        base::info!("Trying to attach block device: {}", self.path.display());
+
+        let (disk_host_tube, disk_device_tube) = Tube::pair().context("failed to create tube")?;
+        (args.add_control_tube)(AnyControlTube::Disk(disk_host_tube));
+
+        let dev = BlockAsync::new(
+            virtio::base_features(args.protection_type),
+            self.open()?,
+            self,
+            Some(disk_device_tube),
+            None,
+            None,
+        )
+        .context("failed to create block device")?;
+
+        Ok(Box::new(dev))
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn create_jail(
+        &self,
+        jail_config: &jail::JailConfig,
+    ) -> anyhow::Result<Option<minijail::Minijail>> {
+        let jail = jail::simple_jail(
+            Some(jail_config),
+            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file("block"),
+        )?;
+        Ok(jail)
     }
 }
 

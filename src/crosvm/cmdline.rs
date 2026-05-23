@@ -2559,7 +2559,13 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         // Sort all our disks by index.
         disks.sort_by_key(|d| d.index);
-        cfg.disks = disks.into_iter().map(|d| d.disk_option).collect();
+        cfg_if::cfg_if! {
+            if #[cfg(windows)] {
+                cfg.disks_auto_vhost_user = disks.iter().map(|d| d.disk_option.clone()).collect();
+            } else {
+                cfg.virtio_device_modules.extend(disks.iter().map(|d| d.disk_option.clone().into()));
+            }
+        }
 
         cfg.pmems = cmd.pmem;
 
@@ -2586,12 +2592,11 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         // Find the device to use as the kernel `root=` parameter. There can only be one.
-        let virtio_blk_root_devs = cfg
-            .disks
+        let virtio_blk_root_devs = disks
             .iter()
             .enumerate()
-            .filter(|(_, d)| d.root)
-            .map(|(i, d)| (format_disk_letter("/dev/vd", i), d.read_only));
+            .filter(|(_, d)| d.disk_option.root)
+            .map(|(i, d)| (format_disk_letter("/dev/vd", i), d.disk_option.read_only));
 
         let virtio_scsi_root_devs = cmd
             .scsi_block

@@ -78,7 +78,6 @@ use devices::tsc::get_tsc_sync_mitigations;
 use devices::tsc::standard_deviation;
 use devices::tsc::TscSyncMitigations;
 use devices::virtio;
-use devices::virtio::block::DiskOption;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::run_gpu_device_worker;
 #[cfg(feature = "gpu")]
@@ -274,24 +273,6 @@ fn create_vhost_user_block_device(
     })
 }
 
-fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) -> DeviceResult {
-    let features = virtio::base_features(cfg.protection_type);
-    let dev = virtio::BlockAsync::new(
-        features,
-        disk.open()?,
-        disk,
-        Some(disk_device_tube),
-        None,
-        None,
-    )
-    .exit_context(Exit::BlockDeviceNew, "failed to create block device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    })
-}
-
 #[cfg(feature = "gpu")]
 fn create_vhost_user_gpu_device(
     base_features: u64,
@@ -462,25 +443,20 @@ fn create_virtio_devices(
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
-    if cfg.block_vhost_user_tube.is_empty() {
-        // Disk devices must precede virtio-console devices or the kernel does not boot.
-        // TODO(b/171215421): figure out why this ordering is required and fix it.
-        for disk in &cfg.disks {
-            let (disk_host_tube, disk_device_tube) =
-                Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
-            add_control_tube(AnyControlTube::Disk(disk_host_tube));
-            devs.push(("block", create_block_device(cfg, disk, disk_device_tube)?));
-        }
-    } else {
-        info!("Starting up vhost user block backends...");
-        for _disk in &cfg.disks {
-            let disk_device_tube = cfg.block_vhost_user_tube.remove(0);
-            let connection = Connection::from(disk_device_tube);
-            devs.push((
-                "block",
-                create_vhost_user_block_device(cfg, connection, vm_evt_wrtube.try_clone()?)?,
-            ));
-        }
+    // Disk devices must precede virtio-console devices or the kernel does not boot.
+    // TODO(b/171215421): figure out why this ordering is required and fix it.
+    info!("Starting up vhost user block backends...");
+    assert_eq!(
+        cfg.block_vhost_user_tube.len(),
+        cfg.disks_auto_vhost_user.len()
+    );
+    for _disk in &cfg.disks_auto_vhost_user {
+        let disk_device_tube = cfg.block_vhost_user_tube.remove(0);
+        let connection = Connection::from(disk_device_tube);
+        devs.push((
+            "block",
+            create_vhost_user_block_device(cfg, connection, vm_evt_wrtube.try_clone()?)?,
+        ));
     }
 
     for (_, param) in cfg

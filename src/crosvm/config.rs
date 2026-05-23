@@ -31,7 +31,6 @@ use base::pagesize;
 use cros_async::ExecutorKind;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
-use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "gpu")]
@@ -646,7 +645,9 @@ pub struct Config {
     pub dev_pm: Option<DevicePowerManagerConfig>,
     pub device_tree_overlay: Vec<DtboOption>,
     pub disable_virtio_intx: bool,
-    pub disks: Vec<DiskOption>,
+    // Disks that run as an automatically setup vhost-user backend.
+    #[cfg(windows)]
+    pub disks_auto_vhost_user: Vec<devices::virtio::block::DiskOption>,
     pub display_input_height: Option<u32>,
     pub display_input_width: Option<u32>,
     pub display_window_keyboard: bool,
@@ -876,7 +877,8 @@ impl Default for Config {
             delay_rt: false,
             device_tree_overlay: Vec::new(),
             dev_pm: None,
-            disks: Vec::new(),
+            #[cfg(windows)]
+            disks_auto_vhost_user: Vec::new(),
             disable_virtio_intx: false,
             display_input_height: None,
             display_input_width: None,

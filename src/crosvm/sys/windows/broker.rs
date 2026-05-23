@@ -1216,7 +1216,7 @@ fn start_up_block_backends(
     #[cfg(feature = "process-invariants")] process_invariants: &EmulatorProcessInvariants,
 ) -> Result<Vec<ChildProcess>> {
     let mut block_children = Vec::new();
-    let disk_options = cfg.disks.clone();
+    let disk_options = cfg.disks_auto_vhost_user.clone();
     for (index, disk_option) in disk_options.iter().enumerate() {
         let block_child = spawn_block_backend(index, main_child, children, wait_ctx, cfg)?;
 
