@@ -617,6 +617,49 @@ fn validate_path_component(name: &CStr) -> io::Result<()> {
     Ok(())
 }
 
+/// A safe wrapper around `openat2` with a fallback to `openat64` for backward compatibility.
+///
+/// It attempts to use `openat2` to leverage secure path resolution flags (like `RESOLVE_IN_ROOT`).
+/// If `openat2` is not supported by the kernel (returns `ENOSYS`, e.g. on kernels older than 5.6),
+/// it falls back to standard path resolution using `openat64` to allow operation on older
+/// platforms.
+fn safe_openat2<D: AsRawDescriptor>(
+    dir: &D,
+    name: &CStr,
+    flags: libc::c_int,
+    mode: Option<libc::mode_t>,
+    resolve: u64,
+) -> io::Result<File> {
+    let mut how = open_how {
+        flags: flags as u64,
+        resolve,
+        ..Default::default()
+    };
+    if let Some(m) = mode {
+        how.mode = (m & 0o7777) as u64;
+    }
+
+    let res = openat2(dir, name, &how);
+    match res {
+        Ok(file) => Ok(file),
+        Err(e) if e.errno() == libc::ENOSYS => {
+            // Fallback to openat64 if openat2 is not supported.
+            let fd = if let Some(m) = mode {
+                // SAFETY: openat64 doesn't modify any memory and we check the return value.
+                syscall!(unsafe {
+                    libc::openat64(dir.as_raw_descriptor(), name.as_ptr(), flags, m)
+                })
+            } else {
+                // SAFETY: openat64 doesn't modify any memory and we check the return value.
+                syscall!(unsafe { libc::openat64(dir.as_raw_descriptor(), name.as_ptr(), flags) })
+            }?;
+            // SAFETY: safe because we own the fd.
+            Ok(unsafe { File::from_raw_descriptor(fd) })
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 #[cfg(feature = "arc_quota")]
 fn is_android_project_id(project_id: u32) -> bool {
     // The following constants defines the valid range of project ID used by
@@ -1134,13 +1177,13 @@ impl PassthroughFs {
     }
 
     fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
-        let how = open_how {
-            flags: (libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW) as u64,
-            resolve: RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_SYMLINKS,
-            ..Default::default()
-        };
-
-        let path_file = openat2(parent, name, &how).map_err(io::Error::from)?;
+        let path_file = safe_openat2(
+            parent,
+            name,
+            libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            None,
+            RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_SYMLINKS,
+        )?;
 
         #[allow(unused_mut)]
         let mut st = stat(&path_file)?;
@@ -2654,27 +2697,13 @@ impl FileSystem for PassthroughFs {
             let _scoped_umask = ScopedUmask::new(umask);
             let casefold_cache = self.lock_casefold_lookup_caches();
 
-            let how = open_how {
-                flags: create_flags as u64,
-                mode: (mode & 0o7777) as u64,
-                resolve: RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS,
-            };
-
-            let res = openat2(&data, name, &how);
-            let file = match res {
-                Ok(file) => file,
-                Err(e) if e.errno() == libc::ENOSYS => {
-                    // Fallback to openat64 if openat2 is not supported.
-                    // SAFETY: safe because we checked that `name` has no slashes, so it cannot
-                    // traverse outside the parent directory.
-                    let fd = syscall!(unsafe {
-                        libc::openat64(data.as_raw_descriptor(), name.as_ptr(), create_flags, mode)
-                    })?;
-                    // SAFETY: safe because we just opened this fd.
-                    unsafe { File::from_raw_descriptor(fd) }
-                }
-                Err(e) => return Err(e.into()),
-            };
+            let file = safe_openat2(
+                &data,
+                name,
+                create_flags,
+                Some(mode),
+                RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS,
+            )?;
             if let Some(mut c) = casefold_cache {
                 c.insert(parent, name);
             }
