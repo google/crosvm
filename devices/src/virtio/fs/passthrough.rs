@@ -103,6 +103,12 @@ use crate::virtio::fs::expiring_map::ExpiringMap;
 use crate::virtio::fs::multikey::MultikeyBTreeMap;
 use crate::virtio::fs::read_dir::ReadDir;
 
+// RESOLVE_* constants are missing in libc crate for some targets (e.g. Android).
+// Define them here as they are stable Linux kernel API constants.
+const RESOLVE_NO_MAGICLINKS: u64 = 0x02;
+const RESOLVE_NO_SYMLINKS: u64 = 0x04;
+const RESOLVE_IN_ROOT: u64 = 0x10;
+
 const EMPTY_CSTR: &CStr = c"";
 const PROC_CSTR: &CStr = c"/proc";
 const UNLABELED_CSTR: &CStr = c"unlabeled";
@@ -1130,9 +1136,7 @@ impl PassthroughFs {
     fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
         let how = open_how {
             flags: (libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW) as u64,
-            resolve: libc::RESOLVE_IN_ROOT
-                | libc::RESOLVE_NO_MAGICLINKS
-                | libc::RESOLVE_NO_SYMLINKS,
+            resolve: RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_SYMLINKS,
             ..Default::default()
         };
 
@@ -2653,7 +2657,7 @@ impl FileSystem for PassthroughFs {
             let how = open_how {
                 flags: create_flags as u64,
                 mode: (mode & 0o7777) as u64,
-                resolve: libc::RESOLVE_IN_ROOT | libc::RESOLVE_NO_MAGICLINKS,
+                resolve: RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS,
             };
 
             let res = openat2(&data, name, &how);
