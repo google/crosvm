@@ -109,16 +109,6 @@ pub(super) fn run_ime_thread(
     Ok(None)
 }
 
-pub(super) fn create_snd_state_tube(
-    _control_tubes: &mut [SharedTaggedControlTube],
-) -> Result<Option<Tube>> {
-    Ok(None)
-}
-
-pub(super) fn create_snd_mute_tube_pair() -> Result<(Option<Tube>, Option<Tube>)> {
-    Ok((None, None))
-}
-
 // Returns two tubes and a handle to service_ipc. One for ipc_main_loop and another
 // for proto_main_loop.
 pub(super) fn start_service_ipc_listener(
@@ -129,7 +119,6 @@ pub(super) fn start_service_ipc_listener(
 
 pub(super) fn handle_tagged_control_tube_event(
     _product_tube: &TaggedControlTube,
-    _virtio_snd_host_mute_tubes: &mut [Tube],
     _service_vm_state: &mut ServiceVmState,
     _ipc_main_loop_tube: Option<&Tube>,
 ) {
@@ -161,7 +150,6 @@ pub(super) fn handle_received_token<'a, F>(
     _run_mode_arc: &VcpuRunMode,
     _service_vm_state: &mut ServiceVmState,
     _vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
-    _virtio_snd_host_mute_tube: &mut [Tube],
     _execute_vm_request: F,
 ) -> Option<VmRunMode>
 where

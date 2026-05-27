@@ -145,9 +145,6 @@ use jail::FakeMinijailStub as Minijail;
 pub(crate) use panic_hook::set_panic_hook;
 use proc_init::common_child_setup;
 use proc_init::CommonChildStartupArgs;
-use product::create_snd_mute_tube_pair;
-#[cfg(any(feature = "haxm", feature = "gvm", feature = "whpx"))]
-use product::create_snd_state_tube;
 #[cfg(feature = "pvclock")]
 use product::handle_pvclock_request;
 use product::run_ime_thread;
@@ -858,7 +855,6 @@ fn handle_readable_event(
     vm_evt_rdtube: &RecvTube,
     control_tubes: &mut BTreeMap<usize, TaggedControlTube>,
     guest_os: &mut RunnableLinuxVm,
-    virtio_snd_host_mute_tubes: &mut [Tube],
     proto_main_loop_tube: Option<&ProtoTube>,
     anti_tamper_main_thread_tube: &Option<ProtoTube>,
     #[cfg(feature = "balloon")] mut balloon_tube: Option<&mut BalloonTube>,
@@ -985,7 +981,6 @@ fn handle_readable_event(
                     TaggedControlTube::Product(product_tube) => {
                         product::handle_tagged_control_tube_event(
                             product_tube,
-                            virtio_snd_host_mute_tubes,
                             service_vm_state,
                             ipc_main_loop_tube,
                         )
@@ -1094,7 +1089,6 @@ fn handle_readable_event(
                 run_mode_arc,
                 service_vm_state,
                 vcpu_boxes,
-                virtio_snd_host_mute_tubes,
                 execute_vm_request,
             );
             if let Some(exit_state) = handle_run_mode_change_for_vm_request(&run_mode_opt) {
@@ -1269,7 +1263,6 @@ fn run_control(
     tsc_sync_mitigations: TscSyncMitigations,
     force_calibrated_tsc_leaf: bool,
     mut product_args: RunControlArgs,
-    mut virtio_snd_host_mute_tubes: Vec<Tube>,
     restore_path: Option<PathBuf>,
     control_server_path: Option<PathBuf>,
     force_s2idle: bool,
@@ -1511,7 +1504,6 @@ fn run_control(
                 &vm_evt_rdtube,
                 &mut control_tubes,
                 &mut guest_os,
-                &mut virtio_snd_host_mute_tubes,
                 proto_main_loop_tube.as_ref(),
                 &anti_tamper_main_thread_tube,
                 #[cfg(feature = "balloon")]
@@ -2567,10 +2559,6 @@ fn run_vm(
             .lower_token();
     }
 
-    let _virtio_snd_state_device_tube = create_snd_state_tube(&mut control_tubes)?;
-
-    let (virtio_snd_host_mute_tube, _virtio_snd_device_mute_tube) = create_snd_mute_tube_pair()?;
-
     let mut initial_audio_session_states: Vec<InitialAudioSessionState> = Vec::new();
 
     let pci_devices = create_devices(
@@ -2649,10 +2637,6 @@ fn run_vm(
         tsc_sync_mitigations,
         cfg.force_calibrated_tsc_leaf,
         product_args,
-        match virtio_snd_host_mute_tube {
-            Some(virtio_snd_host_mute_tube) => vec![virtio_snd_host_mute_tube],
-            None => vec![],
-        },
         cfg.restore_path,
         cfg.socket_path,
         cfg.force_s2idle,
