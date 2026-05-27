@@ -2,10 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(b:240716507): There is huge chunk for code which depends on haxm, whpx or gvm to be enabled
-// but isn't marked so. Remove this when we do so.
-#![allow(dead_code, unused_imports, unused_variables, unreachable_code)]
-
 pub(crate) mod control_server;
 pub(crate) mod irq_wait;
 pub(crate) mod main;
@@ -20,15 +16,12 @@ pub(crate) mod run_vcpu;
 use std::arch::x86_64::__cpuid;
 #[cfg(feature = "whpx")]
 use std::arch::x86_64::__cpuid_count;
-use std::cmp::Reverse;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::stdin;
 use std::iter;
 use std::mem;
-use std::os::windows::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -40,7 +33,6 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
-use arch::CpuConfigArch;
 use arch::DtbOverlay;
 use arch::IrqChipArch;
 use arch::LinuxArch;
@@ -56,15 +48,10 @@ use base::info;
 use base::open_file_or_duplicate;
 use base::warn;
 use base::AsRawDescriptor;
-#[cfg(feature = "gpu")]
-use base::BlockingMode;
 use base::CloseNotifier;
 use base::Event;
 use base::EventToken;
-use base::EventType;
 use base::FlushOnDropTube;
-#[cfg(feature = "gpu")]
-use base::FramingMode;
 use base::FromRawDescriptor;
 use base::ProtoTube;
 use base::RawDescriptor;
@@ -92,12 +79,6 @@ use devices::tsc::standard_deviation;
 use devices::tsc::TscSyncMitigations;
 use devices::virtio;
 use devices::virtio::block::DiskOption;
-#[cfg(feature = "audio")]
-use devices::virtio::snd::common_backend::VirtioSnd;
-#[cfg(feature = "audio")]
-use devices::virtio::snd::parameters::Parameters as SndParameters;
-#[cfg(feature = "gpu")]
-use devices::virtio::vhost_user_backend::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::run_gpu_device_worker;
 #[cfg(feature = "gpu")]
@@ -107,16 +88,12 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfi
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
-#[cfg(feature = "audio")]
 use devices::virtio::vhost_user_backend::snd::sys::windows::run_snd_device_worker;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 use devices::virtio::Console;
-#[cfg(feature = "gpu")]
-use devices::virtio::GpuParameters;
 use devices::BusDeviceObj;
 use devices::BusResumeDevice;
 #[cfg(feature = "gvm")]
@@ -124,7 +101,6 @@ use devices::GvmIrqChip;
 #[cfg(target_arch = "aarch64")]
 use devices::IrqChip;
 use devices::UserspaceIrqChip;
-use devices::VcpuRunState;
 use devices::VirtioPciDevice;
 #[cfg(feature = "whpx")]
 use devices::WhpxSplitIrqChip;
@@ -149,15 +125,11 @@ use hypervisor::haxm::set_use_ghaxm;
 #[cfg(feature = "haxm")]
 use hypervisor::haxm::Haxm;
 #[cfg(feature = "haxm")]
-use hypervisor::haxm::HaxmVcpu;
-#[cfg(feature = "haxm")]
 use hypervisor::haxm::HaxmVm;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::Whpx;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::WhpxFeature;
-#[cfg(feature = "whpx")]
-use hypervisor::whpx::WhpxVcpu;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::WhpxVm;
 use hypervisor::Hypervisor;
@@ -178,9 +150,7 @@ use product::create_snd_mute_tube_pair;
 use product::create_snd_state_tube;
 #[cfg(feature = "pvclock")]
 use product::handle_pvclock_request;
-use product::merge_session_invariants;
 use product::run_ime_thread;
-use product::set_package_name;
 pub(crate) use product::setup_metrics_reporting;
 use product::start_service_ipc_listener;
 use product::RunControlArgs;
@@ -191,13 +161,10 @@ use run_vcpu::run_all_vcpus;
 use run_vcpu::VcpuRunMode;
 use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaGrallocBackendFlags;
-use smallvec::SmallVec;
 use sync::Mutex;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
 use vm_control::api::VmMemoryClient;
-#[cfg(feature = "balloon")]
-use vm_control::BalloonControlCommand;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
 use vm_control::DeviceControlCommand;
@@ -210,11 +177,8 @@ use vm_control::VmMemoryRequest;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
 use vm_control::VmRunMode;
-use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vmm_vhost::Connection;
-use vmm_vhost::FrontendReq;
-use win_util::ProcessType;
 #[cfg(feature = "whpx")]
 use x86_64::cpuid::adjust_cpuid;
 #[cfg(feature = "whpx")]
@@ -227,8 +191,6 @@ use crate::crosvm::config::Executable;
 use crate::crosvm::config::InputDeviceOption;
 #[cfg(any(feature = "gvm", feature = "whpx"))]
 use crate::crosvm::config::IrqChipKind;
-#[cfg(feature = "gpu")]
-use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
 use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_WIDTH;
 use crate::crosvm::sys::config::HypervisorKind;
@@ -256,6 +218,7 @@ const VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS: u8 = 4;
 
 enum TaggedControlTube {
     Vm(FlushOnDropTube),
+    #[allow(dead_code)] // Used downstream.
     Product(product::TaggedControlTube),
 }
 
@@ -526,8 +489,6 @@ fn create_virtio_devices(
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
     tsc_frequency: u64,
-    virtio_snd_state_device_tube: Option<Tube>,
-    virtio_snd_control_device_tube: Option<Tube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -747,8 +708,6 @@ fn create_virtio_gpu_device(
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
     vm_evt_wrtube: SendTube,
 ) -> DeviceResult<VirtioDeviceStub> {
-    let resource_bridges = Vec::<Tube>::new();
-
     product::push_gpu_control_tubes(control_tubes, &mut gpu_vmm_config);
 
     // If the GPU backend is passed, start up the vhost-user worker in the main process.
@@ -828,8 +787,6 @@ fn create_devices(
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
     tsc_frequency: u64,
-    virtio_snd_state_device_tube: Option<Tube>,
-    virtio_snd_control_device_tube: Option<Tube>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
         cfg,
@@ -844,8 +801,6 @@ fn create_devices(
         inflate_tube,
         init_balloon_size,
         tsc_frequency,
-        virtio_snd_state_device_tube,
-        virtio_snd_control_device_tube,
     )?;
 
     let mut pci_devices = Vec::new();
@@ -892,9 +847,6 @@ fn create_devices(
     Ok(pci_devices)
 }
 
-#[derive(Debug)]
-struct PvClockError(String);
-
 fn handle_readable_event(
     event: &TriggeredEvent<Token>,
     vm_control_ids_to_remove: &mut Vec<usize>,
@@ -906,7 +858,6 @@ fn handle_readable_event(
     vm_evt_rdtube: &RecvTube,
     control_tubes: &mut BTreeMap<usize, TaggedControlTube>,
     guest_os: &mut RunnableLinuxVm,
-    sys_allocator_mutex: &Arc<Mutex<SystemAllocator>>,
     virtio_snd_host_mute_tubes: &mut [Tube],
     proto_main_loop_tube: Option<&ProtoTube>,
     anti_tamper_main_thread_tube: &Option<ProtoTube>,
@@ -915,7 +866,6 @@ fn handle_readable_event(
     vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
     #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
     run_mode_arc: &VcpuRunMode,
-    region_state: &mut VmMemoryRegionState,
     vm_control_server: Option<&mut ControlServer>,
     irq_handler_control: &Tube,
     device_ctrl_tube: &Tube,
@@ -1092,7 +1042,7 @@ fn handle_readable_event(
                                 }
                             }
                             if let Some(exit_state) =
-                                handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os)
+                                handle_run_mode_change_for_vm_request(&run_mode_opt)
                             {
                                 return Ok(Some(exit_state));
                             }
@@ -1147,8 +1097,7 @@ fn handle_readable_event(
                 virtio_snd_host_mute_tubes,
                 execute_vm_request,
             );
-            if let Some(exit_state) = handle_run_mode_change_for_vm_request(&run_mode_opt, guest_os)
-            {
+            if let Some(exit_state) = handle_run_mode_change_for_vm_request(&run_mode_opt) {
                 return Ok(Some(exit_state));
             }
         }
@@ -1162,10 +1111,7 @@ fn handle_readable_event(
 ///
 /// Returns the exit state, if it changed due to a run mode change.
 /// None otherwise.
-fn handle_run_mode_change_for_vm_request(
-    run_mode_opt: &Option<VmRunMode>,
-    guest_os: &mut RunnableLinuxVm,
-) -> Option<ExitState> {
+fn handle_run_mode_change_for_vm_request(run_mode_opt: &Option<VmRunMode>) -> Option<ExitState> {
     if let Some(run_mode) = run_mode_opt {
         info!("control socket changed run mode to {}", run_mode);
         match run_mode {
@@ -1334,7 +1280,7 @@ fn run_control(
 
     let mut service_vm_state = product::create_service_vm_state(memory_size_mb);
 
-    let service_audio_states = product::create_service_audio_states_and_send_to_service(
+    product::create_service_audio_states_and_send_to_service(
         initial_audio_session_states,
         &ipc_main_loop_tube,
     )?;
@@ -1539,7 +1485,6 @@ fn run_control(
     }
 
     let mut exit_state = ExitState::Stop;
-    let mut region_state: VmMemoryRegionState = Default::default();
 
     'poll: loop {
         let events = {
@@ -1566,7 +1511,6 @@ fn run_control(
                 &vm_evt_rdtube,
                 &mut control_tubes,
                 &mut guest_os,
-                &sys_allocator_mutex,
                 &mut virtio_snd_host_mute_tubes,
                 proto_main_loop_tube.as_ref(),
                 &anti_tamper_main_thread_tube,
@@ -1577,7 +1521,6 @@ fn run_control(
                 #[cfg(feature = "pvclock")]
                 &pvclock_host_tube,
                 run_mode_arc.as_ref(),
-                &mut region_state,
                 vm_control_server.as_mut(),
                 &irq_handler_control,
                 &device_ctrl_tube,
@@ -1762,7 +1705,6 @@ fn kick_all_vcpus(
             resume_all_vcpus(
                 run_mode,
                 vcpu_boxes,
-                irq_chip,
                 #[cfg(feature = "pvclock")]
                 pvclock_host_tube,
             );
@@ -1859,7 +1801,6 @@ pub(crate) fn suspend_all_vcpus(
 pub(crate) fn resume_all_vcpus(
     run_mode: &VcpuRunMode,
     vcpu_boxes: &Mutex<Vec<Arc<dyn VcpuArch>>>,
-    irq_chip: &dyn IrqChipArch,
     #[cfg(feature = "pvclock")] pvclock_host_tube: &Option<Tube>,
 ) {
     #[cfg(feature = "pvclock")]
@@ -2626,9 +2567,9 @@ fn run_vm(
             .lower_token();
     }
 
-    let virtio_snd_state_device_tube = create_snd_state_tube(&mut control_tubes)?;
+    let _virtio_snd_state_device_tube = create_snd_state_tube(&mut control_tubes)?;
 
-    let (virtio_snd_host_mute_tube, virtio_snd_device_mute_tube) = create_snd_mute_tube_pair()?;
+    let (virtio_snd_host_mute_tube, _virtio_snd_device_mute_tube) = create_snd_mute_tube_pair()?;
 
     let mut initial_audio_session_states: Vec<InitialAudioSessionState> = Vec::new();
 
@@ -2648,13 +2589,10 @@ fn run_vm(
         /* inflate_tube= */ None,
         init_balloon_size,
         tsc_state.frequency,
-        virtio_snd_state_device_tube,
-        virtio_snd_device_mute_tube,
     )?;
 
     let mut vcpu_ids = Vec::new();
 
-    let (vwmdt_host_tube, vmwdt_device_tube) = Tube::pair().context("failed to create tube")?;
     let windows = Arch::build_vm(
         components,
         arch_memory_layout,

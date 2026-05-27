@@ -22,7 +22,6 @@ use aarch64::AArch64 as Arch;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use arch::CpuConfigArch;
 use arch::CpuSet;
 use arch::IrqChipArch;
 use arch::LinuxArch;
@@ -40,7 +39,6 @@ use base::Result as BaseResult;
 use base::SafeMultimediaHandle;
 use base::SendTube;
 use base::Timer;
-use base::Tube;
 use base::VmEventType;
 use cros_async::select2;
 use cros_async::EventAsync;
@@ -938,7 +936,7 @@ fn process_vcpu_control_messages(
 
     for msg in control_messages {
         match msg {
-            VcpuControl::RunState(new_mode) => {
+            VcpuControl::RunState(_new_mode) => {
                 panic!("VCPUs do not handle RunState messages on Windows")
             }
             #[cfg(feature = "gdb")]

@@ -12,7 +12,6 @@ use anyhow::Result;
 use arch::RunnableLinuxVm;
 use arch::VcpuArch;
 use arch::VirtioDeviceStub;
-use arch::VmArch;
 use base::info;
 use base::AsRawDescriptor;
 use base::CloseNotifier;
@@ -20,14 +19,8 @@ use base::Event;
 use base::EventToken;
 use base::ProtoTube;
 use base::ReadNotifier;
-use base::SendTube;
 use base::Tube;
 use base::WaitContext;
-use crosvm_cli::sys::windows::exit::Exit;
-use crosvm_cli::sys::windows::exit::ExitContext;
-use devices::virtio;
-#[cfg(feature = "gpu")]
-use devices::virtio::gpu::EventDevice;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
 #[cfg(feature = "gpu")]
@@ -47,14 +40,6 @@ use devices::virtio::vhost_user_backend::snd::sys::windows::product::SndVmmConfi
 #[cfg(feature = "audio")]
 use devices::virtio::vhost_user_backend::snd::sys::windows::SndVmmConfig;
 #[cfg(feature = "gpu")]
-use devices::virtio::DisplayBackend;
-#[cfg(feature = "gpu")]
-use devices::virtio::Gpu;
-#[cfg(feature = "gpu")]
-use devices::virtio::GpuParameters;
-#[cfg(feature = "gpu")]
-use gpu_display::WindowProcedureThread;
-#[cfg(feature = "gpu")]
 use gpu_display::WindowProcedureThreadBuilder;
 pub(crate) use metrics::log_descriptor;
 pub(crate) use metrics::MetricEventType;
@@ -72,23 +57,16 @@ use crate::crosvm::config::Config;
 use crate::crosvm::sys::cmdline::RunMetricsCommand;
 use crate::sys::windows::TaggedControlTube as SharedTaggedControlTube;
 
-pub struct MessageFromService {}
-
 pub struct ServiceVmState {}
 
-impl ServiceVmState {
-    pub fn set_memory_size(&mut self, _size: u64) {}
-    pub fn generate_send_state_message(&self) {}
-}
+impl ServiceVmState {}
 
 pub struct ServiceAudioStates {}
 
 pub(super) struct RunControlArgs {}
 
 #[derive(Debug)]
-pub(super) enum TaggedControlTube {
-    Unused,
-}
+pub(super) enum TaggedControlTube {}
 
 impl ReadNotifier for TaggedControlTube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
@@ -111,37 +89,28 @@ pub(super) enum Token {
     BalloonTube,
 }
 
-pub(super) fn handle_hungup_event(token: &Token) {
-    panic!("Unable to handle hungup on a shared token in product specific handler: {token:?}")
-}
+pub(super) fn setup_common_metric_invariants(_cfg: &Config) {}
 
-pub(super) fn setup_common_metric_invariants(cfg: &Config) {}
-
-// Sets package name to the name contained in `msg`.
-pub(super) fn set_package_name(msg: &MessageFromService) {}
-
-pub(super) fn get_run_control_args(cfg: &mut Config) -> RunControlArgs {
+pub(super) fn get_run_control_args(_cfg: &mut Config) -> RunControlArgs {
     RunControlArgs {}
 }
-// Merges session invariants.
-pub(super) fn merge_session_invariants(serialized_session_invariants: &[u8]) {}
 
 // Handles sending command to pvclock device.
 #[cfg(feature = "pvclock")]
-pub(super) fn handle_pvclock_request(tube: &Option<Tube>, command: PvClockCommand) -> Result<()> {
+pub(super) fn handle_pvclock_request(_tube: &Option<Tube>, _command: PvClockCommand) -> Result<()> {
     Ok(())
 }
 
 // Run ime thread.
 pub(super) fn run_ime_thread(
-    product_args: &mut RunControlArgs,
-    exit_evt: &Event,
+    _product_args: &mut RunControlArgs,
+    _exit_evt: &Event,
 ) -> Result<Option<JoinHandle<Result<()>>>> {
     Ok(None)
 }
 
 pub(super) fn create_snd_state_tube(
-    control_tubes: &mut [SharedTaggedControlTube],
+    _control_tubes: &mut [SharedTaggedControlTube],
 ) -> Result<Option<Tube>> {
     Ok(None)
 }
@@ -153,16 +122,16 @@ pub(super) fn create_snd_mute_tube_pair() -> Result<(Option<Tube>, Option<Tube>)
 // Returns two tubes and a handle to service_ipc. One for ipc_main_loop and another
 // for proto_main_loop.
 pub(super) fn start_service_ipc_listener(
-    service_pipe_name: Option<String>,
+    _service_pipe_name: Option<String>,
 ) -> Result<(Option<Tube>, Option<ProtoTube>, Option<()>)> {
     Ok((None, None, None))
 }
 
 pub(super) fn handle_tagged_control_tube_event(
-    product_tube: &TaggedControlTube,
-    virtio_snd_host_mute_tubes: &mut [Tube],
-    service_vm_state: &mut ServiceVmState,
-    ipc_main_loop_tube: Option<&Tube>,
+    _product_tube: &TaggedControlTube,
+    _virtio_snd_host_mute_tubes: &mut [Tube],
+    _service_vm_state: &mut ServiceVmState,
+    _ipc_main_loop_tube: Option<&Tube>,
 ) {
 }
 
@@ -201,7 +170,7 @@ where
     panic!("Received an unrecognized shared token to product specific handler: {token:?}")
 }
 
-pub(super) fn spawn_anti_tamper_thread(wait_ctx: &WaitContext<Token>) -> Option<ProtoTube> {
+pub(super) fn spawn_anti_tamper_thread(_wait_ctx: &WaitContext<Token>) -> Option<ProtoTube> {
     None
 }
 
@@ -209,37 +178,9 @@ pub(super) fn create_service_vm_state(_memory_size_mb: u64) -> ServiceVmState {
     ServiceVmState {}
 }
 
-#[cfg(feature = "gpu")]
-pub(super) fn create_gpu(
-    vm_evt_wrtube: &SendTube,
-    gpu_control_tube: Tube,
-    resource_bridges: Vec<Tube>,
-    display_backends: Vec<DisplayBackend>,
-    gpu_parameters: &GpuParameters,
-    event_devices: Vec<EventDevice>,
-    features: u64,
-    _product_args: GpuBackendConfigProduct,
-    wndproc_thread: WindowProcedureThread,
-) -> Result<Gpu> {
-    Ok(Gpu::new(
-        vm_evt_wrtube
-            .try_clone()
-            .exit_context(Exit::CloneTube, "failed to clone tube")?,
-        gpu_control_tube,
-        resource_bridges,
-        display_backends,
-        gpu_parameters,
-        None,
-        event_devices,
-        features,
-        &BTreeMap::new(),
-        wndproc_thread,
-    ))
-}
-
 pub(super) fn create_service_audio_states_and_send_to_service(
-    initial_audio_session_states: Vec<InitialAudioSessionState>,
-    ipc_main_loop_tube: &Option<Tube>,
+    _initial_audio_session_states: Vec<InitialAudioSessionState>,
+    _ipc_main_loop_tube: &Option<Tube>,
 ) -> Result<ServiceAudioStates> {
     Ok(ServiceAudioStates {})
 }
@@ -279,8 +220,8 @@ pub(crate) fn num_input_sound_streams(_cfg: &Config) -> u32 {
 
 #[cfg(feature = "gpu")]
 pub(crate) fn get_gpu_product_configs(
-    cfg: &Config,
-    alias_pid: u32,
+    _cfg: &Config,
+    _alias_pid: u32,
 ) -> Result<(GpuBackendConfigProduct, GpuVmmConfigProduct)> {
     Ok((GpuBackendConfigProduct {}, GpuVmmConfigProduct {}))
 }
@@ -301,7 +242,7 @@ pub(crate) fn setup_metrics_reporting() -> Result<()> {
 }
 
 pub(super) fn push_mouse_device(
-    cfg: &Config,
+    _cfg: &Config,
     #[cfg(feature = "gpu")] _input_event_vmm_config: &mut InputEventVmmConfig,
     _devs: &mut [VirtioDeviceStub],
 ) -> Result<()> {
@@ -310,10 +251,10 @@ pub(super) fn push_mouse_device(
 
 #[cfg(feature = "pvclock")]
 pub(super) fn push_pvclock_device(
-    cfg: &Config,
-    devs: &mut [VirtioDeviceStub],
-    tsc_frequency: u64,
-    tube: Tube,
+    _cfg: &Config,
+    _devs: &mut [VirtioDeviceStub],
+    _tsc_frequency: u64,
+    _tube: Tube,
 ) {
 }
 

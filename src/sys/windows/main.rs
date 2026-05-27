@@ -2,15 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::HashSet;
-use std::ffi::OsString;
 use std::fs::OpenOptions;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use argh::CommandInfo;
-use argh::FromArgs;
-use argh::SubCommand;
 use base::info;
 use base::syslog;
 use base::syslog::LogArgs;
@@ -20,7 +15,6 @@ use base::RawDescriptor;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
-use metrics::MetricEventType;
 #[cfg(feature = "slirp")]
 use net_util::slirp::sys::windows::SlirpStartupConfig;
 use proc_init::common_child_setup;

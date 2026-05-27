@@ -9,21 +9,17 @@
 
 use std::io;
 use std::sync::mpsc;
-use std::sync::Arc;
 
 use base::named_pipes;
 use base::named_pipes::OverlappedWrapper;
 use base::named_pipes::PipeConnection;
-use base::BlockingMode;
 use base::Event;
 use base::EventExt;
 use base::EventToken;
 use base::FlushOnDropTube;
-use base::FramingMode;
 use base::ReadNotifier;
 use base::RecvTube;
 use base::SendTube;
-use base::StreamChannel;
 use base::Tube;
 use base::TubeError;
 use base::WaitContext;
@@ -31,8 +27,6 @@ use base::WorkerThread;
 use libc::EIO;
 use log::error;
 use log::info;
-use log::warn;
-use sync::Mutex;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
 
@@ -46,7 +40,7 @@ use vm_control::VmResponse;
 ///       accept & service connections from clients that want to control the VMM (e.g. press the
 ///       power button, etc).
 pub struct ControlServer {
-    server_listener_worker: WorkerThread<(io::Result<()>, ClientWorker)>,
+    _server_listener_worker: WorkerThread<(io::Result<()>, ClientWorker)>,
     /// Signaled when a client has connected and can be accepted without blocking.
     client_waiting: Event,
     /// Provides the accepted Tube every time a client connects.
@@ -78,7 +72,7 @@ impl ControlServer {
         let (client_tube_channel_send, client_tube_channel_recv) = mpsc::channel();
 
         Ok(Self {
-            server_listener_worker: WorkerThread::start("ctrl_srv_listen_loop", move |exit_evt| {
+            _server_listener_worker: WorkerThread::start("ctrl_srv_listen_loop", move |exit_evt| {
                 let res = Self::server_listener_loop(
                     exit_evt,
                     &mut client_worker,
@@ -87,7 +81,7 @@ impl ControlServer {
                     client_pipe_read,
                 );
                 if let Err(e) = res.as_ref() {
-                    error!("server_listener_worker failed with error: {:?}", e)
+                    error!("_server_listener_worker failed with error: {:?}", e)
                 }
                 (res, client_worker)
             }),
@@ -112,8 +106,9 @@ impl ControlServer {
     }
 
     /// Shuts down the control server, disconnecting any connected clients.
+    #[cfg(test)]
     pub fn shutdown(self) -> base::Result<()> {
-        let (listen_res, client_worker) = self.server_listener_worker.stop();
+        let (listen_res, client_worker) = self._server_listener_worker.stop();
         match listen_res {
             Err(e) if e.kind() == io::ErrorKind::Interrupted => (),
             Err(e) => return Err(base::Error::from(e)),
@@ -176,7 +171,6 @@ impl ControlServer {
             client_worker.stop_control_to_client_worker()?;
             info!("control server: disconnected client");
         }
-        unreachable!("loop exits by returning an error");
     }
 }
 
@@ -220,7 +214,7 @@ impl ClientWorker {
                 let res =
                     Self::control_to_client_worker(exit_evt, &client_pipe_write, control_recv);
                 if let Err(e) = res.as_ref() {
-                    error!("control_to_client_worker exited with error: {:?}", res);
+                    error!("control_to_client_worker exited with error: {:?}", e);
                 }
                 (res, client_pipe_write)
             },
@@ -241,6 +235,7 @@ impl ClientWorker {
         res
     }
 
+    #[cfg(test)]
     fn shutdown(self) -> base::Result<()> {
         if let Some(worker) = self.control_to_client_worker {
             worker.stop().0
@@ -394,8 +389,10 @@ mod tests {
                 let client2 = create_client(&pipe_name);
                 client2.send(&VmRequest::Exit).unwrap();
                 println!("client: sent client 2 request");
-                let resp = VmResponse::ErrString("err".to_owned());
-                assert!(matches!(client2.recv::<VmResponse>().unwrap(), resp,));
+                assert!(matches!(
+                    client2.recv::<VmResponse>().unwrap(),
+                    VmResponse::ErrString(s) if s == "err"
+                ));
                 println!("client: finished client 2");
             }
 

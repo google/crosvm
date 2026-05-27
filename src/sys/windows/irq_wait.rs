@@ -72,7 +72,6 @@ impl IrqWaitWorker {
     }
 
     fn add_child(
-        wait_ctx: &WaitContext<Token>,
         children: &mut Vec<JoinHandle<Result<()>>>,
         child_control_tubes: &mut Vec<Tube>,
         irq_chip: Arc<dyn IrqChipArch>,
@@ -102,7 +101,6 @@ impl IrqWaitWorker {
         let mut child_control_tubes = vec![];
 
         let mut child_wait_ctx = Self::add_child(
-            &wait_ctx,
             &mut children,
             &mut child_control_tubes,
             self.irq_chip.clone(),
@@ -255,7 +253,7 @@ impl IrqWaitWorker {
                                                             // The child wait thread has reached max capacity, we
                                                             // need to add another.
                                                             child_wait_ctx = Self::add_child(
-                                                                &wait_ctx, &mut children, &mut child_control_tubes,
+                                                                &mut children, &mut child_control_tubes,
                                                                 irq_chip.clone(), irq_frequencies.clone())?;
 
                                                         }
