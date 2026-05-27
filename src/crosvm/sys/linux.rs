@@ -368,7 +368,7 @@ fn create_virtio_devices(
 
             let (gpu_control_host_tube, gpu_control_device_tube) =
                 Tube::pair().context("failed to create gpu tube")?;
-            add_control_tube(DeviceControlTube::Gpu(gpu_control_host_tube).into());
+            add_control_tube(AnyControlTube::Gpu(gpu_control_host_tube));
             devs.push(create_gpu_device(
                 cfg,
                 vm_evt_wrtube,
@@ -393,7 +393,7 @@ fn create_virtio_devices(
 
     for disk in &cfg.disks {
         let (disk_host_tube, disk_device_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(DeviceControlTube::Disk(disk_host_tube).into());
+        add_control_tube(AnyControlTube::Disk(disk_host_tube));
         let disk_config = DiskConfig::new(disk, Some(disk_device_tube));
         devs.push(
             disk_config
@@ -411,7 +411,7 @@ fn create_virtio_devices(
 
     for (index, pmem_disk) in cfg.pmems.iter().enumerate() {
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(TaggedControlTube::VmMsync(pmem_host_tube).into());
+        add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
         devs.push(create_pmem_device(
             cfg.protection_type,
             cfg.jail_config.as_ref(),
@@ -429,15 +429,12 @@ fn create_virtio_devices(
         let (pmem_ext2_host_tube, pmem_ext2_device_tube) =
             Tube::pair().context("failed to create tube")?;
         let vm_memory_client = VmMemoryClient::new(pmem_ext2_device_tube);
-        add_control_tube(
-            VmMemoryTube {
-                tube: pmem_ext2_host_tube,
-                expose_with_viommu: false,
-            }
-            .into(),
-        );
+        add_control_tube(AnyControlTube::VmMemoryTube {
+            tube: pmem_ext2_host_tube,
+            expose_with_viommu: false,
+        });
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(TaggedControlTube::VmMsync(pmem_host_tube).into());
+        add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
         devs.push(create_pmem_ext2_device(
             cfg.protection_type,
             cfg.jail_config.as_ref(),
@@ -461,7 +458,7 @@ fn create_virtio_devices(
     if cfg.pvclock {
         // pvclock gets a tube for handling suspend/resume requests from the main thread.
         let (host_suspend_tube, suspend_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(DeviceControlTube::PvClock(host_suspend_tube).into());
+        add_control_tube(AnyControlTube::PvClock(host_suspend_tube));
 
         let frequency: u64;
         #[cfg(target_arch = "x86_64")]
@@ -692,7 +689,7 @@ fn create_virtio_devices(
             // Balloon gets a special socket so balloon requests can be forwarded
             // from the main process.
             let (host, device) = Tube::pair().context("failed to create tube")?;
-            add_control_tube(DeviceControlTube::Balloon(host).into());
+            add_control_tube(AnyControlTube::Balloon(host));
             device
         };
 
@@ -723,13 +720,10 @@ fn create_virtio_devices(
         // handle remapping memory dynamically.
         let (dynamic_mapping_host_tube, dynamic_mapping_device_tube) =
             Tube::pair().context("failed to create tube")?;
-        add_control_tube(
-            VmMemoryTube {
-                tube: dynamic_mapping_host_tube,
-                expose_with_viommu: false,
-            }
-            .into(),
-        );
+        add_control_tube(AnyControlTube::VmMemoryTube {
+            tube: dynamic_mapping_host_tube,
+            expose_with_viommu: false,
+        });
 
         devs.push(create_balloon_device(
             cfg.protection_type,
@@ -761,7 +755,7 @@ fn create_virtio_devices(
         for (card_index, virtio_snd) in cfg.virtio_snds.iter().enumerate() {
             let (snd_host_tube, snd_device_tube) =
                 Tube::pair().context("failed to create tube for snd")?;
-            add_control_tube(DeviceControlTube::Snd(snd_host_tube).into());
+            add_control_tube(AnyControlTube::Snd(snd_host_tube));
             let mut snd_params = virtio_snd.clone();
             snd_params.card_index = card_index;
             devs.push(create_virtio_snd_device(
@@ -859,7 +853,7 @@ fn create_virtio_devices(
         let dev = match kind {
             SharedDirKind::FS => {
                 let (host_tube, device_tube) = Tube::pair().context("failed to create tube")?;
-                add_control_tube(TaggedControlTube::Fs(host_tube).into());
+                add_control_tube(AnyControlTube::Fs(host_tube));
 
                 create_fs_device(
                     cfg.protection_type,
@@ -1010,13 +1004,10 @@ fn create_devices(
                 .context("failed to get vfio container")?;
             let (coiommu_host_tube, coiommu_device_tube) =
                 Tube::pair().context("failed to create coiommu tube")?;
-            add_control_tube(
-                VmMemoryTube {
-                    tube: coiommu_host_tube,
-                    expose_with_viommu: false,
-                }
-                .into(),
-            );
+            add_control_tube(AnyControlTube::VmMemoryTube {
+                tube: coiommu_host_tube,
+                expose_with_viommu: false,
+            });
             let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u64;
             #[cfg(feature = "balloon")]
             match Tube::pair() {
@@ -1068,13 +1059,10 @@ fn create_devices(
         let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
             let (host_tube, device_tube) =
                 Tube::pair().context("failed to create shared memory tube")?;
-            add_control_tube(
-                VmMemoryTube {
-                    tube: host_tube,
-                    expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
-                }
-                .into(),
-            );
+            add_control_tube(AnyControlTube::VmMemoryTube {
+                tube: host_tube,
+                expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
+            });
             Some(device_tube)
         } else {
             None
@@ -1082,17 +1070,14 @@ fn create_devices(
 
         let (ioevent_host_tube, ioevent_device_tube) =
             Tube::pair().context("failed to create ioevent tube")?;
-        add_control_tube(
-            VmMemoryTube {
-                tube: ioevent_host_tube,
-                expose_with_viommu: false,
-            }
-            .into(),
-        );
+        add_control_tube(AnyControlTube::VmMemoryTube {
+            tube: ioevent_host_tube,
+            expose_with_viommu: false,
+        });
 
         let (host_tube, device_tube) =
             Tube::pair().context("failed to create device control tube")?;
-        add_control_tube(TaggedControlTube::Vm(host_tube).into());
+        add_control_tube(AnyControlTube::Vm(host_tube));
 
         let dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
@@ -2406,16 +2391,13 @@ fn run_vm(
         add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
         let (ioevent_host_tube, ioevent_device_tube) =
             Tube::pair().context("failed to create ioevent tube")?;
-        add_control_tube(
-            VmMemoryTube {
-                tube: ioevent_host_tube,
-                expose_with_viommu: false,
-            }
-            .into(),
-        );
+        add_control_tube(AnyControlTube::VmMemoryTube {
+            tube: ioevent_host_tube,
+            expose_with_viommu: false,
+        });
         let (host_tube, device_tube) =
             Tube::pair().context("failed to create device control tube")?;
-        add_control_tube(TaggedControlTube::Vm(host_tube).into());
+        add_control_tube(AnyControlTube::Vm(host_tube));
         let mut dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             iommu_dev.dev,
@@ -2510,7 +2492,7 @@ fn run_vm(
     .context("the architecture failed to build the vm")?;
 
     for tube in linux.vm_request_tubes.drain(..) {
-        add_control_tube(TaggedControlTube::Vm(tube).into());
+        add_control_tube(AnyControlTube::Vm(tube));
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -2540,13 +2522,10 @@ fn run_vm(
 
         let (hp_vm_mem_host_tube, hp_vm_mem_worker_tube) =
             Tube::pair().context("failed to create tube")?;
-        add_control_tube(
-            VmMemoryTube {
-                tube: hp_vm_mem_host_tube,
-                expose_with_viommu: false,
-            }
-            .into(),
-        );
+        add_control_tube(AnyControlTube::VmMemoryTube {
+            tube: hp_vm_mem_host_tube,
+            expose_with_viommu: false,
+        });
 
         let supports_readonly_mapping = linux.vm.as_ref().supports_readonly_mapping();
         let pci_root = linux.root_config.clone();
@@ -2714,7 +2693,7 @@ fn add_hotplug_device(
     let (hotplug_key, pci_address) = match device.device_type {
         HotPlugDeviceType::UpstreamPort | HotPlugDeviceType::DownstreamPort => {
             let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
-            add_control_tube(TaggedControlTube::Vm(vm_host_tube).into());
+            add_control_tube(AnyControlTube::Vm(vm_host_tube));
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
             add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
             let pcie_host = PcieHostPort::new(device.path.as_path(), vm_device_tube)?;
@@ -2838,15 +2817,12 @@ fn add_hotplug_net(
     add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
     let (ioevent_host_tube, ioevent_device_tube) = Tube::pair().context("create tube")?;
     let ioevent_vm_memory_client = VmMemoryClient::new(ioevent_device_tube);
-    add_control_tube(
-        VmMemoryTube {
-            tube: ioevent_host_tube,
-            expose_with_viommu: false,
-        }
-        .into(),
-    );
+    add_control_tube(AnyControlTube::VmMemoryTube {
+        tube: ioevent_host_tube,
+        expose_with_viommu: false,
+    });
     let (vm_control_host_tube, vm_control_device_tube) = Tube::pair().context("create tube")?;
-    add_control_tube(TaggedControlTube::Vm(vm_control_host_tube).into());
+    add_control_tube(AnyControlTube::Vm(vm_control_host_tube));
     let net_carrier_device = NetResourceCarrier::new(
         net_param,
         msi_device_tube,
@@ -3278,12 +3254,22 @@ fn process_vm_request(
 
     #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
     let mut add_control_tube = |t| match t {
-        AnyControlTube::DeviceControlTube(_) => {
-            panic!("hotplugging DeviceControlTube not supported yet")
-        }
+        AnyControlTube::Balloon(_) => panic!("balloon tube hotplug not supported"),
+        AnyControlTube::Disk(_) => panic!("disk tube hotplug not supported"),
+        AnyControlTube::Fs(t) => add_tubes.push(TaggedControlTube::Fs(t)),
+        AnyControlTube::Gpu(_) => panic!("gpu tube hotplug not supported"),
         AnyControlTube::IrqTube(t) => add_irq_control_tubes.push(t),
-        AnyControlTube::TaggedControlTube(t) => add_tubes.push(t),
-        AnyControlTube::VmMemoryTube(t) => add_vm_memory_control_tubes.push(t),
+        AnyControlTube::PvClock(_) => panic!("pv-clock tube hotplug not supported"),
+        AnyControlTube::Snd(_) => panic!("snd tube hotplug not supported"),
+        AnyControlTube::Vm(t) => add_tubes.push(TaggedControlTube::Vm(t)),
+        AnyControlTube::VmMemoryTube {
+            tube,
+            expose_with_viommu,
+        } => add_vm_memory_control_tubes.push(VmMemoryTube {
+            tube,
+            expose_with_viommu,
+        }),
+        AnyControlTube::VmMsync(t) => add_tubes.push(TaggedControlTube::VmMsync(t)),
     };
 
     let response = match request {
@@ -3763,30 +3749,42 @@ fn run_control(
     for t in all_control_tubes {
         match t {
             #[cfg(feature = "balloon")]
-            AnyControlTube::DeviceControlTube(DeviceControlTube::Balloon(t)) => {
+            AnyControlTube::Balloon(t) => {
                 assert!(balloon_host_tube.is_none());
                 balloon_host_tube = Some(t)
             }
-            AnyControlTube::DeviceControlTube(DeviceControlTube::Disk(t)) => {
-                disk_host_tubes.push(t)
-            }
+            #[cfg(not(feature = "balloon"))]
+            AnyControlTube::Balloon(_) => unreachable!(),
+            AnyControlTube::Disk(t) => disk_host_tubes.push(t),
+            AnyControlTube::Fs(t) => control_tubes.push(TaggedControlTube::Fs(t)),
             #[cfg(feature = "gpu")]
-            AnyControlTube::DeviceControlTube(DeviceControlTube::Gpu(t)) => {
+            AnyControlTube::Gpu(t) => {
                 assert!(gpu_control_tube.is_none());
                 gpu_control_tube = Some(t)
             }
+            #[cfg(not(feature = "gpu"))]
+            AnyControlTube::Gpu(_) => unreachable!(),
+            AnyControlTube::IrqTube(t) => irq_control_tubes.push(t),
             #[cfg(feature = "pvclock")]
-            AnyControlTube::DeviceControlTube(DeviceControlTube::PvClock(t)) => {
+            AnyControlTube::PvClock(t) => {
                 assert!(pvclock_host_tube.is_none());
                 pvclock_host_tube = Some(Arc::new(t))
             }
+            #[cfg(not(feature = "pvclock"))]
+            AnyControlTube::PvClock(_) => unreachable!(),
             #[cfg(feature = "audio")]
-            AnyControlTube::DeviceControlTube(DeviceControlTube::Snd(t)) => {
-                snd_host_tubes.push(t);
-            }
-            AnyControlTube::IrqTube(t) => irq_control_tubes.push(t),
-            AnyControlTube::TaggedControlTube(t) => control_tubes.push(t),
-            AnyControlTube::VmMemoryTube(t) => vm_memory_control_tubes.push(t),
+            AnyControlTube::Snd(t) => snd_host_tubes.push(t),
+            #[cfg(not(feature = "audio"))]
+            AnyControlTube::Snd(_) => unreachable!(),
+            AnyControlTube::Vm(t) => control_tubes.push(TaggedControlTube::Vm(t)),
+            AnyControlTube::VmMemoryTube {
+                tube,
+                expose_with_viommu,
+            } => vm_memory_control_tubes.push(VmMemoryTube {
+                tube,
+                expose_with_viommu,
+            }),
+            AnyControlTube::VmMsync(t) => control_tubes.push(TaggedControlTube::VmMsync(t)),
         }
     }
 

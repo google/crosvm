@@ -88,61 +88,12 @@ use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
 use vm_control::api::VmMemoryClient;
+use vm_control::AnyControlTube;
 use vm_memory::GuestAddress;
 
 use crate::crosvm::config::PmemOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::sys::config::PmemExt2Option;
-
-/// All the tube types collected and passed to `run_control`.
-///
-/// This mainly exists to simplify the device setup plumbing. We collect the tubes of all the
-/// devices into one list using this enum and then separate them out in `run_control` to be handled
-/// individually.
-#[remain::sorted]
-pub enum AnyControlTube {
-    DeviceControlTube(DeviceControlTube),
-    /// Receives `IrqHandlerRequest`.
-    IrqTube(Tube),
-    TaggedControlTube(TaggedControlTube),
-    VmMemoryTube(VmMemoryTube),
-}
-
-impl From<DeviceControlTube> for AnyControlTube {
-    fn from(value: DeviceControlTube) -> Self {
-        AnyControlTube::DeviceControlTube(value)
-    }
-}
-
-impl From<TaggedControlTube> for AnyControlTube {
-    fn from(value: TaggedControlTube) -> Self {
-        AnyControlTube::TaggedControlTube(value)
-    }
-}
-
-impl From<VmMemoryTube> for AnyControlTube {
-    fn from(value: VmMemoryTube) -> Self {
-        AnyControlTube::VmMemoryTube(value)
-    }
-}
-
-/// Tubes that initiate requests to devices.
-#[remain::sorted]
-pub enum DeviceControlTube {
-    // See `BalloonTube`.
-    #[cfg(feature = "balloon")]
-    Balloon(Tube),
-    // Sends `DiskControlCommand`.
-    Disk(Tube),
-    // Sends `GpuControlCommand`.
-    #[cfg(feature = "gpu")]
-    Gpu(Tube),
-    // Sends `PvClockCommand`.
-    #[cfg(feature = "pvclock")]
-    PvClock(Tube),
-    #[cfg(feature = "audio")]
-    Snd(Tube),
-}
 
 /// Tubes that service requests from devices.
 ///
@@ -1632,16 +1583,13 @@ pub fn create_vfio_device(
 
     let (vfio_host_tube_mem, vfio_device_tube_mem) =
         Tube::pair().context("failed to create tube")?;
-    add_control_tube(
-        VmMemoryTube {
-            tube: vfio_host_tube_mem,
-            expose_with_viommu: false,
-        }
-        .into(),
-    );
+    add_control_tube(AnyControlTube::VmMemoryTube {
+        tube: vfio_host_tube_mem,
+        expose_with_viommu: false,
+    });
 
     let (vfio_host_tube_vm, vfio_device_tube_vm) = Tube::pair().context("failed to create tube")?;
-    add_control_tube(TaggedControlTube::Vm(vfio_host_tube_vm).into());
+    add_control_tube(AnyControlTube::Vm(vfio_host_tube_vm));
 
     let vfio_device =
         VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_dev, dt_symbol)

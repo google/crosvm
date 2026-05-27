@@ -12,6 +12,9 @@
 
 pub mod api;
 
+mod any_control_tube;
+pub use any_control_tube::AnyControlTube;
+
 mod device_id;
 pub use device_id::DeviceId;
 pub use device_id::PciId;
