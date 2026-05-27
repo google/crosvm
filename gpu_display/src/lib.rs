@@ -194,7 +194,7 @@ impl<'a> GpuDisplayFramebuffer<'a> {
         let slice = self
             .framebuffer
             .sub_slice(byte_offset as usize, count as usize)
-            .unwrap();
+            .ok()?;
 
         Some(GpuDisplayFramebuffer { slice, ..*self })
     }
