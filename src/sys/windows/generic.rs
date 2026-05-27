@@ -44,6 +44,7 @@ use gpu_display::WindowProcedureThreadBuilder;
 pub(crate) use metrics::log_descriptor;
 pub(crate) use metrics::MetricEventType;
 use sync::Mutex;
+use vm_control::AnyControlTube;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
 use vm_control::InitialAudioSessionState;
@@ -177,21 +178,21 @@ pub(super) fn create_service_audio_states_and_send_to_service(
 pub(super) fn push_window_procedure_thread_control_tubes(
     #[allow(clippy::ptr_arg)]
     // The implementor can extend the size of this argument, so mutable slice is not enough.
-    _control_tubes: &mut Vec<SharedTaggedControlTube>,
+    _add_control_tube: &mut dyn FnMut(AnyControlTube),
     _: &mut WindowProcedureThreadVmmConfig,
 ) {
 }
 
 #[cfg(feature = "gpu")]
 pub(super) fn push_gpu_control_tubes(
-    _control_tubes: &mut [SharedTaggedControlTube],
+    _add_control_tube: &mut dyn FnMut(AnyControlTube),
     _gpu_vmm_config: &mut GpuVmmConfig,
 ) {
 }
 
 #[cfg(feature = "audio")]
 pub(super) fn push_snd_control_tubes(
-    _control_tubes: &mut [SharedTaggedControlTube],
+    _add_control_tube: &mut dyn FnMut(AnyControlTube),
     _snd_vmm_config: &mut SndVmmConfig,
 ) {
 }
