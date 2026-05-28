@@ -33,6 +33,10 @@ use balloon_control::WSBucket;
 use base::descriptor::IntoRawDescriptor;
 use base::FromRawDescriptor;
 use base::SafeDescriptor;
+#[cfg(unix)]
+use base::Tube;
+#[cfg(unix)]
+use base::UnixSeqpacket;
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
@@ -58,6 +62,9 @@ use vm_control::gpu::GpuControlResult;
 use vm_control::BalloonControlCommand;
 use vm_control::BatProperty;
 use vm_control::DiskControlCommand;
+use vm_control::FsAllowlistCommand;
+#[cfg(unix)]
+use vm_control::FsAllowlistResponse;
 use vm_control::HypervisorKind;
 use vm_control::RegisteredEvent;
 use vm_control::SwapCommand;
@@ -222,6 +229,36 @@ unsafe fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
     } else {
         None
     }
+}
+
+/// # Safety
+/// `paths` must point to an array of `num_paths` valid C strings if `num_paths > 0`.
+unsafe fn validate_path_array(
+    paths: *const *const c_char,
+    num_paths: usize,
+) -> Option<Vec<PathBuf>> {
+    if num_paths == 0 {
+        return Some(Vec::new());
+    }
+    if paths.is_null() {
+        return None;
+    }
+    // SAFETY:
+    // The caller guarantees `paths` points to a valid array of `num_paths` pointers.
+    // We verified `paths` is not null and `num_paths` is not 0.
+    let paths_slice = unsafe { std::slice::from_raw_parts(paths, num_paths) };
+    let mut validated_paths = Vec::with_capacity(num_paths);
+    for &path_ptr in paths_slice {
+        // SAFETY:
+        // The caller guarantees the pointers in `paths` point to valid C strings.
+        // `validate_socket_path` will check for null pointers.
+        if let Some(path) = unsafe { validate_socket_path(path_ptr) } {
+            validated_paths.push(path);
+        } else {
+            return None;
+        }
+    }
+    Some(validated_paths)
 }
 
 /// Stops the crosvm instance whose control socket is listening on `socket_path`.
@@ -1642,4 +1679,252 @@ pub unsafe extern "C" fn crosvm_unregister_memory(
         matches!(resp, Ok(VmResponse::Ok))
     })
     .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn send_fs_allowlist_command(
+    socket_path: &std::path::Path,
+    cmd: FsAllowlistCommand,
+    timeout: Duration,
+) -> bool {
+    let s = match UnixSeqpacket::connect(socket_path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let socket = match Tube::try_from(s) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    if socket.set_recv_timeout(Some(timeout)).is_err() {
+        return false;
+    }
+    if socket.send(&cmd).is_err() {
+        return false;
+    }
+    matches!(
+        socket.recv::<FsAllowlistResponse>(),
+        Ok(FsAllowlistResponse::Ok)
+    )
+}
+
+#[cfg(not(unix))]
+fn send_fs_allowlist_command(
+    _socket_path: &std::path::Path,
+    _cmd: FsAllowlistCommand,
+    _timeout: Duration,
+) -> bool {
+    false
+}
+
+/// Dynamically add paths to a running vhost-user fs backend's allowlist with a timeout.
+/// `socket_path` is the path to the allowlist SOCK_SEQPACKET socket.
+/// `paths` is an array of absolute paths to add.
+/// `num_paths` is the number of paths in the `paths` array.
+/// `timeout_ms` is the timeout in milliseconds.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` and `paths` should be non-null
+/// pointers. `paths` must point to an array of `num_paths` valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_device_client_fs_allowlist_add(
+    socket_path: *const c_char,
+    paths: *const *const c_char,
+    num_paths: usize,
+    timeout_ms: u64,
+) -> bool {
+    catch_unwind(|| {
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return false;
+        };
+        let Some(validated_paths) = validate_path_array(paths, num_paths) else {
+            return false;
+        };
+        if validated_paths.is_empty() {
+            return true;
+        }
+
+        let cmd = FsAllowlistCommand::AddPaths {
+            paths: validated_paths,
+        };
+        send_fs_allowlist_command(&socket_path, cmd, Duration::from_millis(timeout_ms))
+    })
+    .unwrap_or(false)
+}
+
+/// Dynamically remove paths from a running vhost-user fs backend's allowlist with a timeout.
+/// `socket_path` is the path to the allowlist SOCK_SEQPACKET socket.
+/// `paths` is an array of absolute paths to remove.
+/// `num_paths` is the number of paths in the `paths` array.
+/// `timeout_ms` is the timeout in milliseconds.
+///
+/// The function returns true on success or false if an error occurred.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - `socket_path` and `paths` should be non-null
+/// pointers. `paths` must point to an array of `num_paths` valid C strings.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_device_client_fs_allowlist_remove(
+    socket_path: *const c_char,
+    paths: *const *const c_char,
+    num_paths: usize,
+    timeout_ms: u64,
+) -> bool {
+    catch_unwind(|| {
+        let Some(socket_path) = validate_socket_path(socket_path) else {
+            return false;
+        };
+        let Some(validated_paths) = validate_path_array(paths, num_paths) else {
+            return false;
+        };
+        if validated_paths.is_empty() {
+            return true;
+        }
+
+        let cmd = FsAllowlistCommand::RemovePaths {
+            paths: validated_paths,
+        };
+        send_fs_allowlist_command(&socket_path, cmd, Duration::from_millis(timeout_ms))
+    })
+    .unwrap_or(false)
+}
+
+#[cfg(test)]
+#[cfg(unix)]
+mod tests {
+    use std::thread;
+
+    use base::UnixSeqpacketListener;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn test_fs_allowlist_timeout() {
+        let temp_dir = TempDir::new().unwrap();
+        let socket_path = temp_dir.path().join("test.sock");
+
+        // Create a listener that accepts but does not respond.
+        let listener = UnixSeqpacketListener::bind(&socket_path).unwrap();
+
+        // Spawn a thread to accept the connection to avoid blocking the main thread during connect.
+        let server_thread = thread::spawn(move || {
+            let _client = listener.accept().unwrap();
+            // Just sleep to simulate unresponsiveness.
+            thread::sleep(Duration::from_secs(2));
+        });
+
+        let socket_path_cstr = std::ffi::CString::new(socket_path.to_str().unwrap()).unwrap();
+        let path_cstr = std::ffi::CString::new("/test/path").unwrap();
+        let paths = [path_cstr.as_ptr()];
+
+        let start = std::time::Instant::now();
+        // Call with 10ms timeout.
+        // SAFETY: safe because FFI arguments are valid CStrings.
+        let result = unsafe {
+            crosvm_device_client_fs_allowlist_add(
+                socket_path_cstr.as_ptr(),
+                paths.as_ptr(),
+                paths.len(),
+                10, // 10ms
+            )
+        };
+        let duration = start.elapsed();
+
+        // It should fail.
+        assert!(!result);
+        // It should take roughly 10ms, definitely less than 2s.
+        assert!(duration >= Duration::from_millis(10));
+
+        server_thread.join().unwrap();
+    }
+
+    #[test]
+    fn test_fs_allowlist_empty_paths() {
+        let temp_dir = TempDir::new().unwrap();
+        let socket_path = temp_dir.path().join("test.sock");
+        let socket_path_cstr = std::ffi::CString::new(socket_path.to_str().unwrap()).unwrap();
+
+        // 1. null paths, 0 num_paths -> should succeed (early return true)
+        // SAFETY: safe because socket_path is valid CString, paths is null but num_paths is 0
+        // which is handled safely by returning early.
+        let result = unsafe {
+            crosvm_device_client_fs_allowlist_add(
+                socket_path_cstr.as_ptr(),
+                std::ptr::null(),
+                0,
+                10,
+            )
+        };
+        assert!(result);
+
+        // SAFETY: safe because socket_path is valid CString, paths is null but num_paths is 0
+        // which is handled safely by returning early.
+        let result = unsafe {
+            crosvm_device_client_fs_allowlist_remove(
+                socket_path_cstr.as_ptr(),
+                std::ptr::null(),
+                0,
+                10,
+            )
+        };
+        assert!(result);
+
+        // 2. non-null paths, 0 num_paths -> should succeed (early return true)
+        let dummy_path = std::ffi::CString::new("/dummy").unwrap();
+        let paths = [dummy_path.as_ptr()];
+        // SAFETY: safe because socket_path is valid CString, paths is valid pointer but num_paths
+        // is 0 which is handled safely by returning early.
+        let result = unsafe {
+            crosvm_device_client_fs_allowlist_add(socket_path_cstr.as_ptr(), paths.as_ptr(), 0, 10)
+        };
+        assert!(result);
+
+        // SAFETY: safe because socket_path is valid CString, paths is valid pointer but num_paths
+        // is 0 which is handled safely by returning early.
+        let result = unsafe {
+            crosvm_device_client_fs_allowlist_remove(
+                socket_path_cstr.as_ptr(),
+                paths.as_ptr(),
+                0,
+                10,
+            )
+        };
+        assert!(result);
+    }
+
+    #[test]
+    fn test_fs_allowlist_null_paths_with_len() {
+        let temp_dir = TempDir::new().unwrap();
+        let socket_path = temp_dir.path().join("test.sock");
+        let socket_path_cstr = std::ffi::CString::new(socket_path.to_str().unwrap()).unwrap();
+
+        // null paths, >0 num_paths -> should fail
+        // SAFETY: safe because socket_path is valid CString, null paths with non-zero length
+        // is detected and handled by returning false.
+        let result = unsafe {
+            crosvm_device_client_fs_allowlist_add(
+                socket_path_cstr.as_ptr(),
+                std::ptr::null(),
+                1,
+                10,
+            )
+        };
+        assert!(!result);
+
+        // SAFETY: safe because socket_path is valid CString, null paths with non-zero length
+        // is detected and handled by returning false.
+        let result = unsafe {
+            crosvm_device_client_fs_allowlist_remove(
+                socket_path_cstr.as_ptr(),
+                std::ptr::null(),
+                1,
+                10,
+            )
+        };
+        assert!(!result);
+    }
 }
