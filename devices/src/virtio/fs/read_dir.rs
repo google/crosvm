@@ -3,10 +3,12 @@
 // found in the LICENSE file.
 
 use std::ffi::CStr;
+use std::ffi::OsStr;
 use std::io;
 use std::mem::size_of;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::os::unix::ffi::OsStrExt;
 
 use base::AsRawDescriptor;
 use fuse::filesystem::DirEntry;
@@ -16,7 +18,7 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use crate::virtio::fs::allowlist::PathAllowlist;
+use crate::virtio::fs::allowlist::ReadDirFilter;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]
@@ -31,12 +33,12 @@ pub struct ReadDir<P> {
     buf: P,
     current: usize,
     end: usize,
-    allowlist_context: Option<(String, PathAllowlist)>,
+    filter: Option<ReadDirFilter>,
 }
 
 impl<P> ReadDir<P> {
-    pub fn with_allowlist(mut self, parent_path: String, allowlist: PathAllowlist) -> Self {
-        self.allowlist_context = Some((parent_path, allowlist));
+    pub fn with_filter(mut self, filter: ReadDirFilter) -> Self {
+        self.filter = Some(filter);
         self
     }
 }
@@ -69,7 +71,7 @@ impl<P: DerefMut<Target = [u8]>> ReadDir<P> {
             buf,
             current: 0,
             end: res as usize,
-            allowlist_context: None,
+            filter: None,
         })
     }
 }
@@ -110,27 +112,21 @@ impl<P: Deref<Target = [u8]>> DirectoryIterator for ReadDir<P> {
             self.current += dirent64.d_reclen as usize;
 
             // Apply dynamic path allowlist filtering.
-            // If the resolved full path of an entry is not accessible according to the allowlist,
-            // we skip the entry (hide it from directory listings).
-            if let Some((parent_path, allowlist)) = &self.allowlist_context {
-                let name_str = match entry.name.to_str() {
-                    Ok(s) => s,
-                    Err(_) => {
-                        // Skip entries with invalid UTF-8 names since they cannot be
-                        // validated against the string-based allowlist.
-                        base::debug!("Skipping non-UTF-8 directory entry: {:?}", entry.name);
+            if let Some(filter) = &self.filter {
+                match filter {
+                    ReadDirFilter::AllowAll => {}
+                    ReadDirFilter::DenyAll => {
                         continue;
                     }
-                };
-                if name_str != "." && name_str != ".." {
-                    let full_path = if parent_path == "/" {
-                        format!("/{name_str}")
-                    } else {
-                        format!("{parent_path}/{name_str}")
-                    };
-                    if !allowlist.is_accessible(&full_path) {
-                        // Skip this entry and check the next one (hide from guest)
-                        continue;
+                    ReadDirFilter::AllowOnly(allowed_entries) => {
+                        let name_bytes = entry.name.to_bytes();
+                        if name_bytes != b"." && name_bytes != b".." {
+                            let name_os = OsStr::from_bytes(name_bytes);
+                            if !allowed_entries.contains(name_os) {
+                                // Skip this entry and check the next one (hide from guest)
+                                continue;
+                            }
+                        }
                     }
                 }
             }

@@ -2608,8 +2608,11 @@ impl FileSystem for PassthroughFs {
         // If an allowlist is configured, inject the allowlist context into the ReadDir
         // iterator to enable directory entry filtering (hiding unauthorized files).
         if let Some(allowlist) = &self.allowlist {
-            let allowlist_clone = allowlist.read().unwrap().clone();
-            read_dir = read_dir.with_allowlist(parent_path, allowlist_clone);
+            let allowlist_guard = allowlist
+                .read()
+                .expect("failed to acquire read lock on allowlist");
+            let filter = allowlist_guard.get_read_dir_filter(&parent_path);
+            read_dir = read_dir.with_filter(filter);
         }
 
         Ok(read_dir)

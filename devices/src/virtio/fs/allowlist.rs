@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::Path;
@@ -57,6 +58,17 @@ pub enum AccessLevel {
     Full,
 }
 
+/// Represents a pre-calculated filter for directory entry validation.
+#[derive(Debug, Clone)]
+pub enum ReadDirFilter {
+    /// Allows all directory entries (parent directory has Full access level).
+    AllowAll,
+    /// Allows only the specified entry names (parent directory has Traverse access level).
+    AllowOnly(HashSet<OsString>),
+    /// Denies all directory entries (parent directory is not accessible).
+    DenyAll,
+}
+
 #[derive(Debug, Clone)]
 struct TrieNode {
     access_level: AccessLevel,
@@ -81,6 +93,7 @@ impl TrieNode {
     }
 
     /// Returns true if any descendant of this node has an active access level.
+    #[allow(dead_code)]
     fn has_active_descendants(&self) -> bool {
         self.active_children_count > 0
     }
@@ -146,6 +159,7 @@ pub struct PathAllowlist {
 
 impl PathAllowlist {
     /// Creates a new `PathAllowlist`.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             root: TrieNode::default(),
@@ -165,6 +179,7 @@ impl PathAllowlist {
     /// Adds a path to the allowed list. The path will be normalized before being added.
     /// Returns true if the path was valid and successfully added.
     /// Returns false if the path was invalid (e.g. traversed above root).
+    #[allow(dead_code)]
     pub fn add_path<P: AsRef<Path>>(&mut self, path: P) -> bool {
         let normalized = match normalize_lexically(path.as_ref()) {
             Some(p) => p,
@@ -204,6 +219,7 @@ impl PathAllowlist {
     /// Removes a path from the allowed list. The path will be normalized before removal.
     /// Returns true if the path was explicitly allowed and successfully removed (or demoted).
     /// Returns false if the path was not explicitly allowed.
+    #[allow(dead_code)]
     pub fn remove_path<P: AsRef<Path>>(&mut self, path: P) -> bool {
         let normalized = match normalize_lexically(path.as_ref()) {
             Some(p) => p,
@@ -309,6 +325,53 @@ impl PathAllowlist {
             return false;
         }
         self.get_access_level(path.as_ref()) == AccessLevel::Full
+    }
+
+    /// Returns a `ReadDirFilter` for the given parent directory path.
+    ///
+    /// This pre-calculates the accessible entries within the directory, avoiding the need
+    /// to perform full path resolution and Trie traversal for each individual entry during
+    /// directory listing.
+    pub fn get_read_dir_filter<P: AsRef<Path>>(&self, parent_path: P) -> ReadDirFilter {
+        if !self.root.is_active() {
+            return ReadDirFilter::DenyAll;
+        }
+
+        let normalized = match normalize_lexically(parent_path.as_ref()) {
+            Some(p) => p,
+            None => return ReadDirFilter::DenyAll,
+        };
+        let components = Self::parse_components(&normalized);
+
+        let mut current = &self.root;
+        if current.access_level == AccessLevel::Full {
+            return ReadDirFilter::AllowAll;
+        }
+
+        for comp in components {
+            if let Some(next) = current.children.get(comp) {
+                current = next;
+                if current.access_level == AccessLevel::Full {
+                    return ReadDirFilter::AllowAll;
+                }
+            } else {
+                return ReadDirFilter::DenyAll;
+            }
+        }
+
+        match current.access_level {
+            AccessLevel::Full => ReadDirFilter::AllowAll,
+            AccessLevel::Traverse => {
+                let allowed_entries = current
+                    .children
+                    .iter()
+                    .filter(|(_, child)| child.is_active())
+                    .map(|(name, _)| name.clone())
+                    .collect::<HashSet<_>>();
+                ReadDirFilter::AllowOnly(allowed_entries)
+            }
+            AccessLevel::None => ReadDirFilter::DenyAll,
+        }
     }
 }
 
@@ -555,5 +618,68 @@ mod tests {
         assert!(allowlist.is_accessible("/a"));
         assert!(!allowlist.remove_path("/a/../.."));
         assert!(allowlist.is_accessible("/a"));
+    }
+
+    #[test]
+    fn test_path_allowlist_get_read_dir_filter() {
+        let mut allowlist = PathAllowlist::new();
+
+        // Empty allowlist should return DenyAll for any path
+        assert!(matches!(
+            allowlist.get_read_dir_filter("/"),
+            ReadDirFilter::DenyAll
+        ));
+        assert!(matches!(
+            allowlist.get_read_dir_filter("/a"),
+            ReadDirFilter::DenyAll
+        ));
+
+        allowlist.add_path("/a/b");
+
+        // Root directory is Traverse, should only allow "a"
+        match allowlist.get_read_dir_filter("/") {
+            ReadDirFilter::AllowOnly(set) => {
+                assert_eq!(set.len(), 1);
+                assert!(set.contains(OsStr::new("a")));
+            }
+            _ => panic!("expected AllowOnly"),
+        }
+
+        // /a is Traverse, should only allow "b"
+        match allowlist.get_read_dir_filter("/a") {
+            ReadDirFilter::AllowOnly(set) => {
+                assert_eq!(set.len(), 1);
+                assert!(set.contains(OsStr::new("b")));
+            }
+            _ => panic!("expected AllowOnly"),
+        }
+
+        // /a/b is Full, should return AllowAll
+        assert!(matches!(
+            allowlist.get_read_dir_filter("/a/b"),
+            ReadDirFilter::AllowAll
+        ));
+
+        // Descendant of Full path should also return AllowAll
+        assert!(matches!(
+            allowlist.get_read_dir_filter("/a/b/c"),
+            ReadDirFilter::AllowAll
+        ));
+
+        // Test redundant nodes under Full path
+        let mut allowlist2 = PathAllowlist::new();
+        allowlist2.add_path("/a/b/c");
+        allowlist2.add_path("/a");
+        // /a is Full, so /a/b should be AllowAll even if 'b' exists as Traverse in Trie
+        assert!(matches!(
+            allowlist2.get_read_dir_filter("/a/b"),
+            ReadDirFilter::AllowAll
+        ));
+
+        // Unrelated path should return DenyAll
+        assert!(matches!(
+            allowlist.get_read_dir_filter("/d"),
+            ReadDirFilter::DenyAll
+        ));
     }
 }
