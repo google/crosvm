@@ -18,7 +18,7 @@ serde = { workspace = true, features = [ "derive" ] }
 serde_keyvalue = { workspace = true, features = ["argh_derive"] }
 snapshot = { workspace = true }
 thiserror = { workspace = true }
-zerocopy = { version = "0.8.13", features = ["derive"] }
+zerocopy = { version = "0.8.13", features = ["derive", "alloc"] }
 
 [dev-dependencies]
 tempfile = "3"
