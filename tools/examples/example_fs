@@ -25,7 +25,7 @@ fi
 # Use crosvm/tools/examples/images/simple/host_shared_dir as mount point
 cargo run -- run \
     --shared-dir "$HOST_SHARED_DIR:my_shared_tag:type=fs" \
-    --rwdisk ./rootfs \
+    --block ./rootfs \
     --initrd ./initrd.img-* \
     -p "root=/dev/vda5 " \
     ./vmlinuz-*

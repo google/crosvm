@@ -44,6 +44,6 @@ cargo run --features "all-msvc64,whpx" -- `
     --serial "hardware=serial,type=namedpipe,path=$SERIAL,num=1,console=true" `
     --params "nopat clocksource=jiffies root=/dev/vda5 loglevel=7 console=/dev/ttyS1 console=/dev/ttyS0"  `
     --host-guid "dontcare" `
-    --rwdisk $ROOTFS `
+    --block $ROOTFS `
     --initrd $INITRD `
     $VMLINUZ

@@ -44,7 +44,7 @@ fi
 # ANCHOR: run
 # Use the previously configured crosvm_tap device for networking.
 cargo run -- run \
-    --rwdisk ./rootfs \
+    --block ./rootfs \
     --initrd ./initrd.img-* \
     --net tap-name=crosvm_tap \
     -p "root=/dev/vda5" \
