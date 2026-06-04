@@ -26,7 +26,6 @@ use base::linux::MemfdSeals;
 use base::sys::SharedMemoryLinux;
 use base::*;
 use device_virtio_block::DiskOption;
-use device_virtio_console::Console;
 #[cfg(feature = "net")]
 use device_virtio_net::create_tap_for_net_device;
 #[cfg(feature = "net")]
@@ -172,32 +171,18 @@ impl IntoUnixStream for UnixStream {
 
 pub type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
-/// A trait for spawning virtio device instances and jails from their configuration structure.
-///
-/// Implementors become able to create virtio devices and jails following their own configuration.
-/// This trait also provides a few convenience methods for e.g. creating a virtio device and jail
-/// at once.
+/// A trait for spawning vhost-user device instances and jails from their configuration structure.
+// TODO: This isn't used for regular virtio devices anymore. Rename to VhostUserDeviceBuilder. Or,
+// dissolve it. There are too many different vhost-user builder traits.
 pub trait VirtioDeviceBuilder: Sized {
     /// Base name of the device, as it will appear in logs.
     const NAME: &'static str;
 
-    /// Create a regular virtio device from the configuration and `protection_type` setting.
-    #[allow(dead_code)] // TODO: delete
-    fn create_virtio_device(
-        self,
-        protection_type: ProtectionType,
-    ) -> anyhow::Result<Box<dyn VirtioDevice>>;
-
     /// Create a device suitable for being run as a vhost-user instance.
-    ///
-    /// It is ok to leave this method unimplemented if the device is not intended to be used with
-    /// vhost-user.
     fn create_vhost_user_device(
         self,
         _keep_rds: &mut Vec<RawDescriptor>,
-    ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
-        unimplemented!()
-    }
+    ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>>;
 
     /// Create a jail that is suitable to run a device.
     ///
@@ -212,21 +197,6 @@ pub trait VirtioDeviceBuilder: Sized {
             jail_config,
             &virtio_transport.seccomp_policy_file(Self::NAME),
         )
-    }
-
-    /// Helper method to return a `VirtioDeviceStub` filled using `create_virtio_device` and
-    /// `create_jail`.
-    ///
-    /// This helper should cover the needs of most devices when run as regular virtio devices.
-    #[allow(dead_code)] // TODO: delete
-    fn create_virtio_device_and_jail(
-        self,
-        protection_type: ProtectionType,
-        jail_config: Option<&JailConfig>,
-    ) -> DeviceResult {
-        let jail = self.create_jail(jail_config, VirtioDeviceType::Regular)?;
-        let dev = self.create_virtio_device(protection_type)?;
-        Ok(VirtioDeviceStub { dev, jail })
     }
 }
 
@@ -247,29 +217,6 @@ impl<'a> DiskConfig<'a> {
 
 impl VirtioDeviceBuilder for DiskConfig<'_> {
     const NAME: &'static str = "block";
-
-    fn create_virtio_device(
-        self,
-        protection_type: ProtectionType,
-    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        info!(
-            "Trying to attach block device: {}",
-            self.disk.path.display(),
-        );
-        let disk_image = self.disk.open()?;
-        let base_features = virtio::base_features(protection_type);
-        Ok(Box::new(
-            device_virtio_block::BlockAsync::new(
-                base_features,
-                disk_image,
-                self.disk,
-                self.device_tube,
-                None,
-                None,
-            )
-            .context("failed to create block device")?,
-        ))
-    }
 
     fn create_vhost_user_device(
         self,
@@ -665,13 +612,6 @@ pub fn create_pvclock_device(
 impl VirtioDeviceBuilder for &NetParameters {
     const NAME: &'static str = "net";
 
-    fn create_virtio_device(
-        self,
-        protection_type: ProtectionType,
-    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        self.create_net_device(protection_type)
-    }
-
     fn create_jail(
         &self,
         jail_config: Option<&JailConfig>,
@@ -894,18 +834,6 @@ pub fn create_virtio_media_adapter(
 
 impl VirtioDeviceBuilder for &VsockConfig {
     const NAME: &'static str = "vhost_vsock";
-
-    fn create_virtio_device(
-        self,
-        protection_type: ProtectionType,
-    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        let features = virtio::base_features(protection_type);
-
-        let dev = device_virtio_vsock::vhost::Vsock::new(features, self)
-            .context("failed to set up virtual socket device")?;
-
-        Ok(Box::new(dev))
-    }
 
     fn create_vhost_user_device(
         self,
@@ -1278,19 +1206,6 @@ pub fn create_iommu_device(
 /// For creating console virtio devices.
 impl VirtioDeviceBuilder for &SerialParameters {
     const NAME: &'static str = "serial";
-
-    fn create_virtio_device(
-        self,
-        protection_type: ProtectionType,
-    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        let mut keep_rds = Vec::new();
-        let evt = Event::new().context("failed to create event")?;
-
-        Ok(Box::new(
-            self.create_serial_device::<Console>(protection_type, &evt, &mut keep_rds)
-                .context("failed to create console device")?,
-        ))
-    }
 
     fn create_vhost_user_device(
         self,
