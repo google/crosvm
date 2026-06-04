@@ -16,6 +16,8 @@ mod sys;
 use std::collections::BTreeMap;
 
 use anyhow::Context;
+use base::info;
+use base::Event;
 use base::RawDescriptor;
 use hypervisor::ProtectionType;
 use snapshot::AnySnapshot;
@@ -30,6 +32,10 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::PciAddress;
+use crate::SerialParameters;
+use crate::SerialType;
+use crate::VirtioDeviceArgs;
+use crate::VirtioDeviceModule;
 
 const QUEUE_SIZE: u16 = 256;
 
@@ -156,6 +162,64 @@ impl VirtioDevice for Console {
             AnySnapshot::from_any(data).context("failed to deserialize virtio console")?;
         self.console.restore(&snap)
     }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct VirtioConsoleModule(pub SerialParameters);
+
+impl VirtioDeviceModule for VirtioConsoleModule {
+    fn sort_name(&self) -> &'static str {
+        "console"
+    }
+
+    fn create(&self, args: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let mut keep_rds = Vec::new();
+        let evt = Event::new().context("failed to create event")?;
+        Ok(Box::new(
+            self.0
+                .create_serial_device::<Console>(args.protection_type, &evt, &mut keep_rds)
+                .context("failed to create console device")?,
+        ))
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn create_jail(
+        &self,
+        jail_config: &jail::JailConfig,
+    ) -> anyhow::Result<Option<minijail::Minijail>> {
+        create_jail(
+            &self.0,
+            jail_config,
+            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file("serial"),
+        )
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub fn create_jail(
+    params: &SerialParameters,
+    jail_config: &jail::JailConfig,
+    policy: &str,
+) -> anyhow::Result<Option<minijail::Minijail>> {
+    let mut config = jail::SandboxConfig::new(jail_config, policy);
+    config.bind_mounts = true;
+    let mut jail = jail::create_sandbox_minijail(
+        &jail_config.pivot_root,
+        jail::MAX_OPEN_FILES_DEFAULT,
+        &config,
+    )?;
+    if let Some(path) = &params.path {
+        if let SerialType::SystemSerialType = params.type_ {
+            if let Some(parent) = path.as_path().parent() {
+                if parent.exists() {
+                    info!("Bind mounting dir {}", parent.display());
+                    jail.mount_bind(parent, parent, true)
+                        .context("failed to add bind mounts for console device")?;
+                }
+            }
+        }
+    }
+    Ok(Some(jail))
 }
 
 #[cfg(test)]

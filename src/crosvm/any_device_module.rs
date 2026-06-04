@@ -88,5 +88,6 @@ declare_any_virtio_device_module! {
         Block(device_virtio_block::DiskOption),
         #[cfg(feature = "audio")]
         Snd(device_virtio_snd::VirtioSndModule),
+        Console(devices::virtio::console::VirtioConsoleModule),
     }
 }

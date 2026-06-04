@@ -86,7 +86,6 @@ use device_virtio_net::NetParametersMode;
 #[cfg(feature = "pci-hotplug")]
 use device_virtio_net::NetPciHotplugResourceCarrier;
 use devices::create_devices_worker_thread;
-use devices::serial_device::SerialHardware;
 #[cfg(all(feature = "pvclock", target_arch = "x86_64"))]
 use devices::tsc::get_tsc_sync_mitigations;
 use devices::vfio::VfioContainerManager;
@@ -396,16 +395,6 @@ fn create_virtio_devices(
                 )?,
             ));
         }
-    }
-
-    for (_, param) in cfg
-        .serial_parameters
-        .iter()
-        .filter(|(_k, v)| v.hardware == SerialHardware::VirtioConsole)
-    {
-        let dev =
-            param.create_virtio_device_and_jail(cfg.protection_type, cfg.jail_config.as_ref())?;
-        devs.push(("console", dev));
     }
 
     for (index, pmem_disk) in cfg.pmems.iter().enumerate() {

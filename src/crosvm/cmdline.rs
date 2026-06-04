@@ -2522,6 +2522,12 @@ impl TryFrom<RunCommand> for super::config::Config {
 
             cfg.serial_parameters.insert(key, serial_params);
         }
+        cfg.virtio_device_modules.extend(
+            cfg.serial_parameters
+                .iter()
+                .filter(|((k, _), _)| *k == SerialHardware::VirtioConsole)
+                .map(|(_, v)| devices::virtio::console::VirtioConsoleModule(v.clone()).into()),
+        );
 
         if !(cmd.root.is_none()
             && cmd.rwroot.is_none()

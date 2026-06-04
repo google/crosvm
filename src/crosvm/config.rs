@@ -744,7 +744,9 @@ pub struct Config {
     pub pvm_fw: Option<PathBuf>,
     pub restore_path: Option<PathBuf>,
     pub rt_cpus: CpuSet,
-
+    /// Note: virtio-console devices are present both in the serial_parameters field and in the
+    /// virtio_device_modules field. They are only present in serial_parameters so that they get
+    /// included in the get_serial_cmdline flow.
     #[serde(with = "serde_serial_params")]
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
     #[cfg(windows)]

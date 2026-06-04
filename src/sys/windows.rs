@@ -76,8 +76,6 @@ use device_virtio_snd::vhost_user::sys::windows::run_snd_device_worker;
 #[cfg(feature = "audio")]
 use device_virtio_snd::vhost_user::sys::windows::SndSplitConfig;
 use devices::create_devices_worker_thread;
-use devices::serial_device::SerialHardware;
-use devices::serial_device::SerialParameters;
 use devices::tsc::get_tsc_sync_mitigations;
 use devices::tsc::standard_deviation;
 use devices::tsc::TscSyncMitigations;
@@ -92,7 +90,6 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfi
 use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
-use devices::virtio::Console;
 use devices::BusDeviceObj;
 use devices::BusResumeDevice;
 #[cfg(feature = "gvm")]
@@ -388,19 +385,6 @@ fn create_vhost_user_net_device(
     })
 }
 
-fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult {
-    let mut keep_rds = Vec::new();
-    let evt = Event::new().exit_context(Exit::CreateEvent, "failed to create event")?;
-    let dev = param
-        .create_serial_device::<Console>(cfg.protection_type, &evt, &mut keep_rds)
-        .exit_context(Exit::CreateConsole, "failed to create console device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    })
-}
-
 #[cfg(feature = "balloon")]
 fn create_balloon_device(
     cfg: &Config,
@@ -457,15 +441,6 @@ fn create_virtio_devices(
             "block",
             create_vhost_user_block_device(cfg, connection, vm_evt_wrtube.try_clone()?)?,
         ));
-    }
-
-    for (_, param) in cfg
-        .serial_parameters
-        .iter()
-        .filter(|(_k, v)| v.hardware == SerialHardware::VirtioConsole)
-    {
-        let dev = create_console_device(cfg, param)?;
-        devs.push(("console", dev));
     }
 
     #[cfg(feature = "audio")]

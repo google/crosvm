@@ -34,7 +34,6 @@ use device_virtio_net::NetBackend;
 use device_virtio_net::NetParameters;
 use device_virtio_vsock::VsockConfig;
 use devices::serial_device::SerialParameters;
-use devices::serial_device::SerialType;
 use devices::vfio::VfioContainerManager;
 use devices::virtio;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -183,6 +182,7 @@ pub trait VirtioDeviceBuilder: Sized {
     const NAME: &'static str;
 
     /// Create a regular virtio device from the configuration and `protection_type` setting.
+    #[allow(dead_code)] // TODO: delete
     fn create_virtio_device(
         self,
         protection_type: ProtectionType,
@@ -218,6 +218,7 @@ pub trait VirtioDeviceBuilder: Sized {
     /// `create_jail`.
     ///
     /// This helper should cover the needs of most devices when run as regular virtio devices.
+    #[allow(dead_code)] // TODO: delete
     fn create_virtio_device_and_jail(
         self,
         protection_type: ProtectionType,
@@ -1274,20 +1275,6 @@ pub fn create_iommu_device(
     })
 }
 
-fn add_bind_mounts(param: &SerialParameters, jail: &mut Minijail) -> Result<(), minijail::Error> {
-    if let Some(path) = &param.path {
-        if let SerialType::SystemSerialType = param.type_ {
-            if let Some(parent) = path.as_path().parent() {
-                if parent.exists() {
-                    info!("Bind mounting dir {}", parent.display());
-                    jail.mount_bind(parent, parent, true)?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 /// For creating console virtio devices.
 impl VirtioDeviceBuilder for &SerialParameters {
     const NAME: &'static str = "serial";
@@ -1320,14 +1307,11 @@ impl VirtioDeviceBuilder for &SerialParameters {
         virtio_transport: VirtioDeviceType,
     ) -> anyhow::Result<Option<Minijail>> {
         if let Some(jail_config) = jail_config {
-            let policy = virtio_transport.seccomp_policy_file("serial");
-            let mut config = SandboxConfig::new(jail_config, &policy);
-            config.bind_mounts = true;
-            let mut jail =
-                create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
-            add_bind_mounts(self, &mut jail)
-                .context("failed to add bind mounts for console device")?;
-            Ok(Some(jail))
+            devices::virtio::console::create_jail(
+                self,
+                jail_config,
+                virtio_transport.seccomp_policy_file("serial").as_str(),
+            )
         } else {
             Ok(None)
         }
