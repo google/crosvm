@@ -20,11 +20,11 @@ use crate::bindings::*;
 /// Returns the system error as the result;
 pub type Result<T> = std::result::Result<T, c_int>;
 
-pub unsafe fn io_uring_setup(num_entries: usize, params: &io_uring_params) -> Result<RawFd> {
+pub unsafe fn io_uring_setup(num_entries: usize, params: &mut io_uring_params) -> Result<RawFd> {
     let ret = syscall(
         SYS_io_uring_setup as c_long,
         num_entries as c_int,
-        params as *const _,
+        params as *mut _,
     );
     if ret < 0 {
         return Err(Error::last_os_error().raw_os_error().unwrap());

@@ -300,7 +300,7 @@ impl URingContext {
         unsafe {
             // Safe because the kernel is trusted to only modify params and `File` is created with
             // an FD that it takes complete ownership of.
-            let fd = io_uring_setup(num_entries, &ring_params).map_err(Error::Setup)?;
+            let fd = io_uring_setup(num_entries, &mut ring_params).map_err(Error::Setup)?;
             let ring_file = File::from_raw_fd(fd);
 
             // Register the restrictions if it's given
