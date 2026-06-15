@@ -125,7 +125,7 @@ def container_is_running(docker: cmd, cros: bool):
 def delete_container(docker: cmd, cros: bool):
     cid = container_id(docker, cros)
     if cid:
-        print(f"Deleting dev-container {cid}.")
+        print(f"Deleting dev-container {cid}.", file=sys.stderr)
         docker("rm -f", cid).fg(quiet=True)
         return True
     return False
@@ -167,15 +167,15 @@ def workspace_mount_args(cros: bool):
 def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]], cros: bool):
     cid = container_id(docker, cros)
     if cid and not container_is_running(docker, cros):
-        print("Existing container is not running.")
+        print("Existing container is not running.", file=sys.stderr)
         delete_container(docker, cros)
     elif cid and not cros and container_revision(docker, cid) != DEV_IMAGE_VERSION:
-        print(f"New image is available.")
+        print(f"New image is available.", file=sys.stderr)
         delete_container(docker, cros)
 
     if not container_is_running(docker, cros):
         # Run neverending sleep to keep container alive while we 'docker exec' commands.
-        print(f"Starting container...")
+        print(f"Starting container...", file=sys.stderr)
         docker(
             f"run --detach --name {container_name(cros)}",
             *docker_args,
@@ -184,7 +184,7 @@ def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]], cro
         cid = container_id(docker, cros)
     else:
         cid = container_id(docker, cros)
-        print(f"Using existing container ({cid}).")
+        print(f"Using existing container ({cid}).", file=sys.stderr)
     return cid
 
 
