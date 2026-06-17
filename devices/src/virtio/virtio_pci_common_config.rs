@@ -188,6 +188,8 @@ impl VirtioPciCommonConfig {
             0x00 => self.device_feature_select = value,
             0x08 => self.driver_feature_select = value,
             0x0c => {
+                // Only 64 bits of features (2 pages) are defined for now, so limit
+                // device_feature_select to avoid shifting by 64 or more bits.
                 if self.driver_feature_select < 2 {
                     let features: u64 = (value as u64) << (self.driver_feature_select * 32);
                     device.ack_features(features);
@@ -195,10 +197,14 @@ impl VirtioPciCommonConfig {
                         queue.ack_features(features);
                     }
                 } else {
-                    warn!(
-                        "invalid ack_features (page {}, value 0x{:x})",
-                        self.driver_feature_select, value
-                    );
+                    // The guest might try to write features outside of the first
+                    // 64-bit in a second 64-bit (validly), but these should be zero
+                    if value != 0 {
+                        warn!(
+                            "invalid ack_features (page {}, value 0x{:x})",
+                            self.driver_feature_select, value
+                        );
+                    }
                 }
             }
             0x20 => self.with_queue_mut(queues, |q| lo!(q, desc_table, set_desc_table, value)),

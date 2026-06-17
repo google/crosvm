@@ -192,6 +192,8 @@ impl VirtioMmioDevice {
             VIRTIO_MMIO_DEVICE_ID => self.device_type(),
             VIRTIO_MMIO_VENDOR_ID => VIRT_VENDOR,
             VIRTIO_MMIO_DEVICE_FEATURES => {
+                // Only 64 bits of features (2 pages) are defined for now, so limit
+                // device_feature_select to avoid shifting by 64 or more bits.
                 if self.device_feature_select < 2 {
                     (self.device.features() >> (self.device_feature_select * 32)) as u32
                 } else {
@@ -261,6 +263,8 @@ impl VirtioMmioDevice {
             VIRTIO_MMIO_DEVICE_FEATURES_SEL => self.device_feature_select = val,
             VIRTIO_MMIO_DRIVER_FEATURES_SEL => self.driver_feature_select = val,
             VIRTIO_MMIO_DRIVER_FEATURES => {
+                // Only 64 bits of features (2 pages) are defined for now, so limit
+                // device_feature_select to avoid shifting by 64 or more bits.
                 if self.driver_feature_select < 2 {
                     let features: u64 = (val as u64) << (self.driver_feature_select * 32);
                     self.device.ack_features(features);
@@ -268,10 +272,14 @@ impl VirtioMmioDevice {
                         queue.ack_features(features);
                     }
                 } else {
-                    warn!(
-                        "invalid ack_features (page {}, value 0x{:x})",
-                        self.driver_feature_select, val
-                    );
+                    // The guest might try to write features outside of the first
+                    // 64-bit in a second 64-bit (validly), but these should be zero
+                    if val != 0 {
+                        warn!(
+                            "invalid ack_features (page {}, value 0x{:x})",
+                            self.driver_feature_select, val
+                        );
+                    }
                 }
             }
             VIRTIO_MMIO_GUEST_PAGE_SIZE => warn!(
