@@ -227,8 +227,21 @@ impl Vmwdt {
                         }
 
                         let current_guest_time_ms =
-                            Vmwdt::get_guest_time_ms(watchdog.process_id, watchdog.thread_id)
-                                .context("get_guest_time_ms failed")?;
+                            match Vmwdt::get_guest_time_ms(watchdog.process_id, watchdog.thread_id)
+                            {
+                                Ok(value) => value,
+                                Err(e) => {
+                                    error!("get_guest_time_ms returned error: {}", e);
+                                    // Return VM control tube on ENOENT. ENOENT signals the FD does
+                                    // not exist, which means the Vcpu has shut down or crashed.
+                                    // Return the control tube to gracefully shut down
+                                    if e.errno() == libc::ENOENT {
+                                        return Ok(vm_ctrl_tube);
+                                    } else {
+                                        watchdog.last_guest_time_ms
+                                    }
+                                }
+                            };
                         let remaining_time_ms = watchdog.next_expiration_interval_ms
                             - (current_guest_time_ms - watchdog.last_guest_time_ms);
 
@@ -381,16 +394,12 @@ impl BusDevice for Vmwdt {
             }
             VMWDT_REG_LOAD_CNT => {
                 self.ensure_started();
-                let (process_id, thread_id) = {
-                    let mut wdts_locked = self.vm_wdts.lock();
-                    let cpu_watchdog = &mut wdts_locked[cpu_index];
-                    (cpu_watchdog.process_id, cpu_watchdog.thread_id)
-                };
-                let guest_time_ms = Vmwdt::get_guest_time_ms(process_id, thread_id)
-                    .expect("get_guest_time_ms failed");
-
                 let mut wdts_locked = self.vm_wdts.lock();
                 let cpu_watchdog = &mut wdts_locked[cpu_index];
+                let process_id = cpu_watchdog.process_id;
+                let thread_id = cpu_watchdog.thread_id;
+                let guest_time_ms = Vmwdt::get_guest_time_ms(process_id, thread_id)
+                    .expect("get_guest_time_ms failed");
                 let next_expiration_interval_ms =
                     reg_val as u64 * 1000 / cpu_watchdog.timer_freq_hz;
 
@@ -593,5 +602,59 @@ mod tests {
                 Err(_e) => false,
             }
         });
+    }
+
+    #[test]
+    // Testing with invalid vcpu tid which would simulate the same behavior as the Vcpu dying and
+    // the watchdog trying to read from the FD that no longer exists.
+    fn test_watchdog_vcpu_death() {
+        let (vm_evt_wrtube, _vm_evt_rdtube) = Tube::directional_pair().unwrap();
+        let (vm_ctrl_wrtube, vm_ctrl_rdtube) = Tube::pair().unwrap();
+        let irq = IrqEdgeEvent::new().unwrap();
+
+        // Spawn a helper thread that we can kill to simulate vCPU death.
+        let (tid_tx, tid_rx) = std::sync::mpsc::channel();
+        let (exit_tx, exit_rx) = std::sync::mpsc::channel();
+        let helper_thread = std::thread::spawn(move || {
+            let tid = base::gettid() as u32;
+            tid_tx.send(tid).unwrap();
+            exit_rx.recv().unwrap(); // Block until told to exit
+        });
+        let helper_tid = tid_rx.recv().unwrap();
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            vm_ctrl_wrtube
+                .send(&VmResponse::VcpuPidTidResponse {
+                    pid_tid_map: BTreeMap::from([(0, (process::id(), helper_tid))]),
+                })
+                .unwrap();
+        }
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq, vm_ctrl_rdtube).unwrap();
+
+        // Configure the watchdog device, 10Hz clock
+        device.write(
+            vmwdt_bus_address(VMWDT_REG_CLOCK_FREQ_HZ as u64),
+            &[10, 0, 0, 0],
+        );
+
+        // Write to LOAD_CNT.
+        // This should succeed because the helper thread is still alive.
+        device.write(vmwdt_bus_address(VMWDT_REG_LOAD_CNT as u64), &[1, 0, 0, 0]);
+
+        // Now tell the helper thread to exit and join it to ensure it is dead and reaped.
+        exit_tx.send(()).unwrap();
+        helper_thread.join().unwrap();
+
+        // Enable the watchdog, which starts the worker thread.
+        device.write(vmwdt_bus_address(VMWDT_REG_STATUS as u64), &[1, 0, 0, 0]);
+
+        // Wait for the timer to expire (load count is 1, freq is 10Hz -> 100ms).
+        // The worker thread will handle the timer, call get_guest_time_ms which fails (since the
+        // thread is dead), log the error, and exit gracefully (returns Ok(vm_ctrl_tube)).
+        sleep(Duration::from_millis(200));
+
+        // Stop the device.
+        std::mem::drop(device);
     }
 }
