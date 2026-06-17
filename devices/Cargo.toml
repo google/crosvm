@@ -96,7 +96,7 @@ swap = { workspace = true, optional = true }
 uuid = { version = "1", features = ["v8", "serde"] }
 vmm_vhost = { workspace = true }
 virtio_sys = { workspace = true }
-virtio-media = { version = "0.0.7", optional = true }
+virtio-media = { version = "0.0.8", optional = true }
 vm_control = { workspace = true }
 vm_memory = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }

@@ -534,6 +534,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
+
+[[package]]
 name = "chrono"
 version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1760,9 +1766,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.174"
+version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libcras"
@@ -2096,7 +2102,19 @@ checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
 dependencies = [
  "bitflags 2.4.0",
  "cfg-if",
- "cfg_aliases",
+ "cfg_aliases 0.1.1",
+ "libc",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.4.0",
+ "cfg-if",
+ "cfg_aliases 0.2.1",
  "libc",
 ]
 
@@ -3216,9 +3234,9 @@ dependencies = [
 
 [[package]]
 name = "v4l2r"
-version = "0.0.6"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4f8945ec08a0f9c9b3596c3437bfc8ed1e5c4feefcc230ecf5641aa9b44392b"
+checksum = "2b609e6cc820e3f95dac66f8ef4efbdf1f39b8d119ec16e6476f797ec95ebaa7"
 dependencies = [
  "anyhow",
  "bindgen 0.70.1",
@@ -3226,6 +3244,7 @@ dependencies = [
  "enumn",
  "log",
  "nix 0.28.0",
+ "paste",
  "thiserror",
 ]
 
@@ -3265,15 +3284,15 @@ dependencies = [
 
 [[package]]
 name = "virtio-media"
-version = "0.0.7"
+version = "0.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6fe4fe1401316867eda765926fe6742849ca33dd4ea4f887036661c3cd15625"
+checksum = "0984f4a5a7104e17e083d697e6219dfee642582c4a28e745febe66def6e3bcea"
 dependencies = [
  "anyhow",
  "enumn",
  "libc",
  "log",
- "nix 0.28.0",
+ "nix 0.31.3",
  "thiserror",
  "v4l2r",
  "zerocopy 0.8.14",
