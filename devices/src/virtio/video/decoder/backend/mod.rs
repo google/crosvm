@@ -30,7 +30,7 @@ pub trait DecoderSession {
     /// first call to `use_output_buffer()`.
     fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()>;
 
-    /// Decode the compressed stream contained in [`offset`..`offset`+`bytes_used`] of the shared
+    /// Decode the compressed stream contained in \[`offset`..`offset`+`bytes_used`\] of the shared
     /// memory in the input `resource`.
     ///
     /// `resource_id` is the ID of the input resource. It will be signaled using the

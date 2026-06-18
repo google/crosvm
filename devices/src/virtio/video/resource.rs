@@ -66,7 +66,7 @@ pub trait BufferHandle: Sized {
     /// and not duplicate the buffer itself.
     fn try_clone(&self) -> Result<Self, base::Error>;
 
-    /// Returns a linear mapping of [`offset`..`offset`+`size`] of the memory backing this buffer.
+    /// Returns a linear mapping of \[`offset`..`offset`+`size`\] of the memory backing this buffer.
     fn get_mapping(&self, offset: usize, size: usize) -> Result<MemoryMappingArena, MmapError>;
 }
 
