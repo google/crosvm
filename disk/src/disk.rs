@@ -210,7 +210,7 @@ impl ToAsyncDisk for File {
 }
 
 /// The variants of image files on the host that can be used as virtual disks.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageType {
     Raw,
     Qcow2,
@@ -312,6 +312,27 @@ pub fn open_disk_file(params: DiskFileParams) -> Result<Box<dyn DiskFile>> {
 
     let raw_image = sys::open_raw_disk_image(&params)?;
     let image_type = detect_image_type(&raw_image, params.is_overlapped)?;
+    disk_file_from_file(raw_image, params, image_type)
+}
+
+/// Open an image file with an explicitly specified image type.
+pub fn open_disk_file_as(
+    params: DiskFileParams,
+    image_type: ImageType,
+) -> Result<Box<dyn DiskFile>> {
+    if params.depth > MAX_NESTING_DEPTH {
+        return Err(Error::MaxNestingDepthExceeded);
+    }
+
+    let raw_image = sys::open_raw_disk_image(&params)?;
+    disk_file_from_file(raw_image, params, image_type)
+}
+
+pub(crate) fn disk_file_from_file(
+    raw_image: File,
+    params: DiskFileParams,
+    image_type: ImageType,
+) -> Result<Box<dyn DiskFile>> {
     Ok(match image_type {
         ImageType::Raw => {
             sys::apply_raw_disk_file_options(&raw_image, params.is_sparse_file)?;

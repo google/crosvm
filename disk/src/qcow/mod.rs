@@ -39,7 +39,6 @@ use sync::Mutex;
 use thiserror::Error;
 
 use crate::asynchronous::DiskFlush;
-use crate::open_disk_file;
 use crate::qcow::qcow_raw_file::QcowRawFile;
 use crate::qcow::refcount::RefCount;
 use crate::qcow::vec_cache::CacheMap;
@@ -55,6 +54,8 @@ use crate::ToAsyncDisk;
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("backing file path escapes the first cluster")]
+    BackingFileEscapesFirstCluster,
     #[error("backing file io error: {0}")]
     BackingFileIo(io::Error),
     #[error("backing file open error: {0}")]
@@ -77,6 +78,8 @@ pub enum Error {
     InvalidClusterIndex,
     #[error("invalid cluster size")]
     InvalidClusterSize,
+    #[error("failed to parse header extension")]
+    InvalidHeaderExtension,
     #[error("invalid index")]
     InvalidIndex,
     #[error("invalid L1 table offset")]
@@ -91,6 +94,8 @@ pub enum Error {
     InvalidRefcountTableOffset,
     #[error("invalid refcount table size: {0}")]
     InvalidRefcountTableSize(u64),
+    #[error("backing file format extension is missing")]
+    MissingBackingFileFormat,
     #[error("no free clusters")]
     NoFreeClusters,
     #[error("no refcount clusters")]
@@ -123,6 +128,8 @@ pub enum Error {
     TooManyL1Entries(u64),
     #[error("ref count table too large: {0}")]
     TooManyRefcounts(u64),
+    #[error("unsupported backing file format: {0}")]
+    UnsupportedBackingFileFormat(String),
     #[error("unsupported refcount order")]
     UnsupportedRefcountOrder,
     #[error("unsupported version: {0}")]
@@ -161,8 +168,8 @@ const COMPRESSED_FLAG: u64 = 1 << 62;
 const CLUSTER_USED_FLAG: u64 = 1 << 63;
 const COMPATIBLE_FEATURES_LAZY_REFCOUNTS: u64 = 1 << 0;
 
-// The format supports a "header extension area", that crosvm does not use.
-const QCOW_EMPTY_HEADER_EXTENSION_SIZE: u32 = 8;
+// The format supports a "header extension area".
+const QCOW2_EXT_MAGIC_BACKING_FORMAT: u32 = 0xe279_268f;
 
 // Defined by the specification
 const MAX_BACKING_FILE_SIZE: u32 = 1023;
@@ -198,6 +205,7 @@ pub struct QcowHeader {
 
     // Post-header entries
     pub backing_file_path: Option<String>,
+    pub backing_file_format: Option<crate::ImageType>,
 }
 
 // Reads the next u16 from the file.
@@ -225,6 +233,24 @@ fn read_u64_from_file(mut f: &File) -> Result<u64> {
         .read_exact(&mut value)
         .map_err(Error::ReadingHeader)?;
     Ok(u64::from_be_bytes(value))
+}
+
+fn image_type_to_format_str(image_type: crate::ImageType) -> Result<&'static str> {
+    match image_type {
+        crate::ImageType::Raw => Ok("raw"),
+        crate::ImageType::Qcow2 => Ok("qcow2"),
+        crate::ImageType::CompositeDisk => Ok("composite"),
+        other => Err(Error::UnsupportedBackingFileFormat(format!("{other:?}"))),
+    }
+}
+
+fn format_str_to_image_type(s: &str) -> Result<crate::ImageType> {
+    match s {
+        "raw" => Ok(crate::ImageType::Raw),
+        "qcow2" => Ok(crate::ImageType::Qcow2),
+        "composite" => Ok(crate::ImageType::CompositeDisk),
+        other => Err(Error::UnsupportedBackingFileFormat(other.to_string())),
+    }
 }
 
 impl QcowHeader {
@@ -257,7 +283,80 @@ impl QcowHeader {
             refcount_order: read_u32_from_file(f)?,
             header_size: read_u32_from_file(f)?,
             backing_file_path: None,
+            backing_file_format: None,
         };
+
+        if !(MIN_CLUSTER_BITS..=MAX_CLUSTER_BITS).contains(&header.cluster_bits) {
+            return Err(Error::InvalidClusterSize);
+        }
+
+        let cluster_size = 1u64 << header.cluster_bits;
+
+        if header.backing_file_offset != 0 {
+            let backing_file_end = header
+                .backing_file_offset
+                .checked_add(header.backing_file_size as u64)
+                .ok_or(Error::BackingFileEscapesFirstCluster)?;
+            if backing_file_end > cluster_size {
+                return Err(Error::BackingFileEscapesFirstCluster);
+            }
+        }
+
+        // Parse header extensions
+        let mut ext_offset = (header.header_size as u64 + 7) & !7;
+        loop {
+            // Avoid reading past the first cluster or past backing_file_offset if it is set.
+            let limit = if header.backing_file_offset != 0 {
+                header.backing_file_offset
+            } else {
+                cluster_size
+            };
+
+            if ext_offset >= limit {
+                break;
+            }
+
+            let next_offset = ext_offset
+                .checked_add(8)
+                .ok_or(Error::InvalidHeaderExtension)?;
+            if next_offset > limit {
+                return Err(Error::InvalidHeaderExtension);
+            }
+
+            f.seek(SeekFrom::Start(ext_offset))
+                .map_err(Error::ReadingHeader)?;
+            let ext_type = read_u32_from_file(f)?;
+            let ext_len = read_u32_from_file(f)?;
+            if ext_type == 0 {
+                break;
+            }
+
+            let ext_end = next_offset
+                .checked_add(ext_len as u64)
+                .ok_or(Error::InvalidHeaderExtension)?;
+            if ext_end > limit {
+                return Err(Error::InvalidHeaderExtension);
+            }
+
+            if ext_type == QCOW2_EXT_MAGIC_BACKING_FORMAT {
+                let mut backing_format_bytes = vec![0u8; ext_len as usize];
+                f.read_exact(&mut backing_format_bytes)
+                    .map_err(Error::ReadingHeader)?;
+                let format_str = String::from_utf8(backing_format_bytes)
+                    .map_err(|_| Error::InvalidHeaderExtension)?;
+                let format = format_str_to_image_type(&format_str)?;
+                header.backing_file_format = Some(format);
+            }
+
+            let padded_len = (ext_len as u64 + 7) & !7;
+            let increment = padded_len
+                .checked_add(8)
+                .ok_or(Error::InvalidHeaderExtension)?;
+            ext_offset = ext_offset
+                .checked_add(increment)
+                .ok_or(Error::InvalidHeaderExtension)?;
+        }
+
         if header.backing_file_size > MAX_BACKING_FILE_SIZE {
             return Err(Error::BackingFileTooLong(header.backing_file_size as usize));
         }
@@ -275,15 +374,30 @@ impl QcowHeader {
         Ok(header)
     }
 
-    pub fn create_for_size_and_path(size: u64, backing_file: Option<&str>) -> Result<QcowHeader> {
+    pub fn create_for_size_and_path(
+        size: u64,
+        backing: Option<(&str, crate::ImageType)>,
+    ) -> Result<QcowHeader> {
         let cluster_bits: u32 = DEFAULT_CLUSTER_BITS;
         let cluster_size: u32 = 0x01 << cluster_bits;
-        let max_length: usize =
-            (cluster_size - V3_BARE_HEADER_SIZE - QCOW_EMPTY_HEADER_EXTENSION_SIZE) as usize;
+        let mut ext_size = 8; // For end marker
+        let (backing_file, backing_file_format) = match backing {
+            Some((path, format)) => {
+                let format_str = image_type_to_format_str(format)?;
+                let format_len = format_str.len() as u32;
+                ext_size += 8 + ((format_len + 7) & !7);
+                (Some(path), Some(format))
+            }
+            None => (None, None),
+        };
+        let max_length: usize = (cluster_size - V3_BARE_HEADER_SIZE - ext_size) as usize;
         if let Some(path) = backing_file {
             if path.len() > max_length {
                 return Err(Error::BackingFileTooLong(path.len() - max_length));
             }
+        }
+        if size > MAX_QCOW_FILE_SIZE {
+            return Err(Error::FileTooBig(size));
         }
         // L2 blocks are always one cluster long. They contain cluster_size/sizeof(u64) addresses.
         let l2_size: u32 = cluster_size / size_of::<u64>() as u32;
@@ -294,11 +408,11 @@ impl QcowHeader {
         Ok(QcowHeader {
             magic: QCOW_MAGIC,
             version: 3,
-            backing_file_offset: (if backing_file.is_none() {
+            backing_file_offset: if backing_file.is_none() {
                 0
             } else {
-                V3_BARE_HEADER_SIZE + QCOW_EMPTY_HEADER_EXTENSION_SIZE
-            }) as u64,
+                V3_BARE_HEADER_SIZE as u64 + ext_size as u64
+            },
             backing_file_size: backing_file.map_or(0, |x| x.len()) as u32,
             cluster_bits: DEFAULT_CLUSTER_BITS,
             size,
@@ -327,6 +441,7 @@ impl QcowHeader {
             refcount_order: DEFAULT_REFCOUNT_ORDER,
             header_size: V3_BARE_HEADER_SIZE,
             backing_file_path: backing_file.map(String::from),
+            backing_file_format,
         })
     }
 
@@ -362,6 +477,20 @@ impl QcowHeader {
         write_u64_to_file(file, self.autoclear_features)?;
         write_u32_to_file(file, self.refcount_order)?;
         write_u32_to_file(file, self.header_size)?;
+        if let Some(format) = self.backing_file_format {
+            let format_str = image_type_to_format_str(format)?;
+            write_u32_to_file(file, QCOW2_EXT_MAGIC_BACKING_FORMAT)?;
+            write_u32_to_file(file, format_str.len() as u32)?;
+            file.write_all(format_str.as_bytes())
+                .map_err(Error::WritingHeader)?;
+            // Pad to 8-byte boundary
+            let padding = ((format_str.len() + 7) & !7) - format_str.len();
+            if padding > 0 {
+                const ZEROES: [u8; 8] = [0u8; 8];
+                file.write_all(&ZEROES[..padding])
+                    .map_err(Error::WritingHeader)?;
+            }
+        }
         write_u32_to_file(file, 0)?; // header extension type: end of header extension area
         write_u32_to_file(file, 0)?; // length of header extension data: 0
         if let Some(backing_file_path) = self.backing_file_path.as_ref() {
@@ -478,7 +607,7 @@ impl QcowFile {
         }
 
         let backing_file = if let Some(backing_file_path) = header.backing_file_path.as_ref() {
-            let backing_file = open_disk_file(DiskFileParams {
+            let backing_params = DiskFileParams {
                 path: PathBuf::from(backing_file_path),
                 // The backing file is only read from.
                 is_read_only: true,
@@ -489,9 +618,14 @@ impl QcowFile {
                 is_direct: params.is_direct,
                 lock: params.lock,
                 depth: params.depth + 1,
-            })
-            .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
-            Some(backing_file)
+            };
+            let backing_image_type = match header.backing_file_format {
+                Some(format) => format,
+                None => return Err(Error::MissingBackingFileFormat),
+            };
+            let backing_disk_file = crate::open_disk_file_as(backing_params, backing_image_type)
+                .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
+            Some(backing_disk_file)
         } else {
             None
         };
@@ -634,8 +768,8 @@ impl QcowFile {
     ) -> Result<QcowFile> {
         // Open the backing file as a `DiskFile` to determine its size (which may not match the
         // filesystem size).
-        let size = {
-            let backing_file = open_disk_file(DiskFileParams {
+        let (size, backing_format) = {
+            let backing_params = DiskFileParams {
                 path: PathBuf::from(backing_file_name),
                 // The backing file is only read from.
                 is_read_only: true,
@@ -646,11 +780,21 @@ impl QcowFile {
                 is_direct: params.is_direct,
                 lock: params.lock,
                 depth: params.depth + 1,
-            })
-            .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
-            backing_file.get_len().map_err(Error::BackingFileIo)?
+            };
+            let backing_file = crate::sys::open_raw_disk_image(&backing_params)
+                .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
+            let backing_image_type = crate::detect_image_type(&backing_file, false)
+                .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
+            let backing_disk_file =
+                crate::disk_file_from_file(backing_file, backing_params, backing_image_type)
+                    .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
+            (
+                backing_disk_file.get_len().map_err(Error::BackingFileIo)?,
+                backing_image_type,
+            )
         };
-        let header = QcowHeader::create_for_size_and_path(size, Some(backing_file_name))?;
+        let header =
+            QcowHeader::create_for_size_and_path(size, Some((backing_file_name, backing_format)))?;
         QcowFile::new_from_header(file, params, header)
     }
 
@@ -1789,23 +1933,6 @@ mod tests {
     }
 
     #[test]
-    fn header_with_backing() {
-        let header = QcowHeader::create_for_size_and_path(0x10_0000, Some("/my/path/to/a/file"))
-            .expect("Failed to create header.");
-        let mut disk_file = tempfile().expect("failed to create temp file");
-        header
-            .write_to(&mut disk_file)
-            .expect("Failed to write header to shm.");
-        disk_file.seek(SeekFrom::Start(0)).unwrap();
-        let read_header = QcowHeader::new(&mut disk_file).expect("Failed to create header.");
-        assert_eq!(
-            header.backing_file_path,
-            Some(String::from("/my/path/to/a/file"))
-        );
-        assert_eq!(read_header.backing_file_path, header.backing_file_path);
-    }
-
-    #[test]
     fn invalid_magic() {
         let invalid_header = vec![0x51u8, 0x46, 0x4a, 0xfb];
         with_basic_file(&invalid_header, |mut disk_file: File| {
@@ -2595,5 +2722,230 @@ mod tests {
                 assert_eq!(orig, read);
             }
         });
+    }
+
+    #[test]
+    fn header_with_backing_format() {
+        let header = QcowHeader::create_for_size_and_path(
+            0x10_0000,
+            Some(("/my/path/to/a/file", crate::ImageType::Raw)),
+        )
+        .expect("Failed to create header.");
+        let mut disk_file = tempfile().expect("failed to create temp file");
+        header
+            .write_to(&mut disk_file)
+            .expect("Failed to write header.");
+        disk_file.seek(SeekFrom::Start(0)).unwrap();
+        let read_header = QcowHeader::new(&mut disk_file).expect("Failed to create header.");
+        assert_eq!(
+            header.backing_file_path,
+            Some(String::from("/my/path/to/a/file"))
+        );
+        assert_eq!(read_header.backing_file_path, header.backing_file_path);
+        assert_eq!(read_header.backing_file_format, Some(crate::ImageType::Raw));
+    }
+
+    #[test]
+    fn test_backing_format_respected() {
+        let temp_dir = TempDir::new().expect("failed to create temp dir");
+        let backing_path = temp_dir.path().join("backing.raw");
+        let parent_path = temp_dir.path().join("parent.qcow2");
+
+        // Create backing file with fake Qcow2 magic
+        let mut backing_file = File::create(&backing_path).unwrap();
+        backing_file.write_all(&QCOW_MAGIC.to_be_bytes()).unwrap();
+        backing_file.set_len(1024 * 1024).unwrap();
+        drop(backing_file);
+
+        // Create parent Qcow2 header specifying backing file and backing format = RAW
+        let header_raw = QcowHeader::create_for_size_and_path(
+            1024 * 1024 * 10,
+            Some((backing_path.to_str().unwrap(), crate::ImageType::Raw)),
+        )
+        .expect("Failed to create header.");
+
+        let mut parent_file = File::create(&parent_path).unwrap();
+        header_raw.write_to(&mut parent_file).unwrap();
+        drop(parent_file);
+
+        // Open parent. It should succeed because backing is opened as raw.
+        let parent_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&parent_path)
+            .unwrap();
+        let mut params = test_params();
+        params.path = parent_path.clone();
+        let qcow = QcowFile::from(parent_file, params);
+        assert!(
+            qcow.is_ok(),
+            "Failed to open with explicit raw backing: {:?}",
+            qcow.err()
+        );
+
+        // Create parent Qcow2 header WITHOUT backing format extension
+        let mut header_auto = QcowHeader::create_for_size_and_path(
+            1024 * 1024 * 10,
+            Some((backing_path.to_str().unwrap(), crate::ImageType::Raw)),
+        )
+        .expect("Failed to create header.");
+        header_auto.backing_file_format = None;
+        header_auto.backing_file_offset = V3_BARE_HEADER_SIZE as u64 + 8;
+
+        let mut parent_file_auto = File::create(&parent_path).unwrap();
+        header_auto.write_to(&mut parent_file_auto).unwrap();
+        drop(parent_file_auto);
+
+        // Open parent. It should fail because backing format extension is missing.
+        let parent_file_auto = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&parent_path)
+            .unwrap();
+        let mut params = test_params();
+        params.path = parent_path.clone();
+        let qcow_auto = QcowFile::from(parent_file_auto, params);
+        assert!(
+            matches!(
+                qcow_auto.as_ref().err(),
+                Some(&Error::MissingBackingFileFormat)
+            ),
+            "Expected Error::MissingBackingFileFormat, got: {qcow_auto:?}"
+        );
+    }
+
+    #[test]
+    fn test_unsupported_backing_format() {
+        // 1. Creation time rejection of AndroidSparse
+        let header_err = QcowHeader::create_for_size_and_path(
+            1024 * 1024 * 10,
+            Some(("backing.img", crate::ImageType::AndroidSparse)),
+        );
+        assert!(
+            matches!(
+                header_err.as_ref().err(),
+                Some(&Error::UnsupportedBackingFileFormat(_))
+            ),
+            "Expected Error::UnsupportedBackingFileFormat, got: {header_err:?}"
+        );
+
+        // 2. Open time rejection of unknown format string
+        let header = QcowHeader::create_for_size_and_path(
+            1024 * 1024 * 10,
+            Some(("backing.raw", crate::ImageType::Raw)),
+        )
+        .unwrap();
+
+        let mut file = tempfile().unwrap();
+        header.write_to(&mut file).unwrap();
+
+        // Overwrite the format extension with "invalid" (len 7, fits in same 8-byte pad block)
+        file.seek(SeekFrom::Start(108)).unwrap();
+        file.write_all(&7u32.to_be_bytes()).unwrap(); // New length: 7
+        file.write_all(b"invalid\0").unwrap(); // New format string + 1 byte padding to 8 bytes
+
+        // Try to read it back. It should fail during header parsing.
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let read_result = QcowHeader::new(&mut file);
+        match &read_result {
+            Err(Error::UnsupportedBackingFileFormat(fmt)) => {
+                assert_eq!(fmt, "invalid");
+            }
+            other => {
+                panic!("Expected Error::UnsupportedBackingFileFormat(\"invalid\"), got: {other:?}")
+            }
+        }
+    }
+
+    #[test]
+    fn test_create_excessive_size_rejected() {
+        let header = QcowHeader::create_for_size_and_path(MAX_QCOW_FILE_SIZE + 1, None);
+        assert!(matches!(header.err(), Some(Error::FileTooBig(_))));
+    }
+
+    #[cfg(feature = "composite-disk")]
+    #[test]
+    fn test_composite_backing() {
+        use protobuf::Message;
+        use protos::cdisk_spec;
+
+        use crate::composite::CDISK_MAGIC;
+
+        let temp_dir = TempDir::new().expect("failed to create temp dir");
+        let component_path = temp_dir.path().join("component.raw");
+        let spec_path = temp_dir.path().join("backing.cdisk");
+        let parent_path = temp_dir.path().join("parent.qcow2");
+
+        // Create component file (raw)
+        let component_file = File::create(&component_path).unwrap();
+        component_file.set_len(1024 * 1024).unwrap(); // 1MB
+        drop(component_file);
+
+        // Create composite spec
+        let mut proto = cdisk_spec::CompositeDisk::new();
+        proto.version = 2;
+        proto.length = 1024 * 1024;
+        let mut component = cdisk_spec::ComponentDisk::new();
+        // Use relative path for component
+        component.file_path = String::from("component.raw");
+        component.offset = 0;
+        component.file_offset = 0;
+        component.read_write_capability = cdisk_spec::ReadWriteCapability::READ_WRITE.into();
+        proto.component_disks.push(component);
+
+        let mut spec_file = File::create(&spec_path).unwrap();
+        spec_file.write_all(CDISK_MAGIC.as_bytes()).unwrap();
+        proto.write_to_writer(&mut spec_file).unwrap();
+        drop(spec_file);
+
+        // Create parent Qcow2 header specifying composite backing file
+        let header = QcowHeader::create_for_size_and_path(
+            1024 * 1024 * 10,
+            Some((spec_path.to_str().unwrap(), crate::ImageType::CompositeDisk)),
+        )
+        .expect("Failed to create header.");
+
+        let mut parent_file = File::create(&parent_path).unwrap();
+        header.write_to(&mut parent_file).unwrap();
+        drop(parent_file);
+
+        // Open parent. It should succeed and open backing as composite.
+        let parent_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&parent_path)
+            .unwrap();
+        let mut params = test_params();
+        params.path = parent_path.clone();
+        let qcow = QcowFile::from(parent_file, params);
+        assert!(
+            qcow.is_ok(),
+            "Failed to open with composite backing: {:?}",
+            qcow.err()
+        );
+    }
+
+    #[test]
+    fn test_backing_file_escapes_first_cluster() {
+        // Create a header with backing file
+        let mut header = QcowHeader::create_for_size_and_path(
+            1024 * 1024 * 10,
+            Some(("backing.raw", crate::ImageType::Raw)),
+        )
+        .unwrap();
+
+        // Default cluster size is 65536.
+        // Manually set backing_file_offset to be outside the first cluster.
+        header.backing_file_offset = 70000;
+
+        let mut file = tempfile().unwrap();
+        header.write_to(&mut file).unwrap();
+
+        // Try to read it back. It should fail because backing_file_offset escapes first cluster.
+        let read_result = QcowHeader::new(&mut file);
+        match &read_result {
+            Err(Error::BackingFileEscapesFirstCluster) => {}
+            other => panic!("Expected Error::BackingFileEscapesFirstCluster, got: {other:?}"),
+        }
     }
 }
