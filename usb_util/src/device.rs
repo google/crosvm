@@ -235,7 +235,7 @@ impl Device {
 
     pub fn reserve_dma_buffer(&mut self, size: usize) -> Result<Weak<Mutex<DmaBuffer>>> {
         if let Some(managed) = &mut self.dma_buffer {
-            if managed.used.is_none() {
+            if managed.used.is_none() && size <= managed.buf.size() {
                 let buf = Arc::new(Mutex::new(DmaBuffer {
                     addr: managed.buf.as_ptr() as u64,
                     size,
@@ -831,5 +831,52 @@ impl TransferHandle {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reserve_dma_buffer_oob() {
+        let dummy_fd = File::open("/dev/null").unwrap();
+        let descriptor_data: &[u8] = &[
+            0x12, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x09, 0x81, 0x07, 0x80, 0x55, 0x10, 0x00,
+            0x01, 0x02, 0x03, 0x01, 0x09, 0x02, 0x2C, 0x00, 0x01, 0x01, 0x00, 0x80, 0x32, 0x09,
+            0x04, 0x00, 0x00, 0x02, 0x08, 0x06, 0x50, 0x00, 0x07, 0x05, 0x81, 0x02, 0x00, 0x04,
+            0x00, 0x06, 0x30, 0x0F, 0x00, 0x00, 0x00, 0x07, 0x05, 0x02, 0x02, 0x00, 0x04, 0x00,
+            0x06, 0x30, 0x0F, 0x00, 0x00, 0x00,
+        ];
+        let device_descriptor_tree = descriptor::parse_usbfs_descriptors(descriptor_data).unwrap();
+
+        let mut device = Device {
+            fd: Arc::new(dummy_fd),
+            device_descriptor_tree,
+            dma_buffer: None,
+            in_flight_transfers: AtomicUsize::new(0),
+            detaching: AtomicBool::new(false),
+            is_lost: AtomicBool::new(false),
+            is_unrecoverable: AtomicBool::new(false),
+            cancel_lock: Arc::new(Mutex::new(())),
+        };
+
+        // Initialize dma_buffer with 1 MiB mapping
+        let mmap_size = 1024 * 1024;
+        let map = MemoryMappingBuilder::new(mmap_size).build().unwrap();
+        device.dma_buffer = Some(ManagedDmaBuffer {
+            buf: map,
+            used: None,
+        });
+
+        // Request a buffer larger than 1 MiB.
+        let requested_size = mmap_size + 1;
+        let res = device.reserve_dma_buffer(requested_size);
+
+        // We expect it to fail because requested size is larger than mapping size.
+        assert!(matches!(
+            res,
+            Err(Error::GetDmaBufferFailed(sz)) if sz == requested_size
+        ));
     }
 }
