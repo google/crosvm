@@ -79,7 +79,6 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
         let path = Path::new(UDMABUF_PATH);
         let fd = OpenOptions::new()
             .read(true)
-            .write(true)
             .open(path)
             .map_err(UdmabufError::DriverOpenFailed)?;
 
