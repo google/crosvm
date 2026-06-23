@@ -16,6 +16,7 @@ use base::info;
 use base::warn;
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
@@ -140,7 +141,13 @@ fn handle_client_session(tube: Tube, allowlist: &Arc<RwLock<PathAllowlist>>) {
 }
 
 fn run_allowlist_listener(fd: SafeDescriptor, allowlist: Arc<RwLock<PathAllowlist>>) {
-    let path = format!("/proc/self/fd/{}", fd.as_raw_descriptor());
+    // Release ownership of the fd so it can be re-acquired by UnixSeqpacketListener::bind
+    // via the /proc/self/fd/ path.
+    // Since UnixSeqpacketListener::bind will recreate a SafeDescriptor from the fd number,
+    // we must ensure the original SafeDescriptor (fd) is NOT dropped (which would close it).
+    // We do this by converting fd into a raw descriptor (losing ownership).
+    let raw_fd = fd.into_raw_descriptor();
+    let path = format!("/proc/self/fd/{raw_fd}");
     let listener = match UnixSeqpacketListener::bind(&path) {
         Ok(l) => l,
         Err(e) => {
@@ -148,6 +155,9 @@ fn run_allowlist_listener(fd: SafeDescriptor, allowlist: Arc<RwLock<PathAllowlis
                 "Allowlist socket: Failed to re-create listener from fd: {}",
                 e
             );
+            // Re-wrap the raw fd to ensure it gets closed since bind failed to take ownership.
+            // SAFETY: safe because we owned it before and nobody else is using it.
+            let _ = unsafe { SafeDescriptor::from_raw_descriptor(raw_fd) };
             return;
         }
     };
