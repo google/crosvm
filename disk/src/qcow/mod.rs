@@ -302,16 +302,36 @@ impl QcowHeader {
             }
         }
 
-        // Parse header extensions
-        let mut ext_offset = (header.header_size as u64 + 7) & !7;
-        loop {
-            // Avoid reading past the first cluster or past backing_file_offset if it is set.
-            let limit = if header.backing_file_offset != 0 {
-                header.backing_file_offset
-            } else {
-                cluster_size
-            };
+        let (backing_file_format, backing_file_path) = Self::parse_backing_info(
+            f,
+            header.header_size,
+            cluster_size,
+            header.backing_file_offset,
+            header.backing_file_size,
+        )?;
+        header.backing_file_format = backing_file_format;
+        header.backing_file_path = backing_file_path;
+        Ok(header)
+    }
 
+    fn parse_backing_info(
+        f: &mut File,
+        header_size: u32,
+        cluster_size: u64,
+        backing_file_offset: u64,
+        backing_file_size: u32,
+    ) -> Result<(Option<crate::ImageType>, Option<String>)> {
+        let mut backing_file_format = None;
+        let mut ext_offset = (header_size as u64 + 7) & !7;
+
+        // Avoid reading past the first cluster or past backing_file_offset if it is set.
+        let limit = if backing_file_offset != 0 {
+            backing_file_offset
+        } else {
+            cluster_size
+        };
+
+        loop {
             if ext_offset >= limit {
                 break;
             }
@@ -345,7 +365,7 @@ impl QcowHeader {
                 let format_str = String::from_utf8(backing_format_bytes)
                     .map_err(|_| Error::InvalidHeaderExtension)?;
                 let format = format_str_to_image_type(&format_str)?;
-                header.backing_file_format = Some(format);
+                backing_file_format = Some(format);
             }
 
             let padded_len = (ext_len as u64 + 7) & !7;
@@ -357,21 +377,24 @@ impl QcowHeader {
                 .ok_or(Error::InvalidHeaderExtension)?;
         }
 
-        if header.backing_file_size > MAX_BACKING_FILE_SIZE {
-            return Err(Error::BackingFileTooLong(header.backing_file_size as usize));
+        if backing_file_size > MAX_BACKING_FILE_SIZE {
+            return Err(Error::BackingFileTooLong(backing_file_size as usize));
         }
-        if header.backing_file_offset != 0 {
-            f.seek(SeekFrom::Start(header.backing_file_offset))
+        let backing_file_path = if backing_file_offset != 0 {
+            f.seek(SeekFrom::Start(backing_file_offset))
                 .map_err(Error::ReadingHeader)?;
-            let mut backing_file_name_bytes = vec![0u8; header.backing_file_size as usize];
+            let mut backing_file_name_bytes = vec![0u8; backing_file_size as usize];
             f.read_exact(&mut backing_file_name_bytes)
                 .map_err(Error::ReadingHeader)?;
-            header.backing_file_path = Some(
+            Some(
                 String::from_utf8(backing_file_name_bytes)
                     .map_err(|err| Error::InvalidBackingFileName(err.utf8_error()))?,
-            );
-        }
-        Ok(header)
+            )
+        } else {
+            None
+        };
+
+        Ok((backing_file_format, backing_file_path))
     }
 
     pub fn create_for_size_and_path(
