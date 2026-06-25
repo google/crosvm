@@ -907,6 +907,9 @@ fn run_worker(
     #[cfg(feature = "registered_events")] registered_evt_q: Option<SendTube>,
 ) -> WorkerReturn {
     let ex = Executor::new().unwrap();
+    if let Err(e) = command_tube.send(&BalloonTubeResult::Ready) {
+        error!("failed to send balloon ready result: {}", e);
+    }
     let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
     #[cfg(feature = "registered_events")]
     let registered_evt_q_async = registered_evt_q
@@ -1467,6 +1470,11 @@ impl VirtioDevice for Balloon {
 
     fn reset(&mut self) -> anyhow::Result<()> {
         let _worker = self.stop_worker();
+        if let Some(tube) = &self.command_tube {
+            if let Err(e) = tube.send(&BalloonTubeResult::NotReady) {
+                error!("failed to send balloon not ready result: {}", e);
+            }
+        }
         Ok(())
     }
 

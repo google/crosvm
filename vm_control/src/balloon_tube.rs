@@ -87,6 +87,7 @@ pub struct BalloonTube {
     tube: Tube,
     pending_queue: VecDeque<(BalloonControlCommand, Option<usize>)>,
     pending_adjust_with_completion: Option<(u64, usize)>,
+    activated: bool,
 }
 
 impl BalloonTube {
@@ -95,6 +96,7 @@ impl BalloonTube {
             tube,
             pending_queue: VecDeque::new(),
             pending_adjust_with_completion: None,
+            activated: false,
         }
     }
 
@@ -105,6 +107,9 @@ impl BalloonTube {
         cmd: BalloonControlCommand,
         key: Option<usize>,
     ) -> Option<(VmResponse, usize)> {
+        if !self.activated {
+            return key.map(|k| (VmResponse::Err(base::Error::new(libc::ENOTCONN)), k));
+        }
         match cmd {
             BalloonControlCommand::Adjust {
                 wait_for_success: true,
@@ -148,6 +153,17 @@ impl BalloonTube {
             .tube
             .recv::<BalloonTubeResult>()
             .context("failed to read balloon tube")?;
+        match &res {
+            BalloonTubeResult::Ready => {
+                self.activated = true;
+                return Ok(vec![]);
+            }
+            BalloonTubeResult::NotReady => {
+                self.activated = false;
+                return Ok(vec![]);
+            }
+            _ => {}
+        }
         if let BalloonTubeResult::Adjusted { num_bytes: actual } = res {
             let Some((target, key)) = self.pending_adjust_with_completion else {
                 bail!("Unexpected balloon adjust to {}", actual);
@@ -209,6 +225,12 @@ mod tests {
 
     use super::*;
 
+    fn activate_tube(balloon_tube: &mut BalloonTube, device: &Tube) {
+        device.send(&BalloonTubeResult::Ready).unwrap();
+        let resp = balloon_tube.recv().unwrap();
+        assert!(resp.is_empty());
+    }
+
     fn balloon_device_respond_stats(device: &Tube) {
         let BalloonTubeCommand::Stats = device.recv::<BalloonTubeCommand>().unwrap() else {
             panic!("unexpected command");
@@ -223,9 +245,27 @@ mod tests {
     }
 
     #[test]
+    fn test_send_cmd_not_ready() {
+        let (host, _device) = Tube::pair().unwrap();
+        let mut balloon_tube = BalloonTube::new(host);
+
+        // Tube is not activated yet.
+        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
+        assert!(resp.is_some());
+        let (response, key) = resp.unwrap();
+        assert_eq!(key, 0xc0ffee);
+        if let VmResponse::Err(err) = response {
+            assert_eq!(err.errno(), libc::ENOTCONN);
+        } else {
+            panic!("unexpected response {response:?}");
+        }
+    }
+
+    #[test]
     fn test_stat_command() {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
+        activate_tube(&mut balloon_tube, &device);
 
         let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());
@@ -242,6 +282,7 @@ mod tests {
     fn test_multiple_stat_command() {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
+        activate_tube(&mut balloon_tube, &device);
 
         let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());
@@ -267,6 +308,7 @@ mod tests {
     fn test_queued_stats_adjust_no_reply() {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
+        activate_tube(&mut balloon_tube, &device);
 
         let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());
@@ -296,6 +338,7 @@ mod tests {
     fn test_adjust_with_reply() {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
+        activate_tube(&mut balloon_tube, &device);
 
         let resp = balloon_tube.send_cmd(
             BalloonControlCommand::Adjust {
@@ -342,6 +385,7 @@ mod tests {
     fn test_stats_and_adjust_with_reply() {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
+        activate_tube(&mut balloon_tube, &device);
 
         let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());

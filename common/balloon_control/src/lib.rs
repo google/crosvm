@@ -88,4 +88,6 @@ pub enum BalloonTubeResult {
         /// size of the balloon in bytes.
         balloon_actual: u64,
     },
+    Ready,
+    NotReady,
 }
