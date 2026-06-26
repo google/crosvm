@@ -254,6 +254,7 @@ impl IntoIterator for CpuSet {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum DevicePowerManagerConfig {
     /// Uses the protected KVM hypercall interface.
+    /// This feature is currently only present in Android AArch64 kernels.
     PkvmHvc,
 }
 

@@ -12,7 +12,7 @@ use std::os::raw::c_ulong;
 use std::os::unix::prelude::FileExt;
 use std::path::Path;
 use std::path::PathBuf;
-#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 use std::ptr::addr_of_mut;
 use std::result;
 use std::slice;
@@ -177,7 +177,7 @@ pub struct KvmVfioPviommu {
 impl KvmVfioPviommu {
     pub fn new(vm: &dyn Vm) -> Result<Self> {
         cfg_if! {
-            if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
+            if #[cfg(target_arch = "aarch64")] {
                 let file = Self::ioctl_kvm_dev_vfio_pviommu_attach(vm)?;
 
                 Ok(Self { file })
@@ -190,7 +190,7 @@ impl KvmVfioPviommu {
 
     pub fn attach<T: AsRawDescriptor>(&self, device: &T, sid_idx: u32, vsid: u32) -> Result<()> {
         cfg_if! {
-            if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
+            if #[cfg(target_arch = "aarch64")] {
                 self.ioctl_kvm_pviommu_set_config(device, sid_idx, vsid)
             } else {
                 let _ = device;
@@ -209,7 +209,7 @@ impl KvmVfioPviommu {
 
     pub fn get_sid_count<T: AsRawDescriptor>(vm: &dyn Vm, device: &T) -> Result<u32> {
         cfg_if! {
-            if #[cfg(all(target_os = "android", target_arch = "aarch64"))] {
+            if #[cfg(target_arch = "aarch64")] {
                 let info = Self::ioctl_kvm_dev_vfio_pviommu_get_info(vm, device)?;
 
                 Ok(info.nr_sids)
@@ -221,7 +221,7 @@ impl KvmVfioPviommu {
         }
     }
 
-    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     fn ioctl_kvm_dev_vfio_pviommu_attach(vm: &dyn Vm) -> Result<File> {
         let kvm_vfio_file = create_kvm_vfio_file(vm).ok_or(VfioError::CreateVfioKvmDevice)?;
 
@@ -245,7 +245,7 @@ impl KvmVfioPviommu {
         }
     }
 
-    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     fn ioctl_kvm_pviommu_set_config<T: AsRawDescriptor>(
         &self,
         device: &T,
@@ -272,7 +272,7 @@ impl KvmVfioPviommu {
         }
     }
 
-    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     fn ioctl_kvm_dev_vfio_pviommu_get_info<T: AsRawDescriptor>(
         vm: &dyn Vm,
         device: &T,

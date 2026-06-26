@@ -21,7 +21,10 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use arch::CpuSet;
-#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+#[cfg(all(
+    any(target_os = "android", target_os = "linux"),
+    target_arch = "aarch64"
+))]
 use arch::DevicePowerManagerConfig;
 use arch::FdtPosition;
 #[cfg(all(target_os = "android", target_arch = "aarch64"))]
@@ -1048,8 +1051,11 @@ pub struct RunCommand {
     /// don't set VCPUs real-time until make-rt command is run
     pub delay_rt: Option<bool>,
 
-    // Currently, only pKVM is supported so limit this option to Android kernel.
-    #[cfg(all(target_os = "android", target_arch = "aarch64"))]
+    // Currently, only pKVM HVC is supported so limit this option to AArch64 Linux.
+    #[cfg(all(
+        any(target_os = "android", target_os = "linux"),
+        target_arch = "aarch64"
+    ))]
     #[argh(option)]
     /// selects the interface for guest-controlled power management of assigned devices.
     pub dev_pm: Option<DevicePowerManagerConfig>,
@@ -2418,6 +2424,13 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(all(target_os = "android", target_arch = "aarch64"))]
         {
             cfg.ffa = cmd.ffa;
+        }
+
+        #[cfg(all(
+            any(target_os = "android", target_os = "linux"),
+            target_arch = "aarch64"
+        ))]
+        {
             cfg.dev_pm = cmd.dev_pm;
         }
 
