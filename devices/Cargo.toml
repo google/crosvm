@@ -19,7 +19,7 @@ audio = []
 audio_aaudio = []
 audio_cras = ["libcras"]
 balloon = []
-gpu = ["gpu_display"]
+gpu = ["gpu_display", "rutabaga_gfx"]
 gunyah = []
 libvda-stub = ["libvda/libvda-stub"]
 net = []
@@ -67,7 +67,7 @@ disk = { workspace = true }
 enumn = { workspace = true }
 ffmpeg = { workspace = true, optional = true }
 gpu_display = { workspace = true, optional = true }
-rutabaga_gfx = { workspace = true }
+rutabaga_gfx = { workspace = true, optional = true }
 hypervisor = { workspace = true }
 kvm_sys = { workspace = true }
 libc = { workspace = true }

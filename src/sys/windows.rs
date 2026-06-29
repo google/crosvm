@@ -1128,7 +1128,7 @@ fn vm_memory_handler_thread(
     control_tubes: Vec<Tube>,
     vm: Arc<dyn Vm>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
-    mut gralloc: RutabagaGralloc,
+    #[cfg(feature = "gpu")] mut gralloc: RutabagaGralloc,
     handler_control: Tube,
 ) -> anyhow::Result<()> {
     #[derive(EventToken)]
@@ -1183,6 +1183,7 @@ fn vm_memory_handler_thread(
                                 let response = request.execute(
                                     &*vm,
                                     &mut sys_allocator_mutex.lock(),
+                                    #[cfg(feature = "gpu")]
                                     &mut gralloc,
                                     None,
                                     &mut region_state,

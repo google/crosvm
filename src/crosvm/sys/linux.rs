@@ -174,7 +174,9 @@ use resources::Alloc;
 use resources::SystemAllocator;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaGralloc;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaGrallocBackendFlags;
 use smallvec::SmallVec;
 #[cfg(feature = "swap")]
@@ -2541,7 +2543,9 @@ fn run_vm(
             })?
     };
 
+    #[cfg(feature = "gpu")]
     let flags = RutabagaGrallocBackendFlags::new().disable_vulkano();
+    #[cfg(feature = "gpu")]
     let gralloc = RutabagaGralloc::new(flags).context("failed to create gralloc")?;
 
     run_control(
@@ -2555,6 +2559,7 @@ fn run_vm(
         vm_evt_rdtube,
         vm_evt_wrtube,
         sigchld_fd,
+        #[cfg(feature = "gpu")]
         gralloc,
         vcpu_ids,
         iommu_host_tube,
@@ -3716,7 +3721,7 @@ fn run_control(
     vm_evt_rdtube: RecvTube,
     vm_evt_wrtube: SendTube,
     sigchld_fd: SignalFd,
-    gralloc: RutabagaGralloc,
+    #[cfg(feature = "gpu")] gralloc: RutabagaGralloc,
     vcpu_ids: Vec<usize>,
     iommu_host_tube: Option<Tube>,
     #[cfg(target_arch = "x86_64")] hp_control_tube: mpsc::Sender<PciRootCommand>,
@@ -4147,6 +4152,7 @@ fn run_control(
                     vm_memory_control_tubes,
                     vm,
                     sys_allocator_mutex,
+                    #[cfg(feature = "gpu")]
                     gralloc,
                     iommu_client,
                     vm_memory_handler_control_for_thread,
@@ -4858,7 +4864,7 @@ fn vm_memory_handler_thread(
     control_tubes: Vec<VmMemoryTube>,
     vm: Arc<dyn Vm>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
-    mut gralloc: RutabagaGralloc,
+    #[cfg(feature = "gpu")] mut gralloc: RutabagaGralloc,
     mut iommu_client: Option<VmMemoryRequestIommuClient>,
     handler_control: Tube,
 ) -> anyhow::Result<()> {
@@ -4931,6 +4937,7 @@ fn vm_memory_handler_thread(
                                     tube,
                                     &*vm,
                                     &mut sys_allocator_mutex.lock(),
+                                    #[cfg(feature = "gpu")]
                                     &mut gralloc,
                                     if *expose_with_viommu {
                                         iommu_client.as_mut()

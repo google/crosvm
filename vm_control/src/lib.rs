@@ -97,11 +97,17 @@ use protos::registered_events;
 use remain::sorted;
 use resources::Alloc;
 use resources::SystemAllocator;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaDescriptor;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaFromRawDescriptor;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaGralloc;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaMappedRegion;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaMesaHandle;
+#[cfg(feature = "gpu")]
 use rutabaga_gfx::VulkanInfo;
 use serde::de::Error;
 use serde::Deserialize;
@@ -421,22 +427,26 @@ pub enum VmMemorySource {
 }
 
 // The following are wrappers to avoid base dependencies in the rutabaga crate
+#[cfg(feature = "gpu")]
 fn to_rutabaga_desciptor(s: SafeDescriptor) -> RutabagaDescriptor {
     // SAFETY:
     // Safe because we own the SafeDescriptor at this point.
     unsafe { RutabagaDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
 }
 
+#[cfg(feature = "gpu")]
 struct RutabagaMemoryRegion {
     region: Box<dyn RutabagaMappedRegion>,
 }
 
+#[cfg(feature = "gpu")]
 impl RutabagaMemoryRegion {
     pub fn new(region: Box<dyn RutabagaMappedRegion>) -> RutabagaMemoryRegion {
         RutabagaMemoryRegion { region }
     }
 }
 
+#[cfg(feature = "gpu")]
 // SAFETY:
 //
 // Self guarantees `ptr`..`ptr+size` is an mmaped region owned by this object that
@@ -468,7 +478,7 @@ impl VmMemorySource {
     /// Map the resource and return its mapping and size in bytes.
     fn map(
         self,
-        gralloc: &mut RutabagaGralloc,
+        #[cfg(feature = "gpu")] gralloc: &mut RutabagaGralloc,
         prot: Protection,
     ) -> anyhow::Result<(Box<dyn MappedRegion>, u64, Option<SafeDescriptor>)> {
         let (mem_region, size, descriptor) = match self {
@@ -493,31 +503,38 @@ impl VmMemorySource {
                 driver_uuid,
                 size,
             } => {
-                let device_id = rutabaga_gfx::DeviceId {
-                    device_uuid,
-                    driver_uuid,
-                };
-                let mapped_region = gralloc
-                    .import_and_map(
-                        RutabagaMesaHandle {
-                            os_handle: to_rutabaga_desciptor(descriptor),
-                            handle_type,
-                        },
-                        VulkanInfo {
-                            memory_idx,
-                            device_id,
-                        },
-                        size,
-                    )
-                    .with_context(|| {
-                        format!(
-                            "gralloc failed to import and map, handle type: {handle_type}, memory index {memory_idx}, \
-                             size: {size}"
+                #[cfg(feature = "gpu")]
+                {
+                    let device_id = rutabaga_gfx::DeviceId {
+                        device_uuid,
+                        driver_uuid,
+                    };
+                    let mapped_region = gralloc
+                        .import_and_map(
+                            RutabagaMesaHandle {
+                                os_handle: to_rutabaga_desciptor(descriptor),
+                                handle_type,
+                            },
+                            VulkanInfo {
+                                memory_idx,
+                                device_id,
+                            },
+                            size,
                         )
-                    })?;
-                let mapped_region: Box<dyn MappedRegion> =
-                    Box::new(RutabagaMemoryRegion::new(mapped_region));
-                (mapped_region, size, None)
+                        .with_context(|| {
+                            format!(
+                                "gralloc failed to import and map, handle type: {handle_type}, memory index {memory_idx}, \
+                                size: {size}"
+                            )
+                        })?;
+                    let mapped_region: Box<dyn MappedRegion> =
+                        Box::new(RutabagaMemoryRegion::new(mapped_region));
+                    (mapped_region, size, None)
+                }
+                #[cfg(not(feature = "gpu"))]
+                return Err(anyhow::anyhow!(
+                    "vulkan mapping is not supported without GPU feature"
+                ));
             }
             VmMemorySource::ExternalMapping { ptr, size } => {
                 let mapped_region: Box<dyn MappedRegion> = Box::new(ExternalMapping {
@@ -742,7 +759,7 @@ impl VmMemoryRequest {
         #[cfg(any(target_os = "android", target_os = "linux"))] tube: &Tube,
         vm: &dyn Vm,
         sys_allocator: &mut SystemAllocator,
-        gralloc: &mut RutabagaGralloc,
+        #[cfg(feature = "gpu")] gralloc: &mut RutabagaGralloc,
         iommu_client: Option<&mut VmMemoryRequestIommuClient>,
         region_state: &mut VmMemoryRegionState,
     ) -> VmMemoryResponse {
@@ -786,11 +803,17 @@ impl VmMemoryRequest {
 
                 // Correct on Windows because callers of this IPC guarantee descriptor is a mapping
                 // handle.
-                let (mapped_region, size, descriptor) =
-                    match source.map(gralloc, prot).context("gralloc mapping") {
-                        Ok((region, size, descriptor)) => (region, size, descriptor),
-                        Err(e) => return VmMemoryResponse::Err(e.into()),
-                    };
+                let (mapped_region, size, descriptor) = match source
+                    .map(
+                        #[cfg(feature = "gpu")]
+                        gralloc,
+                        prot,
+                    )
+                    .context("gralloc mapping")
+                {
+                    Ok((region, size, descriptor)) => (region, size, descriptor),
+                    Err(e) => return VmMemoryResponse::Err(e.into()),
+                };
 
                 let guest_addr = match dest
                     .allocate(sys_allocator, size)
