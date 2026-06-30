@@ -215,7 +215,7 @@ impl VioSndShmStream {
         client_shm: &dyn AudioSharedMemory<Error = base::Error>,
         state: Arc<Mutex<StreamState>>,
     ) -> GenericResult<Box<dyn ShmStream>> {
-        let interval = Duration::from_millis(buffer_size as u64 * 1000 / frame_rate as u64);
+        let interval = Duration::from_nanos(buffer_size as u64 * 1_000_000_000 / frame_rate as u64);
 
         // SAFETY:
         // Safe because fcntl doesn't affect memory and client_shm should wrap a known valid
