@@ -31,6 +31,7 @@ use base::VolatileSlice;
 use crc32fast::Hasher;
 use cros_async::BackingMemory;
 use cros_async::Executor;
+use cros_async::IoOptions;
 use cros_async::MemRegionIter;
 use protobuf::Message;
 use protos::cdisk_spec;
@@ -502,6 +503,7 @@ impl AsyncDisk for AsyncCompositeDiskFile {
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: MemRegionIter<'a>,
+        options: IoOptions,
     ) -> crate::Result<usize> {
         let disk = self
             .disk_at_offset(file_offset)
@@ -512,6 +514,7 @@ impl AsyncDisk for AsyncCompositeDiskFile {
                 file_offset - disk.offset + disk.file_offset,
                 mem,
                 mem_offsets.take_bytes(remaining_disk.try_into().unwrap()),
+                options,
             )
             .await
     }
@@ -521,6 +524,7 @@ impl AsyncDisk for AsyncCompositeDiskFile {
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: MemRegionIter<'a>,
+        options: IoOptions,
     ) -> crate::Result<usize> {
         let disk = self
             .disk_at_offset(file_offset)
@@ -532,6 +536,7 @@ impl AsyncDisk for AsyncCompositeDiskFile {
                 file_offset - disk.offset + disk.file_offset,
                 mem,
                 mem_offsets.take_bytes(remaining_disk.try_into().unwrap()),
+                options,
             )
             .await?;
         disk.set_needs_flush();

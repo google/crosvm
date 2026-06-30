@@ -164,7 +164,7 @@ async fn read_from_disk(
     let offset = lba * block_size as u64;
     let before = writer.bytes_written();
     writer
-        .write_all_from_at_fut(&*dev.disk_image, count, offset)
+        .write_all_from_at_fut(&*dev.disk_image, count, offset, Default::default())
         .await
         .map_err(|desc_error| {
             let resid = count - (writer.bytes_written() - before);
@@ -911,7 +911,7 @@ async fn write_to_disk(
     let offset = lba * block_size as u64;
     let before = reader.bytes_read();
     reader
-        .read_exact_to_at_fut(&*dev.disk_image, count, offset)
+        .read_exact_to_at_fut(&*dev.disk_image, count, offset, Default::default())
         .await
         .map_err(|desc_error| {
             let resid = count - (reader.bytes_read() - before);

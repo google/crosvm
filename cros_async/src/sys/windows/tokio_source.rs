@@ -25,6 +25,7 @@ use crate::mem::MemRegion;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::BackingMemory;
+use crate::IoOptions;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -102,6 +103,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
             runtime,
         })
     }
+
     #[inline]
     fn get_slices(
         mem: &Arc<dyn BackingMemory + Send + Sync>,
@@ -164,6 +166,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mem_offsets = mem_offsets.into_iter().collect();
         let source_file = self.source_file.clone();
@@ -189,6 +192,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let source_file = self.source_file.clone();
         Ok(self
@@ -220,6 +224,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mem_offsets = mem_offsets.into_iter().collect();
         let source_file = self.source_file.clone();
@@ -245,6 +250,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let source_file = self.source_file.clone();
         Ok(self

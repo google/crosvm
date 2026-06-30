@@ -136,6 +136,9 @@ pub struct DiskOption {
 
     /// Specify PCI address will be used to attach this device
     pub pci_address: Option<PciAddress>,
+    /// Specify whether to cache reads/writes.
+    #[serde(default)]
+    pub dontcache: bool,
 }
 
 impl Default for DiskOption {
@@ -156,6 +159,7 @@ impl Default for DiskOption {
             packed_queue: false,
             bootindex: None,
             pci_address: None,
+            dontcache: false,
         }
     }
 }
@@ -428,6 +432,26 @@ mod tests {
             DiskOption {
                 path: "/path/to/disk.img".into(),
                 lock: false,
+                ..Default::default()
+            }
+        );
+
+        // dontcache
+        let params = from_block_arg("/path/to/disk.img,dontcache").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                dontcache: true,
+                ..Default::default()
+            }
+        );
+        let params = from_block_arg("/path/to/disk.img,dontcache=false").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                dontcache: false,
                 ..Default::default()
             }
         );

@@ -19,6 +19,7 @@ use base::WriteZeroesAt;
 use cros_async::BackingMemory;
 use cros_async::BlockingPool;
 use cros_async::Executor;
+use cros_async::IoOptions;
 
 use crate::AsyncDisk;
 use crate::DiskFile;
@@ -114,6 +115,7 @@ impl<
         mut file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: cros_async::MemRegionIter<'a>,
+        _options: IoOptions,
     ) -> Result<usize> {
         let inner_clone = self.inner.clone();
         let mem_offsets: Vec<cros_async::MemRegion> = mem_offsets.collect();
@@ -141,6 +143,7 @@ impl<
         mut file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: cros_async::MemRegionIter<'a>,
+        _options: IoOptions,
     ) -> Result<usize> {
         let inner_clone = self.inner.clone();
         let mem_offsets: Vec<cros_async::MemRegion> = mem_offsets.collect();

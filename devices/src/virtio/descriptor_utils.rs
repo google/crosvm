@@ -16,6 +16,7 @@ use anyhow::Context;
 use base::FileReadWriteAtVolatile;
 use base::FileReadWriteVolatile;
 use base::VolatileSlice;
+use cros_async::IoOptions;
 use cros_async::MemRegion;
 use cros_async::MemRegionIter;
 use data_model::Le16;
@@ -376,12 +377,14 @@ impl Reader {
         dst: &F,
         count: usize,
         off: u64,
+        options: IoOptions,
     ) -> disk::Result<usize> {
         let written = dst
             .write_from_mem(
                 off,
                 Arc::new(self.mem.clone()),
                 self.regions.get_remaining_regions_with_count(count),
+                options,
             )
             .await?;
         self.regions.consume(written);
@@ -395,9 +398,10 @@ impl Reader {
         dst: &F,
         mut count: usize,
         mut off: u64,
+        options: IoOptions,
     ) -> disk::Result<()> {
         while count > 0 {
-            let nread = self.read_to_at_fut(dst, count, off).await?;
+            let nread = self.read_to_at_fut(dst, count, off, options).await?;
             if nread == 0 {
                 return Err(disk::Error::ReadingData(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
@@ -667,12 +671,14 @@ impl Writer {
         src: &F,
         count: usize,
         off: u64,
+        options: IoOptions,
     ) -> disk::Result<usize> {
         let read = src
             .read_to_mem(
                 off,
                 Arc::new(self.mem.clone()),
                 self.regions.get_remaining_regions_with_count(count),
+                options,
             )
             .await?;
         self.regions.consume(read);
@@ -684,9 +690,10 @@ impl Writer {
         src: &F,
         mut count: usize,
         mut off: u64,
+        options: IoOptions,
     ) -> disk::Result<()> {
         while count > 0 {
-            let nwritten = self.write_from_at_fut(src, count, off).await?;
+            let nwritten = self.write_from_at_fut(src, count, off, options).await?;
             if nwritten == 0 {
                 return Err(disk::Error::WritingData(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
@@ -1577,7 +1584,7 @@ mod tests {
         let async_ro_file = disk::SingleFileDisk::new(ro_file, ex).expect("Failed to crate SFD");
 
         reader
-            .read_exact_to_at_fut(&async_ro_file, 512, 0)
+            .read_exact_to_at_fut(&async_ro_file, 512, 0, Default::default())
             .await
             .expect_err("successfully read more bytes than SingleFileDisk size");
 
@@ -1614,7 +1621,7 @@ mod tests {
         let async_file = disk::SingleFileDisk::new(file, ex).expect("Failed to crate SFD");
 
         writer
-            .write_all_from_at_fut(&async_file, 512, 0)
+            .write_all_from_at_fut(&async_file, 512, 0, Default::default())
             .await
             .expect_err("successfully wrote more bytes than in SingleFileDisk");
 

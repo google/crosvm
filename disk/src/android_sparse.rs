@@ -23,6 +23,7 @@ use base::RawDescriptor;
 use base::VolatileSlice;
 use cros_async::BackingMemory;
 use cros_async::Executor;
+use cros_async::IoOptions;
 use cros_async::IoSource;
 use data_model::Le16;
 use data_model::Le32;
@@ -376,6 +377,7 @@ impl AsyncDisk for AsyncAndroidSparse {
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: cros_async::MemRegionIter<'a>,
+        options: IoOptions,
     ) -> DiskResult<usize> {
         let found_chunk = self.chunks.range(..=file_offset).next_back();
         let (
@@ -405,7 +407,7 @@ impl AsyncDisk for AsyncAndroidSparse {
             }
             Chunk::Raw(offset) => self
                 .inner
-                .read_to_mem(Some(offset + chunk_offset), mem, mem_offsets)
+                .read_to_mem(Some(offset + chunk_offset), mem, mem_offsets, options)
                 .await
                 .map_err(DiskError::ReadToMem),
             Chunk::Fill(fill_bytes) => {
@@ -436,6 +438,7 @@ impl AsyncDisk for AsyncAndroidSparse {
         _file_offset: u64,
         _mem: Arc<dyn BackingMemory + Send + Sync>,
         _mem_offsets: cros_async::MemRegionIter<'a>,
+        _options: IoOptions,
     ) -> DiskResult<usize> {
         Err(DiskError::UnsupportedOperation)
     }
@@ -683,6 +686,7 @@ mod tests {
                         offset: count as u64,
                         len: len - count,
                     }]),
+                    Default::default(),
                 )
                 .await;
             count += result.unwrap();
@@ -732,6 +736,7 @@ mod tests {
                         MemRegion { offset: 1, len: 3 },
                         MemRegion { offset: 6, len: 2 },
                     ]),
+                    Default::default(),
                 )
                 .await
                 .unwrap();
@@ -783,6 +788,7 @@ mod tests {
                         MemRegion { offset: 1, len: 3 },
                         MemRegion { offset: 6, len: 2 },
                     ]),
+                    Default::default(),
                 )
                 .await
                 .unwrap();
@@ -876,6 +882,7 @@ mod tests {
                         MemRegion { offset: 1, len: 3 },
                         MemRegion { offset: 6, len: 2 },
                     ]),
+                    Default::default(),
                 )
                 .await
                 .unwrap();

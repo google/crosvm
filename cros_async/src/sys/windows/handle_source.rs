@@ -34,6 +34,7 @@ use crate::mem::MemRegion;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::CancellableBlockingPool;
+use crate::IoOptions;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -179,6 +180,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
@@ -208,6 +210,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mem_offsets = mem_offsets.into_iter().collect();
         let handles = HandleWrapper::new(self.source_descriptor);
@@ -249,6 +252,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let handles = HandleWrapper::new(self.source_descriptor);
         let descriptors = self.source_descriptor;
@@ -278,6 +282,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mem_offsets = mem_offsets.into_iter().collect();
         let handles = HandleWrapper::new(self.source_descriptor);

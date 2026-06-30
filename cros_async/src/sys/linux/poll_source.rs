@@ -4,6 +4,8 @@
 
 use std::io;
 use std::os::fd::AsRawFd;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use base::handle_eintr_errno;
@@ -21,6 +23,7 @@ use crate::common_executor::RawExecutor;
 use crate::mem::BackingMemory;
 use crate::AsyncError;
 use crate::AsyncResult;
+use crate::IoOptions;
 use crate::MemRegion;
 
 #[sorted]
@@ -79,6 +82,8 @@ impl From<Error> for AsyncError {
     }
 }
 
+static KERNEL_SUPPORTS_DONTCACHE: AtomicBool = AtomicBool::new(true);
+
 /// Async wrapper for an IO source that uses the FD executor to drive async operations.
 pub struct PollSource<F> {
     registered_source: RegisteredSource<F>,
@@ -103,44 +108,78 @@ impl<F: AsRawDescriptor> PollSource<F> {
         &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
+        options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
+        let mut use_dontcache =
+            options.dontcache && KERNEL_SUPPORTS_DONTCACHE.load(Ordering::Relaxed);
         loop {
-            let res = if let Some(offset) = file_offset {
+            let res = handle_eintr_errno!(if use_dontcache {
+                let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
+                let iovecs = [libc::iovec {
+                    iov_base: vec.as_mut_ptr() as *mut libc::c_void,
+                    iov_len: vec.len(),
+                }];
                 // SAFETY:
-                // Safe because this will only modify `vec` and we check the return value.
-                handle_eintr_errno!(unsafe {
+                // Safe because we trust the kernel not to write past the length given and the
+                // pointers/buffers are guaranteed to be valid for the duration of the call.
+                unsafe {
+                    libc::preadv2(
+                        self.registered_source.duped_fd.as_raw_fd(),
+                        iovecs.as_ptr(),
+                        iovecs.len() as i32,
+                        offset,
+                        libc::RWF_DONTCACHE,
+                    )
+                }
+            } else if let Some(offset) = file_offset {
+                // SAFETY:
+                // Safe because we trust the kernel not to write past the length given and the
+                // pointers/buffers are guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::pread64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
                     )
-                })
+                }
             } else {
                 // SAFETY:
-                // Safe because this will only modify `vec` and we check the return value.
-                handle_eintr_errno!(unsafe {
+                // Safe because we trust the kernel not to write past the length given and the
+                // pointers/buffers are guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::read(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                     )
-                })
-            };
+                }
+            });
 
             if res >= 0 {
                 return Ok((res as usize, vec));
             }
 
-            match base::Error::last() {
-                e if e.errno() == libc::EWOULDBLOCK => {
+            let err = base::Error::last();
+            match err.errno() {
+                libc::ENOSYS | libc::EINVAL if use_dontcache => {
+                    // EINVAL can be returned if the kernel supports preadv2 but not the
+                    // RWF_DONTCACHE flag. ENOSYS is returned if preadv2 is not supported at all.
+                    base::warn!(
+                        "crosvm: preadv2 or RWF_DONTCACHE read not supported, falling back to v1!"
+                    );
+                    KERNEL_SUPPORTS_DONTCACHE.store(false, Ordering::Relaxed);
+                    use_dontcache = false;
+                    continue;
+                }
+                libc::EWOULDBLOCK => {
                     let op = self
                         .registered_source
                         .wait_readable()
                         .map_err(Error::AddingWaker)?;
                     op.await.map_err(Error::Executor)?;
                 }
-                e => return Err(Error::Read(e).into()),
+                _ => return Err(Error::Read(err).into()),
             }
         }
     }
@@ -151,53 +190,78 @@ impl<F: AsRawDescriptor> PollSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        options: IoOptions,
     ) -> AsyncResult<usize> {
         let mut iovecs = mem_offsets
             .into_iter()
             .filter_map(|mem_range| mem.get_volatile_slice(mem_range).ok())
             .collect::<Vec<VolatileSlice>>();
-
+        let mut use_dontcache =
+            options.dontcache && KERNEL_SUPPORTS_DONTCACHE.load(Ordering::Relaxed);
         loop {
-            let res = if let Some(offset) = file_offset {
+            let res = handle_eintr_errno!(if use_dontcache {
+                let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the
-                // length is guaranteed to be valid from the pointer by
-                // io_slice_mut.
-                handle_eintr_errno!(unsafe {
+                // Safe because we trust the kernel not to write past the length given and the
+                // volatile slices are guaranteed to be valid for the duration of the call.
+                unsafe {
+                    libc::preadv2(
+                        self.registered_source.duped_fd.as_raw_fd(),
+                        iovecs.as_ptr() as *const libc::iovec,
+                        iovecs.len() as libc::c_int,
+                        offset,
+                        libc::RWF_DONTCACHE,
+                    )
+                }
+            } else if let Some(offset) = file_offset {
+                // SAFETY:
+                // Safe because we trust the kernel not to write past the length given and the
+                // volatile slices are guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::preadv64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
                     )
-                })
+                }
             } else {
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the
-                // length is guaranteed to be valid from the pointer by
-                // io_slice_mut.
-                handle_eintr_errno!(unsafe {
+                // Safe because we trust the kernel not to write past the length given and the
+                // volatile slices are guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::readv(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
-                })
-            };
+                }
+            });
 
             if res >= 0 {
                 return Ok(res as usize);
             }
 
-            match base::Error::last() {
-                e if e.errno() == libc::EWOULDBLOCK => {
+            let err = base::Error::last();
+            match err.errno() {
+                libc::ENOSYS | libc::EINVAL if use_dontcache => {
+                    // EINVAL can be returned if the kernel supports preadv2 but not the
+                    // RWF_DONTCACHE flag. ENOSYS is returned if preadv2 is not supported at all.
+                    base::warn!(
+                        "crosvm: preadv2 or RWF_DONTCACHE read not supported, falling back to v1!"
+                    );
+                    KERNEL_SUPPORTS_DONTCACHE.store(false, Ordering::Relaxed);
+                    use_dontcache = false;
+                    continue;
+                }
+                libc::EWOULDBLOCK => {
                     let op = self
                         .registered_source
                         .wait_readable()
                         .map_err(Error::AddingWaker)?;
                     op.await.map_err(Error::Executor)?;
                 }
-                e => return Err(Error::Read(e).into()),
+                _ => return Err(Error::Read(err).into()),
             }
         }
     }
@@ -217,44 +281,78 @@ impl<F: AsRawDescriptor> PollSource<F> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
+        let mut use_dontcache =
+            options.dontcache && KERNEL_SUPPORTS_DONTCACHE.load(Ordering::Relaxed);
         loop {
-            let res = if let Some(offset) = file_offset {
+            let res = handle_eintr_errno!(if use_dontcache {
+                let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
+                let iovecs = [libc::iovec {
+                    iov_base: vec.as_ptr() as *mut libc::c_void,
+                    iov_len: vec.len(),
+                }];
                 // SAFETY:
-                // Safe because this will not modify any memory and we check the return value.
-                handle_eintr_errno!(unsafe {
+                // Safe because we only read from the passed buffer and the pointers/buffers
+                // are guaranteed to be valid for the duration of the call.
+                unsafe {
+                    libc::pwritev2(
+                        self.registered_source.duped_fd.as_raw_fd(),
+                        iovecs.as_ptr(),
+                        1,
+                        offset,
+                        libc::RWF_DONTCACHE,
+                    )
+                }
+            } else if let Some(offset) = file_offset {
+                // SAFETY:
+                // Safe because we only read from the passed buffer and the pointers/buffers
+                // are guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::pwrite64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
                     )
-                })
+                }
             } else {
                 // SAFETY:
-                // Safe because this will not modify any memory and we check the return value.
-                handle_eintr_errno!(unsafe {
+                // Safe because we only read from the passed buffer and the pointers/buffers
+                // are guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::write(
                         self.registered_source.duped_fd.as_raw_fd(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                     )
-                })
-            };
+                }
+            });
 
             if res >= 0 {
                 return Ok((res as usize, vec));
             }
 
-            match base::Error::last() {
-                e if e.errno() == libc::EWOULDBLOCK => {
+            let err = base::Error::last();
+            match err.errno() {
+                libc::ENOSYS | libc::EINVAL if use_dontcache => {
+                    // EINVAL can be returned if the kernel supports pwritev2 but not the
+                    // RWF_DONTCACHE flag. ENOSYS is returned if pwritev2 is not supported at all.
+                    base::warn!(
+                        "crosvm: pwritev2 or RWF_DONTCACHE write not supported, falling back to v1!"
+                    );
+                    KERNEL_SUPPORTS_DONTCACHE.store(false, Ordering::Relaxed);
+                    use_dontcache = false;
+                    continue;
+                }
+                libc::EWOULDBLOCK => {
                     let op = self
                         .registered_source
                         .wait_writable()
                         .map_err(Error::AddingWaker)?;
                     op.await.map_err(Error::Executor)?;
                 }
-                e => return Err(Error::Write(e).into()),
+                _ => return Err(Error::Write(err).into()),
             }
         }
     }
@@ -265,54 +363,79 @@ impl<F: AsRawDescriptor> PollSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        options: IoOptions,
     ) -> AsyncResult<usize> {
         let iovecs = mem_offsets
             .into_iter()
             .map(|mem_range| mem.get_volatile_slice(mem_range))
             .filter_map(|r| r.ok())
             .collect::<Vec<VolatileSlice>>();
-
+        let mut use_dontcache =
+            options.dontcache && KERNEL_SUPPORTS_DONTCACHE.load(Ordering::Relaxed);
         loop {
-            let res = if let Some(offset) = file_offset {
+            let res = handle_eintr_errno!(if use_dontcache {
+                let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the
-                // length is guaranteed to be valid from the pointer by
-                // io_slice_mut.
-                handle_eintr_errno!(unsafe {
+                // Safe because we only read from the passed volatile slices and they are
+                // guaranteed to be valid for the duration of the call.
+                unsafe {
+                    libc::pwritev2(
+                        self.registered_source.duped_fd.as_raw_fd(),
+                        iovecs.as_ptr() as *const libc::iovec,
+                        iovecs.len() as libc::c_int,
+                        offset,
+                        libc::RWF_DONTCACHE,
+                    )
+                }
+            } else if let Some(offset) = file_offset {
+                // SAFETY:
+                // Safe because we only read from the passed volatile slices and they are
+                // guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::pwritev64(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
                     )
-                })
+                }
             } else {
                 // SAFETY:
-                // Safe because we trust the kernel not to write path the length given and the
-                // length is guaranteed to be valid from the pointer by
-                // io_slice_mut.
-                handle_eintr_errno!(unsafe {
+                // Safe because we only read from the passed volatile slices and they are
+                // guaranteed to be valid for the duration of the call.
+                unsafe {
                     libc::writev(
                         self.registered_source.duped_fd.as_raw_fd(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
-                })
-            };
+                }
+            });
 
             if res >= 0 {
                 return Ok(res as usize);
             }
 
-            match base::Error::last() {
-                e if e.errno() == libc::EWOULDBLOCK => {
+            let err = base::Error::last();
+            match err.errno() {
+                libc::ENOSYS | libc::EINVAL if use_dontcache => {
+                    // EINVAL can be returned if the kernel supports pwritev2 but not the
+                    // RWF_DONTCACHE flag. ENOSYS is returned if pwritev2 is not supported at all.
+                    base::warn!(
+                        "crosvm: pwritev2 or RWF_DONTCACHE write not supported, falling back to v1!"
+                    );
+                    KERNEL_SUPPORTS_DONTCACHE.store(false, Ordering::Relaxed);
+                    use_dontcache = false;
+                    continue;
+                }
+                libc::EWOULDBLOCK => {
                     let op = self
                         .registered_source
                         .wait_writable()
                         .map_err(Error::AddingWaker)?;
                     op.await.map_err(Error::Executor)?;
                 }
-                e => return Err(Error::Write(e).into()),
+                _ => return Err(Error::Write(err).into()),
             }
         }
     }

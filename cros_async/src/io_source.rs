@@ -77,14 +77,29 @@ macro_rules! on_inner {
     };
 }
 
+/// Options for IO operations.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct IoOptions {
+    /// Bypasses the page cache for I/O operations.
+    ///
+    /// Currently only implemented for the Linux `PollSource` backend using `RWF_DONTCACHE`.
+    /// Other backends (like `io_uring`, `tokio`, or Windows) silently ignore this option.
+    ///
+    /// On `PollSource`, if the kernel doesn't support `RWF_DONTCACHE` (e.g. older kernels),
+    /// the backend will transparently fallback to cached I/O. However, if the filesystem
+    /// doesn't support it (returning `EOPNOTSUPP`), the operation will fail.
+    pub dontcache: bool,
+}
+
 impl<F: AsRawDescriptor> IoSource<F> {
     /// Reads at `file_offset` and fills the given `vec`.
     pub async fn read_to_vec(
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
-        await_on_inner!(self, read_to_vec, file_offset, vec)
+        await_on_inner!(self, read_to_vec, file_offset, vec, options)
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
@@ -93,8 +108,9 @@ impl<F: AsRawDescriptor> IoSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        options: IoOptions,
     ) -> AsyncResult<usize> {
-        await_on_inner!(self, read_to_mem, file_offset, mem, mem_offsets)
+        await_on_inner!(self, read_to_mem, file_offset, mem, mem_offsets, options)
     }
 
     /// Waits for the object to be readable.
@@ -107,8 +123,9 @@ impl<F: AsRawDescriptor> IoSource<F> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
-        await_on_inner!(self, write_from_vec, file_offset, vec)
+        await_on_inner!(self, write_from_vec, file_offset, vec, options)
     }
 
     /// Writes from the given `mem` at the given offsets to the file starting at `file_offset`.
@@ -117,8 +134,9 @@ impl<F: AsRawDescriptor> IoSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        options: IoOptions,
     ) -> AsyncResult<usize> {
-        await_on_inner!(self, write_from_mem, file_offset, mem, mem_offsets)
+        await_on_inner!(self, write_from_mem, file_offset, mem, mem_offsets, options)
     }
 
     /// Deallocates the given range of a file.
@@ -215,7 +233,10 @@ mod tests {
             async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
                 let v = vec![0x55u8; 32];
                 let v_ptr = v.as_ptr();
-                let (n, v) = async_source.read_to_vec(None, v).await.unwrap();
+                let (n, v) = async_source
+                    .read_to_vec(None, v, Default::default())
+                    .await
+                    .unwrap();
                 assert_eq!(v_ptr, v.as_ptr());
                 assert_eq!(n, 4);
                 assert_eq!(&v[..4], "data".as_bytes());
@@ -234,7 +255,10 @@ mod tests {
             async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
                 let v = "data".as_bytes().to_vec();
                 let v_ptr = v.as_ptr();
-                let (n, v) = async_source.write_from_vec(None, v).await.unwrap();
+                let (n, v) = async_source
+                    .write_from_vec(None, v, Default::default())
+                    .await
+                    .unwrap();
                 assert_eq!(n, 4);
                 assert_eq!(v_ptr, v.as_ptr());
             }
@@ -262,6 +286,7 @@ mod tests {
                             MemRegion { offset: 0, len: 2 },
                             MemRegion { offset: 4, len: 1 },
                         ],
+                        Default::default(),
                     )
                     .await
                     .unwrap();
@@ -293,6 +318,7 @@ mod tests {
                             MemRegion { offset: 0, len: 1 },
                             MemRegion { offset: 2, len: 2 },
                         ],
+                        Default::default(),
                     )
                     .await
                     .unwrap();
@@ -315,7 +341,10 @@ mod tests {
             async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
                 let v = vec![0x55u8; 32];
                 let v_ptr = v.as_ptr();
-                let ret = source.write_from_vec(None, v).await.unwrap();
+                let ret = source
+                    .write_from_vec(None, v, Default::default())
+                    .await
+                    .unwrap();
                 assert_eq!(ret.0, 32);
                 let ret_v = ret.1;
                 assert_eq!(v_ptr, ret_v.as_ptr());
@@ -337,8 +366,8 @@ mod tests {
                 let v = vec![0x55u8; 32];
                 let v2 = vec![0x55u8; 32];
                 let (ret, ret2) = futures::future::join(
-                    source.read_to_vec(None, v),
-                    source.read_to_vec(Some(32), v2),
+                    source.read_to_vec(None, v, Default::default()),
+                    source.read_to_vec(Some(32), v2, Default::default()),
                 )
                 .await;
 
@@ -368,8 +397,8 @@ mod tests {
                 let v = vec![0x55u8; 32];
                 let v2 = vec![0x55u8; 32];
                 let (r, r2) = futures::future::join(
-                    source.write_from_vec(None, v),
-                    source.write_from_vec(Some(32), v2),
+                    source.write_from_vec(None, v, Default::default()),
+                    source.write_from_vec(Some(32), v2, Default::default()),
                 )
                 .await;
                 assert_eq!(32, r.unwrap().0);
@@ -388,8 +417,14 @@ mod tests {
     fn read_current_file_position() {
         for kind in all_kinds() {
             async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
-                let (count1, verify1) = source.read_to_vec(None, vec![0u8; 32]).await.unwrap();
-                let (count2, verify2) = source.read_to_vec(None, vec![0u8; 32]).await.unwrap();
+                let (count1, verify1) = source
+                    .read_to_vec(None, vec![0u8; 32], Default::default())
+                    .await
+                    .unwrap();
+                let (count2, verify2) = source
+                    .read_to_vec(None, vec![0u8; 32], Default::default())
+                    .await
+                    .unwrap();
                 assert_eq!(count1, 32);
                 assert_eq!(count2, 32);
                 assert_eq!(verify1, [0x55u8; 32]);
@@ -413,13 +448,13 @@ mod tests {
         for kind in all_kinds() {
             async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
                 let count1 = source
-                    .write_from_vec(None, vec![0x55u8; 32])
+                    .write_from_vec(None, vec![0x55u8; 32], Default::default())
                     .await
                     .unwrap()
                     .0;
                 assert_eq!(count1, 32);
                 let count2 = source
-                    .write_from_vec(None, vec![0xffu8; 32])
+                    .write_from_vec(None, vec![0xffu8; 32], Default::default())
                     .await
                     .unwrap()
                     .0;
@@ -439,6 +474,32 @@ mod tests {
             f.read_exact(&mut verify2).unwrap();
             assert_eq!(verify1, [0x55u8; 32]);
             assert_eq!(verify2, [0xffu8; 32]);
+        }
+    }
+
+    #[test]
+    fn read_dontcache() {
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
+                let v = vec![0u8; 4];
+                let options = IoOptions { dontcache: true };
+                let res = source.read_to_vec(None, v, options).await;
+                match res {
+                    Ok((n, _)) => assert_eq!(n, 4),
+                    Err(e) => {
+                        let io_err: std::io::Error = e.into();
+                        #[cfg(unix)]
+                        assert_eq!(io_err.raw_os_error(), Some(libc::EOPNOTSUPP));
+                        #[cfg(windows)]
+                        panic!("Expected success on Windows, got error: {io_err:?}");
+                    }
+                }
+            }
+
+            let f = tmpfile_with_contents("data".as_bytes());
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f).unwrap();
+            ex.run_until(go(source)).unwrap();
         }
     }
 }

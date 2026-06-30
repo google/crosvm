@@ -50,7 +50,7 @@ impl<T: IntoAsync + Send> ReadAsync for IoSourceWrapper<T> {
         vec: Vec<u8>,
     ) -> Result<(usize, Vec<u8>)> {
         self.source
-            .read_to_vec(file_offset, vec)
+            .read_to_vec(file_offset, vec, Default::default())
             .await
             .map_err(Into::into)
     }
@@ -64,7 +64,7 @@ impl<T: IntoAsync + Send> WriteAsync for IoSourceWrapper<T> {
         vec: Vec<u8>,
     ) -> Result<(usize, Vec<u8>)> {
         self.source
-            .write_from_vec(file_offset, vec)
+            .write_from_vec(file_offset, vec, Default::default())
             .await
             .map_err(Into::into)
     }

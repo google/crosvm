@@ -19,7 +19,7 @@ impl EventAsync {
     pub async fn next_val(&self) -> AsyncResult<u64> {
         let (n, v) = self
             .io_source
-            .read_to_vec(None, 0u64.to_ne_bytes().to_vec())
+            .read_to_vec(None, 0u64.to_ne_bytes().to_vec(), Default::default())
             .await?;
         if n != 8 {
             return Err(AsyncError::EventAsync(base::Error::new(libc::ENODATA)));

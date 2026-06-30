@@ -24,6 +24,7 @@ use base::RawDescriptor;
 use base::VolatileSlice;
 use cros_async::BackingMemory;
 use cros_async::Executor;
+use cros_async::IoOptions;
 use cros_async::IoSource;
 
 use crate::AsyncDisk;
@@ -401,6 +402,7 @@ impl AsyncDisk for AsyncZstdDisk {
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: cros_async::MemRegionIter<'a>,
+        options: IoOptions,
     ) -> DiskResult<usize> {
         let read_instruction = compresed_frame_read_instruction(&self.seek_table, file_offset)
             .map_err(|e| DiskError::ReadingData(io::Error::new(io::ErrorKind::InvalidData, e)))?;
@@ -423,7 +425,7 @@ impl AsyncDisk for AsyncZstdDisk {
 
         let (compressed_read_size, compressed_data) = self
             .inner
-            .read_to_vec(Some(read_instruction.read_offset), compressed_data)
+            .read_to_vec(Some(read_instruction.read_offset), compressed_data, options)
             .await
             .map_err(|e| DiskError::ReadingData(io::Error::other(e)))?;
 
@@ -474,6 +476,7 @@ impl AsyncDisk for AsyncZstdDisk {
         _file_offset: u64,
         _mem: Arc<dyn BackingMemory + Send + Sync>,
         _mem_offsets: cros_async::MemRegionIter<'a>,
+        _options: IoOptions,
     ) -> DiskResult<usize> {
         Err(DiskError::UnsupportedOperation)
     }

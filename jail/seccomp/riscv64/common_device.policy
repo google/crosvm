@@ -40,6 +40,8 @@ ppoll: 1
 read: 1
 readlinkat: 1
 readv: 1
+preadv2: 1
+pwritev2: 1
 recvfrom: 1
 recvmsg: 1
 restart_syscall: 1

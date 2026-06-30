@@ -20,6 +20,7 @@ use crate::mem::MemRegion;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::BackingMemory;
+use crate::IoOptions;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -235,6 +236,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         Ok(match &self.fd {
             FdType::Async(async_fd) => {
@@ -265,6 +267,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mem_offsets_vec: Vec<MemRegion> = mem_offsets.into_iter().collect();
         Ok(match &self.fd {
@@ -324,6 +327,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mem_offsets_vec: Vec<MemRegion> = mem_offsets.into_iter().collect();
         Ok(match &self.fd {
@@ -360,6 +364,7 @@ impl<T: AsRawDescriptor> TokioSource<T> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         Ok(match &self.fd {
             FdType::Async(async_fd) => {

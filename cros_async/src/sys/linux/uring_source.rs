@@ -17,6 +17,7 @@ use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
 use crate::mem::VecIoWrapper;
 use crate::AsyncResult;
+use crate::IoOptions;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
 /// registering an IO source with the uring that provides an `IoSource` implementation.
@@ -40,6 +41,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let buf = Arc::new(VecIoWrapper::from(vec));
         let op = self.registered_source.start_read_to_mem(
@@ -73,6 +75,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let op = self
             .registered_source
@@ -86,6 +89,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let buf = Arc::new(VecIoWrapper::from(vec));
         let op = self.registered_source.start_write_from_mem(
@@ -112,6 +116,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let op = self
             .registered_source
@@ -210,7 +215,10 @@ mod tests {
     async fn read_u64<T: AsRawDescriptor>(source: &UringSource<T>) -> u64 {
         // Init a vec that translates to u64::max;
         let u64_mem = vec![0xffu8; std::mem::size_of::<u64>()];
-        let (ret, u64_mem) = source.read_to_vec(None, u64_mem).await.unwrap();
+        let (ret, u64_mem) = source
+            .read_to_vec(None, u64_mem, Default::default())
+            .await
+            .unwrap();
         assert_eq!(ret, std::mem::size_of::<u64>());
         let mut val = 0u64.to_ne_bytes();
         val.copy_from_slice(&u64_mem);
@@ -308,6 +316,7 @@ mod tests {
                         offset: 32,
                         len: 33,
                     }],
+                    Default::default(),
                 )
                 .await;
             assert!(ret.is_err());
@@ -376,7 +385,10 @@ mod tests {
         // Start a uring operation and then await the result from an FdExecutor.
         async fn go(source: IoSource<File>) {
             let v = vec![0xa4u8; 16];
-            let (len, vec) = source.read_to_vec(None, v).await.unwrap();
+            let (len, vec) = source
+                .read_to_vec(None, v, Default::default())
+                .await
+                .unwrap();
             assert_eq!(len, 16);
             assert!(vec.iter().all(|&b| b == 0));
         }
@@ -411,7 +423,10 @@ mod tests {
         // Start a poll operation and then await the result
         async fn go(source: IoSource<File>) {
             let v = vec![0x2cu8; 16];
-            let (len, vec) = source.read_to_vec(None, v).await.unwrap();
+            let (len, vec) = source
+                .read_to_vec(None, v, Default::default())
+                .await
+                .unwrap();
             assert_eq!(len, 16);
             assert!(vec.iter().all(|&b| b == 0));
         }

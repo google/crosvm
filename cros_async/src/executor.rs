@@ -262,7 +262,7 @@ pub(crate) trait ExecutorTrait {
 /// // Write all bytes from `data` to `f`.
 /// async fn write_file(f: &IoSource<File>, mut data: Vec<u8>) -> AsyncResult<()> {
 ///     while data.len() > 0 {
-///         let (count, mut buf) = f.write_from_vec(None, data).await?;
+///         let (count, mut buf) = f.write_from_vec(None, data, Default::default()).await?;
 ///
 ///         data = buf.split_off(count);
 ///     }
@@ -280,7 +280,7 @@ pub(crate) trait ExecutorTrait {
 ///
 ///     while rem > 0 {
 ///         let buf = vec![0u8; min(rem, CHUNK_SIZE)];
-///         let (count, mut data) = from.read_to_vec(None, buf).await?;
+///         let (count, mut data) = from.read_to_vec(None, buf, Default::default()).await?;
 ///
 ///         if count == 0 {
 ///             // End of file. Return the number of bytes transferred.

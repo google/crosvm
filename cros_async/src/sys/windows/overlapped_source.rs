@@ -28,6 +28,7 @@ use crate::sys::windows::handle_executor::RegisteredOverlappedSource;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::BlockingPool;
+use crate::IoOptions;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -147,6 +148,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         if self.seek_forbidden && file_offset.is_some() {
             return Err(Error::IoSeekError(io::Error::new(
@@ -178,6 +180,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mut total_bytes_read = 0;
         let mut offset = match file_offset {
@@ -236,6 +239,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
+        _options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         if self.seek_forbidden && file_offset.is_some() {
             return Err(Error::IoSeekError(io::Error::new(
@@ -267,6 +271,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: impl IntoIterator<Item = MemRegion>,
+        _options: IoOptions,
     ) -> AsyncResult<usize> {
         let mut total_bytes_written = 0;
         let mut offset = match file_offset {
@@ -455,7 +460,10 @@ mod tests {
 
         async fn read_data(src: &OverlappedSource<File>) {
             let buf: Vec<u8> = vec![0; 4];
-            let (bytes_read, buf) = src.read_to_vec(Some(0), buf).await.unwrap();
+            let (bytes_read, buf) = src
+                .read_to_vec(Some(0), buf, Default::default())
+                .await
+                .unwrap();
             assert_eq!(bytes_read, 4);
             assert_eq!(std::str::from_utf8(buf.as_slice()).unwrap(), "data");
         }
@@ -480,6 +488,7 @@ mod tests {
                         MemRegion { offset: 0, len: 2 },
                         MemRegion { offset: 2, len: 2 },
                     ],
+                    Default::default(),
                 )
                 .await
                 .unwrap();
@@ -504,7 +513,10 @@ mod tests {
             let mut buf: Vec<u8> = Vec::new();
             buf.extend_from_slice("data".as_bytes());
 
-            let (bytes_written, _) = src.write_from_vec(Some(0), buf).await.unwrap();
+            let (bytes_written, _) = src
+                .write_from_vec(Some(0), buf, Default::default())
+                .await
+                .unwrap();
             assert_eq!(bytes_written, 4);
         }
 
@@ -534,6 +546,7 @@ mod tests {
                         MemRegion { offset: 0, len: 2 },
                         MemRegion { offset: 2, len: 2 },
                     ],
+                    Default::default(),
                 )
                 .await
                 .unwrap();

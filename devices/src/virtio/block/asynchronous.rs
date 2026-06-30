@@ -37,6 +37,7 @@ use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
+use cros_async::IoOptions;
 use cros_async::TimerAsync;
 use data_model::Le16;
 use data_model::Le32;
@@ -218,6 +219,7 @@ struct DiskState {
     read_only: bool,
     sparse: bool,
     id: BlockId,
+    dontcache: bool,
     /// A DiskState is owned by each worker's executor and cannot be shared by workers, thus
     /// `worker_shared_state` holds the state shared by workers in Arc.
     worker_shared_state: Arc<AsyncRwLock<WorkerSharedState>>,
@@ -634,6 +636,7 @@ pub struct BlockAsync {
     #[cfg(windows)]
     pub(super) io_concurrency: u32,
     pci_address: Option<PciAddress>,
+    dontcache: bool,
 }
 
 impl BlockAsync {
@@ -720,6 +723,7 @@ impl BlockAsync {
             #[cfg(windows)]
             io_concurrency,
             pci_address: disk_option.pci_address,
+            dontcache: disk_option.dontcache,
         })
     }
 
@@ -809,7 +813,14 @@ impl BlockAsync {
                 check_range(offset, data_len as u64, disk_size)?;
                 let disk_image = &disk_state.disk_image;
                 writer
-                    .write_all_from_at_fut(&**disk_image, data_len, offset)
+                    .write_all_from_at_fut(
+                        &**disk_image,
+                        data_len,
+                        offset,
+                        IoOptions {
+                            dontcache: disk_state.dontcache,
+                        },
+                    )
                     .await
                     .map_err(|desc_error| ExecuteError::ReadIo {
                         length: data_len,
@@ -828,7 +839,14 @@ impl BlockAsync {
                 check_range(offset, data_len as u64, disk_size)?;
                 let disk_image = &disk_state.disk_image;
                 reader
-                    .read_exact_to_at_fut(&**disk_image, data_len, offset)
+                    .read_exact_to_at_fut(
+                        &**disk_image,
+                        data_len,
+                        offset,
+                        IoOptions {
+                            dontcache: disk_state.dontcache,
+                        },
+                    )
                     .await
                     .map_err(|desc_error| ExecuteError::WriteIo {
                         length: data_len,
@@ -974,6 +992,7 @@ impl BlockAsync {
 
         let ex = self.create_executor();
         let control_tube = self.control_tube.take();
+        let dontcache = self.dontcache;
         let disk_image = if self.worker_per_queue {
             self.disk_image
                 .as_ref()
@@ -1005,6 +1024,7 @@ impl BlockAsync {
                 read_only,
                 sparse,
                 id,
+                dontcache,
                 worker_shared_state,
             }));
 
@@ -1386,6 +1406,7 @@ mod tests {
             read_only: false,
             sparse: true,
             id: Default::default(),
+            dontcache: false,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
@@ -1454,6 +1475,7 @@ mod tests {
             read_only: false,
             sparse: true,
             id: Default::default(),
+            dontcache: false,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
@@ -1524,6 +1546,7 @@ mod tests {
             read_only: false,
             sparse: true,
             id: *id,
+            dontcache: false,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),

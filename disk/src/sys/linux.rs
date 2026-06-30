@@ -97,6 +97,7 @@ mod tests {
                     0,
                     guest_mem,
                     MemRegionIter::new(&[MemRegion { offset: 0, len: 48 }]),
+                    Default::default(),
                 )
                 .await;
             assert_eq!(48, result.unwrap());
@@ -118,6 +119,7 @@ mod tests {
                     0,
                     guest_mem,
                     MemRegionIter::new(&[MemRegion { offset: 0, len: 48 }]),
+                    Default::default(),
                 )
                 .await;
             assert_eq!(48, result.unwrap());
