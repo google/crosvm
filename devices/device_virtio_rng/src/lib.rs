@@ -14,20 +14,19 @@ use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
 use base::WorkerThread;
+use devices::virtio;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use jail::JailConfig;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
 use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
-
-use super::DeviceType;
-use super::Interrupt;
-use super::Queue;
-use super::VirtioDevice;
-use crate::virtio;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];

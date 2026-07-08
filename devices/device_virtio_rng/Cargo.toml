@@ -1,0 +1,20 @@
+[package]
+name = "device_virtio_rng"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[features]
+
+[dependencies]
+anyhow = { workspace = true }
+base = { workspace = true }
+devices = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true, features = [ "derive", "rc" ] }
+snapshot = { workspace = true }
+vm_memory = { workspace = true }
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+jail = { workspace = true }
+minijail = "*"

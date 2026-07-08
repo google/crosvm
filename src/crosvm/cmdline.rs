@@ -3226,7 +3226,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             && matches!(cfg.protection_type, ProtectionType::Unprotected)
         {
             cfg.virtio_device_modules
-                .push(devices::virtio::VirtioRngModule.into());
+                .push(device_virtio_rng::VirtioRngModule.into());
         }
 
         // Now do validation of constructed config

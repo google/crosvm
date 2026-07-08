@@ -18,7 +18,6 @@ pub mod net;
 #[cfg(feature = "pvclock")]
 pub mod pvclock;
 mod queue;
-mod rng;
 #[cfg(feature = "vtpm")]
 mod tpm;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -92,7 +91,6 @@ pub use self::queue::split_descriptor_chain::SplitDescriptorChain;
 pub use self::queue::PeekedDescriptorChain;
 pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
-pub use self::rng::VirtioRngModule;
 pub use self::scsi::Controller as ScsiController;
 pub use self::scsi::DiskConfig as ScsiDiskConfig;
 #[cfg(feature = "vtpm")]

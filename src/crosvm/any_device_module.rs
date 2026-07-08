@@ -78,6 +78,6 @@ macro_rules! declare_any_virtio_device_module {
 declare_any_virtio_device_module! {
     #[derive(Serialize, Deserialize)]
     pub enum AnyVirtioDeviceModule {
-        Rng(devices::virtio::VirtioRngModule),
+        Rng(device_virtio_rng::VirtioRngModule),
     }
 }
