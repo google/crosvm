@@ -9,7 +9,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use base::RawDescriptor;
-use device_virtio_net::NetResourceCarrier;
+use device_virtio_net::NetPciHotplugResourceCarrier;
 use devices::HotPluggable;
 use devices::IntxParameter;
 use devices::IrqLevelEvent;
@@ -23,22 +23,22 @@ use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestMemory;
 
-/// A ResourceCarrier moves resources for PCI device across process boundary.
+/// A PciHotplugResourceCarrier moves resources for PCI device across process boundary.
 ///
-/// ResourceCarrier can be sent across processes using De/Serialize. All the variants shall be able
-/// to convert into a HotPluggable device.
+/// PciHotplugResourceCarrier can be sent across processes using De/Serialize. All the variants
+/// shall be able to convert into a HotPluggable device.
 #[derive(Serialize, Deserialize)]
-pub enum ResourceCarrier {
+pub enum PciHotplugResourceCarrier {
     /// virtio-net device.
-    VirtioNet(NetResourceCarrier),
+    VirtioNet(NetPciHotplugResourceCarrier),
 }
 
-impl ResourceCarrier {
+impl PciHotplugResourceCarrier {
     /// Returns debug label for the target device.
     #[allow(dead_code)]
     pub fn debug_label(&self) -> String {
         match self {
-            ResourceCarrier::VirtioNet(c) => c.debug_label(),
+            PciHotplugResourceCarrier::VirtioNet(c) => c.debug_label(),
         }
     }
 
@@ -47,7 +47,7 @@ impl ResourceCarrier {
     #[allow(dead_code)]
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
         match self {
-            ResourceCarrier::VirtioNet(c) => c.keep_rds(),
+            PciHotplugResourceCarrier::VirtioNet(c) => c.keep_rds(),
         }
     }
     /// Allocate the preferred address to the device.
@@ -57,7 +57,9 @@ impl ResourceCarrier {
         resources: &mut resources::SystemAllocator,
     ) -> std::result::Result<(), PciDeviceError> {
         match self {
-            ResourceCarrier::VirtioNet(c) => c.allocate_address(preferred_address, resources),
+            PciHotplugResourceCarrier::VirtioNet(c) => {
+                c.allocate_address(preferred_address, resources)
+            }
         }
     }
     /// Assign a legacy PCI IRQ to this device.
@@ -65,14 +67,14 @@ impl ResourceCarrier {
     /// When `irq_resample_evt` is signaled, the device should re-assert `irq_evt` if necessary.
     pub fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {
         match self {
-            ResourceCarrier::VirtioNet(c) => c.assign_irq(irq_evt, pin, irq_num),
+            PciHotplugResourceCarrier::VirtioNet(c) => c.assign_irq(irq_evt, pin, irq_num),
         }
     }
 }
 
-/// Builds HotPlugPci from NetResourceCarrier and NetLocalParameters.
+/// Builds HotPlugPci from NetPciHotplugResourceCarrier and NetLocalParameters.
 pub fn build_hotplug_net_device(
-    net_carrier_device: NetResourceCarrier,
+    net_carrier_device: NetPciHotplugResourceCarrier,
     net_local_parameters: NetLocalParameters,
 ) -> Result<Box<dyn HotPluggable>> {
     let pci_address = net_carrier_device

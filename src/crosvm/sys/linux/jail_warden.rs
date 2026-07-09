@@ -39,7 +39,7 @@ use swap::SwapDeviceHelper;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
-use super::pci_hotplug_helpers::ResourceCarrier;
+use super::pci_hotplug_helpers::PciHotplugResourceCarrier;
 use crate::crosvm::sys::linux::pci_hotplug_helpers::build_hotplug_net_device;
 use crate::crosvm::sys::linux::pci_hotplug_helpers::NetLocalParameters;
 use crate::crosvm::sys::linux::VirtioDeviceBuilder;
@@ -51,7 +51,7 @@ pub enum JailCommand {
     /// Quits jail warden process.
     Exit,
     /// Fork a process and create a device inside it.
-    ForkDevice(ResourceCarrier),
+    ForkDevice(PciHotplugResourceCarrier),
 }
 
 /// Response to control commands.
@@ -63,12 +63,12 @@ pub enum JailResponse {
     ForkDeviceOk(ChildProcIntf),
 }
 
-/// JailWarden takes ResourceCarrier, jail it, and returns a proxy to the created device.
+/// JailWarden takes PciHotplugResourceCarrier, jail it, and returns a proxy to the created device.
 pub trait JailWarden {
     /// Make a PCI device, jail it, and return the proxy to the jailed device as a BusDevice.
     fn make_proxy_device(
         &self,
-        resource_carrier: ResourceCarrier,
+        resource_carrier: PciHotplugResourceCarrier,
     ) -> Result<(Arc<Mutex<dyn BusDevice>>, Pid)>;
 }
 
@@ -140,7 +140,7 @@ impl JailWardenImpl {
 impl JailWarden for JailWardenImpl {
     fn make_proxy_device(
         &self,
-        resource_carrier: ResourceCarrier,
+        resource_carrier: PciHotplugResourceCarrier,
     ) -> Result<(Arc<Mutex<dyn BusDevice>>, Pid)> {
         self.main_tube
             .send(&JailCommand::ForkDevice(resource_carrier))?;
@@ -187,7 +187,7 @@ fn jail_worker_process(
             }
             JailCommand::ForkDevice(hot_plug_device_builder) => {
                 let (pci_device, jail) = match hot_plug_device_builder {
-                    ResourceCarrier::VirtioNet(net_resource_carrier) => {
+                    PciHotplugResourceCarrier::VirtioNet(net_resource_carrier) => {
                         let net_param = &net_resource_carrier.net_param;
                         let jail = net_param
                             .create_jail(config.jail_config.as_ref(), VirtioDeviceType::Regular)?
@@ -245,10 +245,10 @@ impl PermissiveJailWarden {
 impl JailWarden for PermissiveJailWarden {
     fn make_proxy_device(
         &self,
-        resource_carrier: ResourceCarrier,
+        resource_carrier: PciHotplugResourceCarrier,
     ) -> Result<(Arc<Mutex<dyn BusDevice>>, Pid)> {
         let pci_device = match resource_carrier {
-            ResourceCarrier::VirtioNet(net_resource_carrier) => {
+            PciHotplugResourceCarrier::VirtioNet(net_resource_carrier) => {
                 let net_local_parameters =
                     NetLocalParameters::new(self.guest_memory.clone(), self.protection_type);
                 build_hotplug_net_device(net_resource_carrier, net_local_parameters)?

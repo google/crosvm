@@ -48,7 +48,7 @@ use net_util::Error as TapError;
 use net_util::MacAddress;
 use net_util::TapT;
 #[cfg(feature = "pci-hotplug")]
-pub use pci_hotplug::NetResourceCarrier;
+pub use pci_hotplug::NetPciHotplugResourceCarrier;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;

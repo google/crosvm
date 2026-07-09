@@ -19,11 +19,11 @@ use crate::NetParameters;
 
 pub type Result<T> = std::result::Result<T, PciDeviceError>;
 
-/// A NetResourceCarrier is a ResourceCarrier specialization for virtio-net devices.
+/// A NetPciHotplugResourceCarrier is a ResourceCarrier specialization for virtio-net devices.
 ///
 /// TODO(b/289155315): make members private.
 #[derive(Serialize, Deserialize)]
-pub struct NetResourceCarrier {
+pub struct NetPciHotplugResourceCarrier {
     /// NetParameters for constructing tap device
     pub net_param: NetParameters,
     /// msi_device_tube for VirtioPciDevice constructor
@@ -38,8 +38,8 @@ pub struct NetResourceCarrier {
     pub vm_control_tube: Tube,
 }
 
-impl NetResourceCarrier {
-    ///Constructs NetResourceCarrier.
+impl NetPciHotplugResourceCarrier {
+    ///Constructs NetPciHotplugResourceCarrier.
     pub fn new(
         net_param: NetParameters,
         msi_device_tube: Tube,

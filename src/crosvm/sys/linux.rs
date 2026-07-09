@@ -84,7 +84,7 @@ use device_virtio_net::NetParameters;
 #[cfg(feature = "pci-hotplug")]
 use device_virtio_net::NetParametersMode;
 #[cfg(feature = "pci-hotplug")]
-use device_virtio_net::NetResourceCarrier;
+use device_virtio_net::NetPciHotplugResourceCarrier;
 use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
 #[cfg(all(feature = "pvclock", target_arch = "x86_64"))]
@@ -210,7 +210,7 @@ use crate::crosvm::sys::cmdline::DevicesCommand;
 use crate::crosvm::sys::config::SharedDir;
 use crate::crosvm::sys::config::SharedDirKind;
 #[cfg(feature = "pci-hotplug")]
-use crate::crosvm::sys::linux::pci_hotplug_helpers::ResourceCarrier;
+use crate::crosvm::sys::linux::pci_hotplug_helpers::PciHotplugResourceCarrier;
 use crate::crosvm::sys::platform::vcpu::VcpuPidTid;
 
 const KVM_PATH: &str = "/dev/kvm";
@@ -2911,14 +2911,14 @@ fn add_hotplug_net(
     });
     let (vm_control_host_tube, vm_control_device_tube) = Tube::pair().context("create tube")?;
     add_control_tube(AnyControlTube::Vm(vm_control_host_tube));
-    let net_carrier_device = NetResourceCarrier::new(
+    let net_carrier_device = NetPciHotplugResourceCarrier::new(
         net_param,
         msi_device_tube,
         ioevent_vm_memory_client,
         vm_control_device_tube,
     );
     hotplug_manager.hotplug_device(
-        vec![ResourceCarrier::VirtioNet(net_carrier_device)],
+        vec![PciHotplugResourceCarrier::VirtioNet(net_carrier_device)],
         linux,
         sys_allocator,
     )

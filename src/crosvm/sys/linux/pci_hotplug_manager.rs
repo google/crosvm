@@ -38,7 +38,7 @@ use swap::SwapDeviceHelper;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
-use super::pci_hotplug_helpers::ResourceCarrier;
+use super::pci_hotplug_helpers::PciHotplugResourceCarrier;
 use crate::crosvm::sys::linux::JailWarden;
 use crate::crosvm::sys::linux::JailWardenImpl;
 use crate::crosvm::sys::linux::PermissiveJailWarden;
@@ -792,7 +792,7 @@ impl PciHotPlugManager {
     /// returns the bus number of the bus on success.
     pub fn hotplug_device(
         &mut self,
-        resource_carriers: Vec<ResourceCarrier>,
+        resource_carriers: Vec<PciHotplugResourceCarrier>,
         linux: &mut RunnableLinuxVm,
         resources: &mut SystemAllocator,
     ) -> Result<u8> {
