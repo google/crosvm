@@ -14,7 +14,7 @@ use system_api::vtpm_interface::SendCommandRequest;
 use system_api::vtpm_interface::SendCommandResponse;
 use thiserror::Error;
 
-use super::virtio::TpmBackend;
+use crate::TpmBackend;
 
 // 5 minutes is the default timeout for tpm commands.
 const VTPM_DBUS_TIMEOUT: Duration = Duration::from_secs(300);

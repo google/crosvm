@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(any(target_os = "android", target_os = "linux"))]
+
 use std::collections::BTreeMap;
 use std::io;
 use std::io::Read;
@@ -16,6 +18,14 @@ use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
 use base::WorkerThread;
+use devices::virtio;
+use devices::virtio::DescriptorChain;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use jail::JailConfig;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use minijail::Minijail;
@@ -23,14 +33,8 @@ use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
-use super::DescriptorChain;
-use super::DeviceType;
-use super::Interrupt;
-use super::Queue;
-use super::VirtioDevice;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
-use crate::VtpmProxy;
+mod vtpm_proxy;
+pub use self::vtpm_proxy::VtpmProxy;
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
 // descriptor chain containing one command buffer and one response buffer at a
@@ -250,7 +254,7 @@ impl VirtioDeviceModule for VirtioTpmModule {
         let backend = VtpmProxy::new();
         let dev = Tpm::new(
             Box::new(backend),
-            crate::virtio::base_features(args.protection_type),
+            virtio::base_features(args.protection_type),
         );
         Ok(Box::new(dev))
     }

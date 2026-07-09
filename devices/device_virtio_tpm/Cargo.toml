@@ -1,0 +1,23 @@
+[package]
+name = "device_virtio_tpm"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[features]
+
+[dependencies]
+anyhow = { workspace = true }
+base = { workspace = true }
+devices = { workspace = true }
+remain = { workspace = true }
+serde = { workspace = true, features = [ "derive", "rc" ] }
+thiserror = { workspace = true }
+vm_memory = { workspace = true }
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+dbus = { version = "0.9.7", features = ["stdfd"] }
+jail = { workspace = true }
+minijail = "*"
+protobuf = { version = "3.2" }
+system_api = { workspace = true }

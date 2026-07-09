@@ -19,6 +19,7 @@ DO_NOT_BUILD_RISCV64 = [
     "ffmpeg",
     "vmm_vhost",
     "system_api",
+    "device_virtio_tpm",
     "gpu_display",
 ]
 

@@ -80,6 +80,6 @@ declare_any_virtio_device_module! {
     pub enum AnyVirtioDeviceModule {
         Rng(device_virtio_rng::VirtioRngModule),
         #[cfg(feature = "vtpm")]
-        Tpm(devices::virtio::VirtioTpmModule),
+        Tpm(device_virtio_tpm::VirtioTpmModule),
     }
 }

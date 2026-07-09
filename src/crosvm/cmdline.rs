@@ -2732,7 +2732,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             if cmd.vtpm_proxy.unwrap_or_default() {
                 cfg.virtio_device_modules
-                    .push(devices::virtio::VirtioTpmModule::new().into());
+                    .push(device_virtio_tpm::VirtioTpmModule::new().into());
             }
         }
 

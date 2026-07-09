@@ -35,8 +35,6 @@ mod virtcpufreq;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod virtcpufreq_v2;
 pub mod virtio;
-#[cfg(feature = "vtpm")]
-mod vtpm_proxy;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "x86_64")] {
@@ -145,8 +143,6 @@ pub use self::virtcpufreq::VirtCpufreq;
 pub use self::virtcpufreq_v2::VirtCpufreqV2;
 pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;
-#[cfg(feature = "vtpm")]
-pub use self::vtpm_proxy::VtpmProxy;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {

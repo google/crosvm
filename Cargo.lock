@@ -854,6 +854,7 @@ dependencies = [
  "crosvm_cli",
  "ctrlc",
  "device_virtio_rng",
+ "device_virtio_tpm",
  "devices",
  "disk",
  "document-features",
@@ -1026,6 +1027,24 @@ dependencies = [
  "rand",
  "serde",
  "snapshot",
+ "vm_memory",
+]
+
+[[package]]
+name = "device_virtio_tpm"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "dbus",
+ "devices",
+ "jail",
+ "minijail",
+ "protobuf",
+ "remain",
+ "serde",
+ "system_api",
+ "thiserror 1.0.38",
  "vm_memory",
 ]
 

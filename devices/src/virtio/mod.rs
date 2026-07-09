@@ -18,8 +18,6 @@ pub mod net;
 #[cfg(feature = "pvclock")]
 pub mod pvclock;
 mod queue;
-#[cfg(feature = "vtpm")]
-mod tpm;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 mod video;
 mod virtio_device;
@@ -93,12 +91,6 @@ pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
 pub use self::scsi::Controller as ScsiController;
 pub use self::scsi::DiskConfig as ScsiDiskConfig;
-#[cfg(feature = "vtpm")]
-pub use self::tpm::Tpm;
-#[cfg(feature = "vtpm")]
-pub use self::tpm::TpmBackend;
-#[cfg(feature = "vtpm")]
-pub use self::tpm::VirtioTpmModule;
 pub use self::vhost_user_frontend::VhostUserFrontend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;

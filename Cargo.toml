@@ -147,6 +147,7 @@ crypto = { path = "vendor/generic/crypto", package = "crypto_generic" }
 data_model = { path = "common/data_model" }
 devices = { path = "devices" }
 device_virtio_rng = { path = "devices/device_virtio_rng" }
+device_virtio_tpm = { path = "devices/device_virtio_tpm" }
 disk = { path = "disk" }
 e2e_tests = { path = "e2e_tests" }
 ext2 = { path = "ext2" }
@@ -438,7 +439,7 @@ libvda-stub = ["devices/libvda-stub"]
 power-monitor-powerd = ["arch/power-monitor-powerd"]
 
 ## Enables a virtualized TPM device that uses the `org.chromium.Vtpm` dbus service.
-vtpm = ["devices/vtpm"]
+vtpm = ["device_virtio_tpm"]
 
 #! #### Windows-future
 #!
@@ -577,6 +578,7 @@ cros_tracing = { workspace = true }
 crosvm_cli = { workspace = true }
 devices = { workspace = true }
 device_virtio_rng = { workspace = true }
+device_virtio_tpm = { workspace = true, optional = true }
 disk = { workspace = true }
 document-features = { version = "0.2", optional = true }
 ext2 = { workspace = true }
