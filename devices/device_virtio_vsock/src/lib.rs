@@ -9,6 +9,9 @@
 //! implementation to the kernel.
 
 mod sys;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub mod vhost;
+
 pub use sys::VirtioVsockModule;
 pub use sys::Vsock;
 pub use sys::VsockConfig;

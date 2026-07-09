@@ -25,6 +25,7 @@ use arch::VirtioDeviceStub;
 use base::linux::MemfdSeals;
 use base::sys::SharedMemoryLinux;
 use base::*;
+use device_virtio_vsock::VsockConfig;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
 use devices::vfio::VfioContainerManager;
@@ -48,7 +49,6 @@ use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost_user_backend::NetBackend;
 use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
 use devices::virtio::vhost_user_backend::VhostUserVsockDevice;
-use devices::virtio::vsock::VsockConfig;
 use devices::virtio::Console;
 use devices::virtio::MemSlotConfig;
 #[cfg(feature = "net")]
@@ -1067,7 +1067,7 @@ impl VirtioDeviceBuilder for &VsockConfig {
     ) -> anyhow::Result<Box<dyn VirtioDevice>> {
         let features = virtio::base_features(protection_type);
 
-        let dev = virtio::vhost::Vsock::new(features, self)
+        let dev = device_virtio_vsock::vhost::Vsock::new(features, self)
             .context("failed to set up virtual socket device")?;
 
         Ok(Box::new(dev))

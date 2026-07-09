@@ -5,16 +5,13 @@
 pub mod protocol;
 pub mod vsock;
 
-pub(crate) use protocol::*;
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 pub use vsock::Vsock;
-pub use vsock::VsockError;
-
-use crate::virtio::VirtioDevice;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, FromKeyValues)]
 #[serde(deny_unknown_fields)]
@@ -52,7 +49,7 @@ impl VirtioDeviceModule for VirtioVsockModule {
         let dev = Vsock::new(
             self.config.cid,
             self.host_guid.clone(),
-            crate::virtio::base_features(args.protection_type),
+            devices::virtio::base_features(args.protection_type),
         )?;
         Ok(Box::new(dev))
     }

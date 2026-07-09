@@ -855,6 +855,7 @@ dependencies = [
  "ctrlc",
  "device_virtio_rng",
  "device_virtio_tpm",
+ "device_virtio_vsock",
  "devices",
  "disk",
  "document-features",
@@ -1046,6 +1047,31 @@ dependencies = [
  "system_api",
  "thiserror 1.0.38",
  "vm_memory",
+]
+
+[[package]]
+name = "device_virtio_vsock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "cfg-if",
+ "cros_async",
+ "data_model",
+ "devices",
+ "futures",
+ "jail",
+ "libc",
+ "minijail",
+ "remain",
+ "serde",
+ "serde_keyvalue",
+ "snapshot",
+ "thiserror 1.0.38",
+ "vhost",
+ "virtio_sys",
+ "vm_memory",
+ "zerocopy 0.8.14",
 ]
 
 [[package]]

@@ -5,13 +5,12 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
-
-use crate::virtio::VirtioDevice;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
 
 static VHOST_VSOCK_DEFAULT_PATH: &str = "/dev/vhost-vsock";
 
@@ -64,8 +63,8 @@ impl VirtioDeviceModule for VirtioVsockModule {
     }
 
     fn create(&self, args: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        let features = crate::virtio::base_features(args.protection_type);
-        let dev = crate::virtio::vhost::Vsock::new(features, &self.config)?;
+        let features = devices::virtio::base_features(args.protection_type);
+        let dev = crate::vhost::Vsock::new(features, &self.config)?;
         Ok(Box::new(dev))
     }
 
@@ -75,7 +74,7 @@ impl VirtioDeviceModule for VirtioVsockModule {
     ) -> anyhow::Result<Option<minijail::Minijail>> {
         let jail = jail::simple_jail(
             Some(jail_config),
-            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file("vhost_vsock"),
+            &devices::virtio::VirtioDeviceType::Regular.seccomp_policy_file("vhost_vsock"),
         )?;
         Ok(jail)
     }

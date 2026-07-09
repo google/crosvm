@@ -149,6 +149,7 @@ data_model = { path = "common/data_model" }
 devices = { path = "devices" }
 device_virtio_rng = { path = "devices/device_virtio_rng" }
 device_virtio_tpm = { path = "devices/device_virtio_tpm" }
+device_virtio_vsock = { path = "devices/device_virtio_vsock" }
 disk = { path = "disk" }
 e2e_tests = { path = "e2e_tests" }
 ext2 = { path = "ext2" }
@@ -583,6 +584,7 @@ crosvm_cli = { workspace = true }
 devices = { workspace = true }
 device_virtio_rng = { workspace = true }
 device_virtio_tpm = { workspace = true, optional = true }
+device_virtio_vsock = { workspace = true }
 disk = { workspace = true }
 document-features = { version = "0.2", optional = true }
 ext2 = { workspace = true }

@@ -41,6 +41,7 @@ use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
 use cros_async::ExecutorKind;
+use device_virtio_vsock::VsockConfig;
 use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
@@ -48,7 +49,6 @@ use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost_user_backend;
-use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gpu")]
@@ -2737,7 +2737,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         if let Some(vsock) = vsock {
             cfg.virtio_device_modules.push(
-                devices::virtio::VirtioVsockModule::new(
+                device_virtio_vsock::VirtioVsockModule::new(
                     vsock,
                     #[cfg(windows)]
                     cfg.host_guid.clone(),

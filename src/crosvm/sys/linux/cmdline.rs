@@ -7,10 +7,10 @@ use std::path::PathBuf;
 use argh::FromArgValue;
 use argh::FromArgs;
 use cros_async::ExecutorKind;
+use device_virtio_vsock::VsockConfig;
 use devices::virtio::block::DiskOption;
 use devices::virtio::vhost_user_backend;
 use devices::virtio::vhost_user_backend::params::VhostUserParams;
-use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "net")]
 use devices::virtio::NetParameters;
 use devices::SerialParameters;

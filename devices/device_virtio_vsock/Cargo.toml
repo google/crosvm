@@ -1,0 +1,35 @@
+[package]
+name = "device_virtio_vsock"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+license = "BSD-3-Clause"
+edition = "2021"
+
+[features]
+
+[dependencies]
+anyhow = { workspace = true }
+base = { workspace = true }
+cfg-if = { workspace = true }
+cros_async = { workspace = true }
+data_model = { workspace = true }
+devices = { workspace = true }
+libc = { workspace = true }
+remain = { workspace = true }
+serde = { workspace = true, features = [ "derive", "rc" ] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
+snapshot = { workspace = true }
+thiserror = { workspace = true }
+virtio_sys = { workspace = true }
+vm_memory = { workspace = true }
+zerocopy = { version = "0.8.13", features = ["derive"] }
+
+[dependencies.futures]
+version = "0.3"
+features = ["async-await", "std"]
+default-features = false
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+jail = { workspace = true }
+minijail = "*"
+vhost = { workspace = true }

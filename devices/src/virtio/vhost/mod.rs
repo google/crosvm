@@ -20,14 +20,12 @@ cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         #[cfg(feature = "net")]
         mod net;
-        pub mod vsock;
         #[cfg(target_arch = "aarch64")]
         pub mod scmi;
-        mod worker;
+        pub mod worker;
 
         #[cfg(feature = "net")]
         pub use self::net::Net;
-        pub use self::vsock::Vsock;
         #[cfg(target_arch = "aarch64")]
         pub use self::scmi::Scmi;
     } else if #[cfg(windows)] {}

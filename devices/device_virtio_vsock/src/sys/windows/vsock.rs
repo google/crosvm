@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -11,10 +10,8 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::os::windows::io::RawHandle;
-use std::rc::Rc;
 use std::result;
 use std::sync::Arc;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -26,13 +23,10 @@ use base::named_pipes::FramingMode;
 use base::named_pipes::OverlappedWrapper;
 use base::named_pipes::PipeConnection;
 use base::warn;
-use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
-use base::EventExt;
 use base::WorkerThread;
 use cros_async::select3;
-use cros_async::select6;
 use cros_async::sync::RwLock;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
@@ -40,6 +34,14 @@ use cros_async::Executor;
 use cros_async::SelectResult;
 use data_model::Le32;
 use data_model::Le64;
+use devices::virtio::copy_config;
+use devices::virtio::create_stop_oneshot;
+use devices::virtio::DescriptorChain;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::StoppedWorker;
+use devices::virtio::VirtioDevice;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::pin_mut;
@@ -55,26 +57,13 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
-use zerocopy::FromBytes;
-use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
 
-use crate::virtio::async_utils;
-use crate::virtio::copy_config;
-use crate::virtio::create_stop_oneshot;
-use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_config;
-use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_event;
-use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_hdr;
-use crate::virtio::vsock::sys::windows::protocol::vsock_op;
-use crate::virtio::vsock::sys::windows::protocol::TYPE_STREAM_SOCKET;
-use crate::virtio::DescriptorChain;
-use crate::virtio::DeviceType;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
-use crate::virtio::StoppedWorker;
-use crate::virtio::VirtioDevice;
-use crate::virtio::Writer;
-use crate::Suspendable;
+use crate::sys::windows::protocol::virtio_vsock_config;
+use crate::sys::windows::protocol::virtio_vsock_event;
+use crate::sys::windows::protocol::virtio_vsock_hdr;
+use crate::sys::windows::protocol::vsock_op;
+use crate::sys::windows::protocol::TYPE_STREAM_SOCKET;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -200,7 +189,7 @@ impl Vsock {
     fn start_worker(
         &mut self,
         mem: GuestMemory,
-        mut queues: VsockQueues,
+        queues: VsockQueues,
         existing_connections: Option<VsockConnectionMap>,
     ) -> anyhow::Result<()> {
         let rx_queue = queues.rx;
@@ -214,7 +203,7 @@ impl Vsock {
         self.worker_thread = Some(WorkerThread::start(
             "userspace_virtio_vsock",
             move |kill_evt| {
-                let mut worker = Worker::new(
+                let worker = Worker::new(
                     mem,
                     host_guid,
                     guest_cid,
@@ -417,7 +406,7 @@ struct VsockConnection {
 }
 
 struct Worker {
-    mem: GuestMemory,
+    _mem: GuestMemory,
     host_guid: Option<String>,
     guest_cid: u64,
     // Map of host port to a VsockConnection.
@@ -444,7 +433,7 @@ impl Worker {
         let (device_event_queue_tx, device_event_queue_rx) = mpsc::channel(4);
 
         Worker {
-            mem,
+            _mem: mem,
             host_guid,
             guest_cid,
             connections: existing_connections.unwrap_or_default(),
@@ -633,7 +622,7 @@ impl Worker {
                     // If `stop_rx` is fired but the virt queue is full, this loop will break
                     // without draining the `header_and_data`.
                     select_biased! {
-                        write = write_fut => {},
+                        _write = write_fut => {},
                         _ = stop_rx => {
                             break;
                         }
@@ -945,7 +934,7 @@ impl Worker {
         rx_queue_evt: Event,
         mut packet_recv_queue: mpsc::Receiver<(virtio_vsock_hdr, Vec<u8>)>,
         ex: &Executor,
-        mut stop_rx: oneshot::Receiver<()>,
+        stop_rx: oneshot::Receiver<()>,
     ) {
         let mut packet_queues = HashMap::new();
         let mut futures = FuturesUnordered::new();
@@ -1317,7 +1306,7 @@ impl Worker {
         queue_evt: &mut EventAsync,
         bytes: &[u8],
     ) -> Result<()> {
-        let mut avail_desc = match queue.next_async(queue_evt).await {
+        let avail_desc = match queue.next_async(queue_evt).await {
             Ok(d) => d,
             Err(e) => {
                 error!("vsock: failed to read descriptor {}", e);
@@ -1332,9 +1321,9 @@ impl Worker {
         queue: &mut Queue,
         queue_evt: &mut EventAsync,
         bytes: &[u8],
-        mut stop_rx: &mut oneshot::Receiver<()>,
+        stop_rx: &mut oneshot::Receiver<()>,
     ) -> Result<()> {
-        let mut avail_desc = match queue.next_async_interruptable(queue_evt, stop_rx).await {
+        let avail_desc = match queue.next_async_interruptable(queue_evt, stop_rx).await {
             Ok(d) => match d {
                 Some(desc) => desc,
                 None => return Ok(()),
@@ -1495,6 +1484,7 @@ impl Worker {
 
             let mut device_event_queue_tx = self.device_event_queue_tx.clone();
             if self.send_protocol_reset {
+                #[allow(unused_must_use)] // FIXME
                 ex.run_until(async move { device_event_queue_tx.send(
                    virtio_vsock_event {
                        id: virtio_sys::virtio_vsock::virtio_vsock_event_id_VIRTIO_VSOCK_EVENT_TRANSPORT_RESET

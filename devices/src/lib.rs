@@ -21,6 +21,7 @@ mod irq_event;
 pub mod irqchip;
 mod mock;
 mod pci;
+pub use self::pci::MsixStatus;
 mod pflash;
 pub mod pl030;
 pub mod pmc_virt;

@@ -38,7 +38,6 @@ pub mod snd;
 pub mod vhost;
 pub mod vhost_user_backend;
 pub mod vhost_user_frontend;
-pub mod vsock;
 
 pub use vmm_vhost::SharedMemoryRegion;
 
@@ -102,7 +101,6 @@ pub use self::virtio_pci_device::PciCapabilityType;
 pub use self::virtio_pci_device::VirtioPciCap;
 pub use self::virtio_pci_device::VirtioPciDevice;
 pub use self::virtio_pci_device::VirtioPciShmCap;
-pub use self::vsock::VirtioVsockModule;
 #[cfg(feature = "pvclock")]
 pub use self::DeviceType::Pvclock;
 
@@ -129,7 +127,6 @@ cfg_if::cfg_if! {
         #[cfg(feature = "virtio_wl")]
         pub use self::wl::Wl;
     } else if #[cfg(windows)] {
-        pub use self::vsock::Vsock;
     } else {
         compile_error!("Unsupported platform");
     }
@@ -309,7 +306,7 @@ impl VirtioDeviceType {
 /// Creates a oneshot channel, returning the rx end and adding the tx end to the
 /// provided `Vec`. Useful for creating oneshots that signal a virtqueue future
 /// to stop processing and exit.
-pub(crate) fn create_stop_oneshot(tx_vec: &mut Vec<oneshot::Sender<()>>) -> oneshot::Receiver<()> {
+pub fn create_stop_oneshot(tx_vec: &mut Vec<oneshot::Sender<()>>) -> oneshot::Receiver<()> {
     let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
     tx_vec.push(stop_tx);
     stop_rx
@@ -317,7 +314,7 @@ pub(crate) fn create_stop_oneshot(tx_vec: &mut Vec<oneshot::Sender<()>>) -> ones
 
 /// When we request to stop the worker, this represents the terminal state
 /// for the thread (if it exists).
-pub(crate) enum StoppedWorker<Q> {
+pub enum StoppedWorker<Q> {
     /// Worker stopped successfully & returned its queues.
     WithQueues(Box<Q>),
 
