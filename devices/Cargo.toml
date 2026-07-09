@@ -36,8 +36,6 @@ gbm = ["rutabaga_gfx/gbm"]
 x = ["gpu_display/x"]
 virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 registered_events = []
-slirp = ["net_util/slirp"]
-slirp-ring-capture = []
 stats = []
 seccomp_trace = []
 swap = ["swap/enable"]
@@ -45,6 +43,8 @@ whpx = []
 pci-hotplug = []
 noncoherent-dma = []
 virtio_wl = []
+# Enables APIs only meant for unit testing.
+test-util = []
 
 [dependencies]
 argh = { workspace = true }

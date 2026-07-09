@@ -14,6 +14,18 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use base::Tube;
 use base::WorkerThread;
+use devices::virtio::copy_config;
+use devices::virtio::vhost::worker::Worker;
+use devices::virtio::vhost::Error;
+use devices::virtio::vhost::Result;
+use devices::virtio::vhost::VhostDevRequest;
+use devices::virtio::vhost::VhostDevResponse;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
+use devices::MsixStatus;
+use devices::PciAddress;
 use net_util::MacAddress;
 use net_util::TapT;
 use vhost::NetT as VhostNetT;
@@ -22,18 +34,7 @@ use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use zerocopy::IntoBytes;
 
-use super::control_socket::*;
-use super::worker::Worker;
-use super::Error;
-use super::Result;
-use crate::pci::MsixStatus;
-use crate::virtio::copy_config;
-use crate::virtio::net::build_config;
-use crate::virtio::DeviceType;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
-use crate::virtio::VirtioDevice;
-use crate::PciAddress;
+use crate::build_config;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -313,6 +314,8 @@ pub mod tests {
 
     use base::pagesize;
     use base::Event;
+    use devices::virtio::base_features;
+    use devices::virtio::QueueConfig;
     use hypervisor::ProtectionType;
     use net_util::sys::linux::fakes::FakeTap;
     use net_util::TapTCommon;
@@ -322,8 +325,6 @@ pub mod tests {
     use vm_memory::GuestMemoryError;
 
     use super::*;
-    use crate::virtio::base_features;
-    use crate::virtio::QueueConfig;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);

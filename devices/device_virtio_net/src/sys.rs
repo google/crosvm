@@ -29,8 +29,14 @@ impl PendingBuffer {
     }
 }
 
-pub(crate) use platform::process_mrg_rx;
-pub(crate) use platform::process_rx;
-pub(crate) use platform::process_tx;
-pub(crate) use platform::validate_and_configure_tap;
-pub(crate) use platform::virtio_features_to_tap_offload;
+impl Default for PendingBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub use platform::process_mrg_rx;
+pub use platform::process_rx;
+pub use platform::process_tx;
+pub use platform::validate_and_configure_tap;
+pub use platform::virtio_features_to_tap_offload;

@@ -18,14 +18,10 @@ pub use self::control_socket::*;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        #[cfg(feature = "net")]
-        mod net;
         #[cfg(target_arch = "aarch64")]
         pub mod scmi;
         pub mod worker;
 
-        #[cfg(feature = "net")]
-        pub use self::net::Net;
         #[cfg(target_arch = "aarch64")]
         pub use self::scmi::Scmi;
     } else if #[cfg(windows)] {}

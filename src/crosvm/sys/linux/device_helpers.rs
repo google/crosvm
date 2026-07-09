@@ -25,6 +25,12 @@ use arch::VirtioDeviceStub;
 use base::linux::MemfdSeals;
 use base::sys::SharedMemoryLinux;
 use base::*;
+#[cfg(feature = "net")]
+use device_virtio_net::create_tap_for_net_device;
+#[cfg(feature = "net")]
+use device_virtio_net::NetBackend;
+#[cfg(feature = "net")]
+use device_virtio_net::NetParameters;
 use device_virtio_vsock::VsockConfig;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
@@ -39,22 +45,16 @@ use devices::virtio::ipc_memory_mapper::create_ipc_mapper;
 use devices::virtio::ipc_memory_mapper::CreateIpcMapperRet;
 use devices::virtio::memory_mapper::BasicMemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
-#[cfg(feature = "net")]
-use devices::virtio::net::create_tap_for_net_device;
 #[cfg(feature = "pvclock")]
 use devices::virtio::pvclock::PvClock;
 use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
-#[cfg(feature = "net")]
-use devices::virtio::vhost_user_backend::NetBackend;
 use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
 use devices::virtio::vhost_user_backend::VhostUserVsockDevice;
 use devices::virtio::Console;
 use devices::virtio::MemSlotConfig;
-#[cfg(feature = "net")]
-use devices::virtio::NetParameters;
 use devices::virtio::PmemConfig;
 use devices::virtio::VhostUserFrontend;
 use devices::virtio::VirtioDevice;

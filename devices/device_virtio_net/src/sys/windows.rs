@@ -6,32 +6,22 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::result;
-use std::sync::Arc;
-use std::sync::MutexGuard;
 
 use base::error;
 use base::named_pipes::OverlappedWrapper;
 use base::warn;
-use base::Event;
 use base::ReadNotifier;
 use base::WaitContext;
+use devices::virtio::Queue;
+use devices::virtio::Reader;
 use libc::EEXIST;
 use net_util::TapT;
-use sync::Mutex;
-use virtio_sys::virtio_net;
-use vm_memory::GuestMemory;
 
-use super::super::super::base_features;
-use super::super::super::net::Net;
-use super::super::super::net::NetError;
-use super::super::super::net::Token;
-use super::super::super::net::Worker;
-use super::super::super::net::MAX_BUFFER_SIZE;
-use super::super::super::Interrupt;
-use super::super::super::ProtectionType;
-use super::super::super::Queue;
-use super::super::super::Reader;
 use super::PendingBuffer;
+use crate::NetError;
+use crate::Token;
+use crate::Worker;
+use crate::MAX_BUFFER_SIZE;
 
 // This file should not be included at virtio mod level if slirp is not include. In case it is,
 // throw a user friendly message.
@@ -76,9 +66,9 @@ fn rx_single_frame(rx_queue: &mut Queue, rx_buf: &mut [u8], rx_count: usize) -> 
 }
 
 pub fn process_mrg_rx<T: TapT>(
-    rx_queue: &mut Queue,
-    tap: &mut T,
-    pending_buffer: &mut Option<PendingBuffer>,
+    _rx_queue: &mut Queue,
+    _tap: &mut T,
+    _pending_buffer: &mut Option<PendingBuffer>,
 ) -> result::Result<(), NetError> {
     unimplemented!("Unimplemented on Windows")
 }
@@ -211,7 +201,7 @@ where
         )
     }
 
-    pub(in crate::virtio) fn handle_rx_token(
+    pub(crate) fn handle_rx_token(
         &mut self,
         wait_ctx: &WaitContext<Token>,
         _pending_buffer: &mut PendingBuffer,
@@ -240,7 +230,7 @@ where
         Ok(())
     }
 
-    pub(in crate::virtio) fn handle_rx_queue(
+    pub(crate) fn handle_rx_queue(
         &mut self,
         wait_ctx: &WaitContext<Token>,
         _tap_polling_enabled: bool,

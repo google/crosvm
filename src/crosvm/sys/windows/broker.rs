@@ -65,6 +65,8 @@ use crosvm_cli::sys::windows::exit::ExitCode;
 use crosvm_cli::sys::windows::exit::ExitCodeWrapper;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
+#[cfg(feature = "net")]
+use device_virtio_net::NetBackendConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::gpu::AudioDeviceMode;
 #[cfg(feature = "audio")]
@@ -89,8 +91,6 @@ use devices::virtio::vhost_user_backend::snd::sys::windows::SndBackendConfig;
 use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost_user_backend::snd::sys::windows::SndVmmConfig;
-#[cfg(feature = "net")]
-use devices::virtio::vhost_user_backend::NetBackendConfig;
 use devices::virtio::DeviceType;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;

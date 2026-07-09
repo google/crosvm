@@ -7,12 +7,12 @@ use std::path::PathBuf;
 use argh::FromArgValue;
 use argh::FromArgs;
 use cros_async::ExecutorKind;
+#[cfg(feature = "net")]
+use device_virtio_net::NetParameters;
 use device_virtio_vsock::VsockConfig;
 use devices::virtio::block::DiskOption;
 use devices::virtio::vhost_user_backend;
 use devices::virtio::vhost_user_backend::params::VhostUserParams;
-#[cfg(feature = "net")]
-use devices::virtio::NetParameters;
 use devices::SerialParameters;
 use jail::JailConfig;
 

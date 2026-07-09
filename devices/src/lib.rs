@@ -101,8 +101,6 @@ pub use self::pci::GpeScope;
 pub use self::pci::HotPluggable;
 #[cfg(feature = "pci-hotplug")]
 pub use self::pci::IntxParameter;
-#[cfg(feature = "pci-hotplug")]
-pub use self::pci::NetResourceCarrier;
 pub use self::pci::PciAddress;
 pub use self::pci::PciAddressError;
 pub use self::pci::PciBarConfiguration;
@@ -119,8 +117,6 @@ pub use self::pci::PciRoot;
 pub use self::pci::PciRootCommand;
 pub use self::pci::PciVirtualConfigMmio;
 pub use self::pci::PreferredIrq;
-#[cfg(feature = "pci-hotplug")]
-pub use self::pci::ResourceCarrier;
 pub use self::pci::StubPciDevice;
 pub use self::pci::StubPciParameters;
 pub use self::pflash::Pflash;

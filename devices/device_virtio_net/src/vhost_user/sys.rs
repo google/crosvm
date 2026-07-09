@@ -13,5 +13,5 @@ cfg_if::cfg_if! {
 }
 
 pub use platform::start_device;
-pub(in crate::virtio::vhost_user_backend::net) use platform::start_queue;
+pub(crate) use platform::start_queue;
 pub use platform::Options;

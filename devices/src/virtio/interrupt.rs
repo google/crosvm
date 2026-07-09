@@ -269,7 +269,7 @@ impl Interrupt {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(feature = "test-util")]
     pub fn new_for_test() -> Interrupt {
         Interrupt::new(
             IrqLevelEvent::new().unwrap(),
@@ -280,7 +280,7 @@ impl Interrupt {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(feature = "test-util")]
     pub fn new_for_test_with_msix() -> Interrupt {
         let (_, unused_config_tube) = base::Tube::pair().unwrap();
         let msix_vectors = 2;

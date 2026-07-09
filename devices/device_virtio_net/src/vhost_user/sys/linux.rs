@@ -19,6 +19,11 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
 use cros_async::IoSource;
+use devices::virtio;
+use devices::virtio::vhost_user_backend::connection::sys::VhostUserListener;
+use devices::virtio::vhost_user_backend::connection::VhostUserConnectionTrait;
+use devices::virtio::vhost_user_backend::handler::VhostUserDevice;
+use devices::virtio::Queue;
 use futures::channel::oneshot;
 use futures::select_biased;
 use futures::FutureExt;
@@ -30,20 +35,15 @@ use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
-use crate::virtio;
-use crate::virtio::net::process_mrg_rx;
-use crate::virtio::net::process_rx;
-use crate::virtio::net::validate_and_configure_tap;
-use crate::virtio::net::NetError;
-use crate::virtio::net::PendingBuffer;
-use crate::virtio::vhost_user_backend::connection::sys::VhostUserListener;
-use crate::virtio::vhost_user_backend::connection::VhostUserConnectionTrait;
-use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
-use crate::virtio::vhost_user_backend::net::run_ctrl_queue;
-use crate::virtio::vhost_user_backend::net::run_tx_queue;
-use crate::virtio::vhost_user_backend::net::NetBackend;
-use crate::virtio::vhost_user_backend::net::NET_EXECUTOR;
-use crate::virtio::Queue;
+use crate::process_mrg_rx;
+use crate::process_rx;
+use crate::validate_and_configure_tap;
+use crate::vhost_user::run_ctrl_queue;
+use crate::vhost_user::run_tx_queue;
+use crate::vhost_user::NetBackend;
+use crate::vhost_user::NET_EXECUTOR;
+use crate::NetError;
+use crate::PendingBuffer;
 
 struct TapConfig {
     host_ip: Ipv4Addr,
@@ -206,7 +206,7 @@ async fn run_rx_queue<T: TapT>(
 }
 
 /// Platform specific impl of VhostUserDevice::start_queue.
-pub(in crate::virtio::vhost_user_backend::net) fn start_queue<T: 'static + IntoAsync + TapT>(
+pub(crate) fn start_queue<T: 'static + IntoAsync + TapT>(
     backend: &mut NetBackend<T>,
     idx: usize,
     queue: virtio::Queue,

@@ -31,7 +31,6 @@ use devices::IrqLevelEvent;
 use devices::PciAddress;
 use devices::PciInterruptPin;
 use devices::PciRootCommand;
-use devices::ResourceCarrier;
 use log::error;
 use resources::SystemAllocator;
 #[cfg(feature = "swap")]
@@ -39,6 +38,7 @@ use swap::SwapDeviceHelper;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
+use super::pci_hotplug_helpers::ResourceCarrier;
 use crate::crosvm::sys::linux::JailWarden;
 use crate::crosvm::sys::linux::JailWardenImpl;
 use crate::crosvm::sys::linux::PermissiveJailWarden;

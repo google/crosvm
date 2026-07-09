@@ -2,7 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(feature = "pci-hotplug")]
+pub mod pci_hotplug;
 mod sys;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub mod vhost;
+pub mod vhost_user;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -10,6 +15,7 @@ use std::io;
 use std::io::Write;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -28,17 +34,40 @@ use base::WaitContext;
 use base::WorkerThread;
 use data_model::Le16;
 use data_model::Le64;
+use devices::virtio::copy_config;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::Reader;
+use devices::virtio::VirtioDevice;
+use devices::PciAddress;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use hypervisor::ProtectionType;
 use net_util::Error as TapError;
 use net_util::MacAddress;
 use net_util::TapT;
+#[cfg(feature = "pci-hotplug")]
+pub use pci_hotplug::NetResourceCarrier;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use sys::linux::create_tap_for_net_device;
+pub use sys::process_mrg_rx;
+pub use sys::process_rx;
+pub use sys::process_tx;
+pub use sys::validate_and_configure_tap;
+pub use sys::virtio_features_to_tap_offload;
+pub use sys::PendingBuffer;
 use thiserror::Error as ThisError;
+pub use vhost_user::run_net_device;
+#[cfg(windows)]
+#[cfg(feature = "slirp")]
+pub use vhost_user::sys::windows::NetBackendConfig;
+pub use vhost_user::NetBackend;
+pub use vhost_user::Options as NetOptions;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use virtio_sys::virtio_net;
 use virtio_sys::virtio_net::VIRTIO_NET_CTRL_GUEST_OFFLOADS;
@@ -53,32 +82,15 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use super::copy_config;
-use super::DeviceType;
-use super::Interrupt;
-use super::Queue;
-use super::Reader;
-use super::VirtioDevice;
-use crate::PciAddress;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
-
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
 /// http://docs.oasis-open.org/virtio/virtio/v1.0/virtio-v1.0.html#x1-1740003
 #[cfg(windows)]
-pub(crate) const MAX_BUFFER_SIZE: usize = 65562;
+const MAX_BUFFER_SIZE: usize = 65562;
 const QUEUE_SIZE: u16 = 256;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub static VHOST_NET_DEFAULT_PATH: &str = "/dev/vhost-net";
-
-pub(crate) use sys::process_mrg_rx;
-pub(crate) use sys::process_rx;
-pub(crate) use sys::process_tx;
-pub(crate) use sys::validate_and_configure_tap;
-pub(crate) use sys::virtio_features_to_tap_offload;
-pub(crate) use sys::PendingBuffer;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -334,19 +346,19 @@ pub enum Token {
     Kill,
 }
 
-pub(super) struct Worker<T: TapT> {
-    pub(super) rx_queue: Queue,
-    pub(super) tx_queue: Queue,
-    pub(super) ctrl_queue: Option<Queue>,
-    pub(super) tap: T,
+pub(crate) struct Worker<T: TapT> {
+    pub(crate) rx_queue: Queue,
+    pub(crate) tx_queue: Queue,
+    pub(crate) ctrl_queue: Option<Queue>,
+    pub(crate) tap: T,
     #[cfg(windows)]
-    pub(super) overlapped_wrapper: OverlappedWrapper,
+    pub(crate) overlapped_wrapper: OverlappedWrapper,
     #[cfg(windows)]
-    pub(super) rx_buf: [u8; MAX_BUFFER_SIZE],
+    pub(crate) rx_buf: [u8; MAX_BUFFER_SIZE],
     #[cfg(windows)]
-    pub(super) rx_count: usize,
+    pub(crate) rx_count: usize,
     #[cfg(windows)]
-    pub(super) deferred_rx: bool,
+    pub(crate) deferred_rx: bool,
     acked_features: u64,
     vq_pairs: u16,
     #[allow(dead_code)]
@@ -569,7 +581,7 @@ where
         mtu: u16,
         mac_addr: Option<MacAddress>,
         pci_address: Option<PciAddress>,
-        #[cfg(windows)] slirp_kill_evt: Option<Event>,
+        #[cfg(windows)] _slirp_kill_evt: Option<Event>,
     ) -> Result<Self, NetError> {
         let net = Self {
             guest_mac: mac_addr.map(|mac| mac.octets()),
@@ -580,6 +592,7 @@ where
             acked_features: 0u64,
             mtu,
             pci_address,
+            // FIXME: Why aren't we passing `_slirp_kill_evt` here?
             #[cfg(windows)]
             slirp_kill_evt: None,
         };
@@ -846,12 +859,12 @@ impl NetParameters {
             let vq_pairs = self.vq_pairs.unwrap_or(1);
             let multi_vq = vq_pairs > 1 && self.vhost_net.is_none();
 
-            let features = crate::virtio::base_features(protection_type);
+            let features = devices::virtio::base_features(protection_type);
             let (tap, mac) = create_tap_for_net_device(&self.mode, multi_vq)?;
 
             let dev = if let Some(vhost_net) = &self.vhost_net {
                 Box::new(
-                    crate::virtio::vhost::Net::<_, ::vhost::Net<_>>::new(
+                    crate::vhost::Net::<_, ::vhost::Net<_>>::new(
                         &vhost_net.device,
                         features,
                         tap,
@@ -907,7 +920,7 @@ impl VirtioDeviceModule for NetParameters {
         };
         let jail = jail::simple_jail(
             Some(jail_config),
-            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file(policy),
+            &devices::virtio::VirtioDeviceType::Regular.seccomp_policy_file(policy),
         )?;
         Ok(jail)
     }

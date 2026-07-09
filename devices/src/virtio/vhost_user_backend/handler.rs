@@ -44,7 +44,7 @@
 // Backend trait methods. These dispatch back to the supplied VhostUserDevice implementation (this
 // is what our devices implement).
 
-pub(super) mod sys;
+pub mod sys;
 
 use std::collections::BTreeMap;
 use std::convert::From;
@@ -314,7 +314,7 @@ pub struct DeviceRequestHandlerSnapshot {
 
 impl<T: VhostUserDevice> DeviceRequestHandler<T> {
     /// Creates a vhost-user handler instance for `backend`.
-    pub(crate) fn new(mut backend: T) -> Self {
+    pub fn new(mut backend: T) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
             vrings.push(Vring::new(Queue::MAX_SIZE, backend.features()));
@@ -994,7 +994,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
     }
 }
 
-pub(crate) struct WorkerState<T, U> {
+pub struct WorkerState<T, U> {
     pub(crate) queue_task: TaskHandle<U>,
     pub(crate) queue: T,
 }

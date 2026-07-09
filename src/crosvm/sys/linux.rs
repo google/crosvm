@@ -79,6 +79,12 @@ use base::UnlinkUnixSeqpacketListener;
 use base::*;
 use cros_async::Executor;
 use device_helpers::*;
+#[cfg(feature = "pci-hotplug")]
+use device_virtio_net::NetParameters;
+#[cfg(feature = "pci-hotplug")]
+use device_virtio_net::NetParametersMode;
+#[cfg(feature = "pci-hotplug")]
+use device_virtio_net::NetResourceCarrier;
 use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
 #[cfg(all(feature = "pvclock", target_arch = "x86_64"))]
@@ -97,10 +103,6 @@ use devices::virtio::vhost_user_backend::VhostUserConnectionTrait;
 use devices::virtio::vhost_user_backend::VhostUserListener;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
-#[cfg(feature = "pci-hotplug")]
-use devices::virtio::NetParameters;
-#[cfg(feature = "pci-hotplug")]
-use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
 use devices::Bus;
@@ -116,8 +118,6 @@ use devices::HotPlugKey;
 use devices::IommuDevType;
 use devices::IrqEventIndex;
 use devices::IrqEventSource;
-#[cfg(feature = "pci-hotplug")]
-use devices::NetResourceCarrier;
 #[cfg(target_arch = "x86_64")]
 use devices::PciAddress;
 #[cfg(target_arch = "x86_64")]
@@ -139,8 +139,6 @@ use devices::PcieRootPort;
 use devices::PcieUpstreamPort;
 use devices::PvPanicCode;
 use devices::PvPanicPciDevice;
-#[cfg(feature = "pci-hotplug")]
-use devices::ResourceCarrier;
 use devices::StubPciDevice;
 use devices::VirtioDeviceArgs;
 use devices::VirtioDeviceModule;
@@ -211,6 +209,8 @@ use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
 use crate::crosvm::sys::config::SharedDir;
 use crate::crosvm::sys::config::SharedDirKind;
+#[cfg(feature = "pci-hotplug")]
+use crate::crosvm::sys::linux::pci_hotplug_helpers::ResourceCarrier;
 use crate::crosvm::sys::platform::vcpu::VcpuPidTid;
 
 const KVM_PATH: &str = "/dev/kvm";

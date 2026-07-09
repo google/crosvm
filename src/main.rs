@@ -28,11 +28,11 @@ use cmdline::RunCommand;
 mod crosvm;
 use crosvm::cmdline;
 use crosvm::config::Config;
+#[cfg(feature = "net")]
+use device_virtio_net::run_net_device;
 use devices::virtio::vhost_user_backend::run_block_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::run_gpu_device;
-#[cfg(feature = "net")]
-use devices::virtio::vhost_user_backend::run_net_device;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost_user_backend::run_snd_device;
 #[cfg(feature = "composite-disk")]

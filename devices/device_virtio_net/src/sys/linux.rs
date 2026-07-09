@@ -14,6 +14,7 @@ use base::warn;
 use base::EventType;
 use base::ReadNotifier;
 use base::WaitContext;
+use devices::virtio::Queue;
 use net_util::sys::linux::Tap;
 use net_util::TapT;
 use net_util::TapTCommon;
@@ -22,13 +23,12 @@ use virtio_sys::virtio_net::virtio_net_hdr;
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use zerocopy::IntoBytes;
 
-use super::super::super::net::MacAddress;
-use super::super::super::net::NetError;
-use super::super::super::net::NetParametersMode;
-use super::super::super::net::Token;
-use super::super::super::net::Worker;
-use super::super::super::Queue;
 use super::PendingBuffer;
+use crate::MacAddress;
+use crate::NetError;
+use crate::NetParametersMode;
+use crate::Token;
+use crate::Worker;
 
 pub fn create_tap_for_net_device(
     mode: &NetParametersMode,
@@ -285,7 +285,7 @@ impl<T> Worker<T>
 where
     T: TapT + ReadNotifier,
 {
-    pub(in crate::virtio) fn handle_rx_token(
+    pub(crate) fn handle_rx_token(
         &mut self,
         wait_ctx: &WaitContext<Token>,
         pending_buffer: &mut PendingBuffer,
@@ -301,7 +301,7 @@ where
             Err(e) => Err(e),
         }
     }
-    pub(in crate::virtio) fn handle_rx_queue(
+    pub(crate) fn handle_rx_queue(
         &mut self,
         wait_ctx: &WaitContext<Token>,
         tap_polling_enabled: bool,

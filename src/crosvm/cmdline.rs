@@ -41,6 +41,10 @@ use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
 use cros_async::ExecutorKind;
+#[cfg(all(unix, feature = "net"))]
+use device_virtio_net::NetParameters;
+#[cfg(all(unix, feature = "net"))]
+use device_virtio_net::NetParametersMode;
 use device_virtio_vsock::VsockConfig;
 use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -55,10 +59,6 @@ use devices::virtio::GpuDisplayParameters;
 use devices::virtio::GpuMouseMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
-#[cfg(all(unix, feature = "net"))]
-use devices::virtio::NetParameters;
-#[cfg(all(unix, feature = "net"))]
-use devices::virtio::NetParametersMode;
 use devices::FwCfgParameters;
 use devices::PflashParameters;
 use devices::SerialHardware;
@@ -579,7 +579,7 @@ pub enum CrossPlatformDevicesCommands {
     #[cfg(feature = "gpu")]
     Gpu(vhost_user_backend::GpuOptions),
     #[cfg(feature = "net")]
-    Net(vhost_user_backend::NetOptions),
+    Net(device_virtio_net::NetOptions),
     #[cfg(feature = "audio")]
     Snd(vhost_user_backend::SndOptions),
 }
@@ -2954,8 +2954,8 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(all(unix, feature = "net"))]
         {
-            use devices::virtio::VhostNetParameters;
-            use devices::virtio::VHOST_NET_DEFAULT_PATH;
+            use device_virtio_net::VhostNetParameters;
+            use device_virtio_net::VHOST_NET_DEFAULT_PATH;
 
             let mut net_params = cmd.net;
 

@@ -25,7 +25,6 @@ use devices::BusDevice;
 use devices::ChildProcIntf;
 use devices::PciDevice;
 use devices::ProxyDevice;
-use devices::ResourceCarrier;
 use jail::create_base_minijail;
 use jail::create_sandbox_minijail;
 use jail::fork::fork_process;
@@ -40,6 +39,7 @@ use swap::SwapDeviceHelper;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 
+use super::pci_hotplug_helpers::ResourceCarrier;
 use crate::crosvm::sys::linux::pci_hotplug_helpers::build_hotplug_net_device;
 use crate::crosvm::sys::linux::pci_hotplug_helpers::NetLocalParameters;
 use crate::crosvm::sys::linux::VirtioDeviceBuilder;

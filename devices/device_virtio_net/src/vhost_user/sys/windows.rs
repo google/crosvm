@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::Arc;
-
 use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
@@ -18,9 +16,14 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
 use cros_async::IoSource;
+use devices::virtio;
+use devices::virtio::base_features;
+use devices::virtio::vhost_user_backend::handler::sys::windows::read_from_tube_transporter;
+use devices::virtio::vhost_user_backend::handler::sys::windows::run_handler;
+use devices::virtio::vhost_user_backend::handler::DeviceRequestHandler;
+use devices::virtio::vhost_user_backend::handler::VhostUserDevice;
+use devices::virtio::Queue;
 use futures::channel::oneshot;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
 use futures::pin_mut;
 use futures::select_biased;
 use futures::FutureExt;
@@ -34,29 +37,18 @@ use proc_init::CommonChildStartupArgs;
 use serde::Deserialize;
 #[cfg(feature = "slirp")]
 use serde::Serialize;
-use sync::Mutex;
 use tube_transporter::TubeToken;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
-use crate::virtio;
-use crate::virtio::base_features;
-use crate::virtio::net::process_rx;
-use crate::virtio::net::NetError;
-#[cfg(feature = "slirp")]
-use crate::virtio::net::MAX_BUFFER_SIZE;
-use crate::virtio::vhost_user_backend::handler::sys::windows::read_from_tube_transporter;
-use crate::virtio::vhost_user_backend::handler::sys::windows::run_handler;
-use crate::virtio::vhost_user_backend::handler::DeviceRequestHandler;
-use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
-use crate::virtio::vhost_user_backend::handler::WorkerState;
-use crate::virtio::vhost_user_backend::net::run_ctrl_queue;
-use crate::virtio::vhost_user_backend::net::run_tx_queue;
-use crate::virtio::vhost_user_backend::net::NetBackend;
-use crate::virtio::vhost_user_backend::net::NET_EXECUTOR;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
+use crate::process_rx;
+use crate::vhost_user::run_ctrl_queue;
+use crate::vhost_user::run_tx_queue;
+use crate::vhost_user::NetBackend;
+use crate::vhost_user::NET_EXECUTOR;
+use crate::NetError;
+use crate::MAX_BUFFER_SIZE;
 
 impl<T: 'static> NetBackend<T>
 where
@@ -164,7 +156,7 @@ async fn run_rx_queue<T: TapT>(
 }
 
 /// Platform specific impl of VhostUserDevice::start_queue.
-pub(in crate::virtio::vhost_user_backend::net) fn start_queue<T: 'static + IntoAsync + TapT>(
+pub(crate) fn start_queue<T: 'static + IntoAsync + TapT>(
     backend: &mut NetBackend<T>,
     idx: usize,
     queue: virtio::Queue,
@@ -172,7 +164,7 @@ pub(in crate::virtio::vhost_user_backend::net) fn start_queue<T: 'static + IntoA
 ) -> anyhow::Result<()> {
     if backend.workers.get(idx).is_some() {
         warn!("Starting new queue handler without stopping old handler");
-        backend.stop_queue(idx);
+        backend.stop_queue(idx)?;
     }
 
     let overlapped_wrapper =

@@ -3,12 +3,10 @@
 // found in the LICENSE file.
 
 mod block;
-mod connection;
+pub mod connection;
 #[cfg(feature = "gpu")]
 pub mod gpu;
-mod handler;
-#[cfg(feature = "net")]
-mod net;
+pub mod handler;
 pub mod params;
 #[cfg(feature = "audio")]
 pub mod snd;
@@ -24,12 +22,6 @@ pub use gpu::run_gpu_device;
 #[cfg(feature = "gpu")]
 pub use gpu::Options as GpuOptions;
 pub use handler::VhostUserDevice;
-#[cfg(feature = "net")]
-pub use net::run_net_device;
-#[cfg(feature = "net")]
-pub use net::NetBackend;
-#[cfg(feature = "net")]
-pub use net::Options as NetOptions;
 #[cfg(feature = "audio")]
 pub use snd::run_snd_device;
 #[cfg(feature = "audio")]
@@ -51,8 +43,6 @@ cfg_if::cfg_if! {
         pub use console::{create_vu_console_device, run_console_device, Options as ConsoleOptions};
         pub use fs::{run_fs_device, Options as FsOptions};
     } else if #[cfg(windows)] {
-        #[cfg(all(feature = "net", feature = "slirp"))]
-        pub use net::sys::windows::NetBackendConfig;
     }
 }
 

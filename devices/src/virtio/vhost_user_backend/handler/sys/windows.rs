@@ -27,6 +27,7 @@ use vmm_vhost::message::VhostUserMsgHeader;
 use vmm_vhost::BackendServer;
 use vmm_vhost::Connection;
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)] // FIXME
 pub fn read_from_tube_transporter(
     raw_transport_tube: RawDescriptor,
 ) -> anyhow::Result<TubeTransferDataList> {

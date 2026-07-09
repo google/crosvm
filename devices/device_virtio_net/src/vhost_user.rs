@@ -14,6 +14,12 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
 use cros_async::TaskHandle;
+use devices::virtio;
+use devices::virtio::vhost_user_backend::handler::DeviceRequestHandler;
+use devices::virtio::vhost_user_backend::handler::Error as DeviceError;
+use devices::virtio::vhost_user_backend::handler::VhostUserDevice;
+use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
+use devices::virtio::Queue;
 use futures::channel::oneshot;
 use futures::pin_mut;
 use futures::select_biased;
@@ -28,16 +34,10 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use zerocopy::IntoBytes;
 
-use crate::virtio;
-use crate::virtio::net::build_config;
-use crate::virtio::net::process_ctrl;
-use crate::virtio::net::process_tx;
-use crate::virtio::net::virtio_features_to_tap_offload;
-use crate::virtio::vhost_user_backend::handler::DeviceRequestHandler;
-use crate::virtio::vhost_user_backend::handler::Error as DeviceError;
-use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
-use crate::virtio::vhost_user_backend::VhostUserDeviceBuilder;
-use crate::virtio::Queue;
+use crate::build_config;
+use crate::process_ctrl;
+use crate::process_tx;
+use crate::virtio_features_to_tap_offload;
 
 thread_local! {
     pub(crate) static NET_EXECUTOR: OnceCell<Executor> = const { OnceCell::new() };

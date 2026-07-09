@@ -83,6 +83,6 @@ declare_any_virtio_device_module! {
         Tpm(device_virtio_tpm::VirtioTpmModule),
         Vsock(device_virtio_vsock::VirtioVsockModule),
         #[cfg(feature = "net")]
-        Net(devices::virtio::NetParameters),
+        Net(device_virtio_net::NetParameters),
     }
 }
