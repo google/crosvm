@@ -36,7 +36,7 @@ use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
-use rutabaga_gfx::RutabagaMesaHandle;
+use rutabaga_gfx::RutabagaMagmaHandle;
 #[cfg(windows)]
 use rutabaga_gfx::RutabagaUnsupported;
 use rutabaga_gfx::Transfer3D;
@@ -467,7 +467,7 @@ impl VirtioGpuScanout {
                 resource.display_import = Some(import_id);
                 return Some(import_id);
             }
-            other => RutabagaMesaHandle::try_from(other).ok()?,
+            other => RutabagaMagmaHandle::try_from(other).ok()?,
         };
         let dmabuf = to_safe_descriptor(handle.os_handle);
 
@@ -797,7 +797,7 @@ impl VirtioGpu {
         #[cfg(windows)]
         match self.rutabaga.resource_flush(resource_id) {
             Ok(_) => return Ok(OkNoData),
-            Err(RutabagaError::MesaError(RutabagaUnsupported)) => {}
+            Err(RutabagaError::MagmaGpuError(RutabagaUnsupported)) => {}
             Err(e) => return Err(ErrRutabaga(e)),
         }
 
@@ -868,7 +868,7 @@ impl VirtioGpu {
     pub fn export_resource(&mut self, resource_id: u32) -> ResourceResponse {
         let handle = match self.rutabaga.export_blob(resource_id) {
             Ok(handle) => {
-                let Ok(handle) = RutabagaMesaHandle::try_from(handle) else {
+                let Ok(handle) = RutabagaMagmaHandle::try_from(handle) else {
                     return ResourceResponse::Invalid;
                 };
                 to_safe_descriptor(handle.os_handle)
@@ -1144,7 +1144,7 @@ impl VirtioGpu {
 
         let mut source: Option<VmMemorySource> = None;
         if let Ok(export) = self.rutabaga.export_blob(resource_id) {
-            let export = RutabagaMesaHandle::try_from(export)
+            let export = RutabagaMagmaHandle::try_from(export)
                 .context("failed to retrieve the handle info")
                 .context(ErrUnspec)?;
             if let Ok(vulkan_info) = self.rutabaga.vulkan_info(resource_id) {

@@ -25,7 +25,7 @@ dependencies = [
  "resources",
  "swap",
  "sync",
- "thiserror",
+ "thiserror 1.0.38",
  "vm_control",
  "vm_memory",
 ]
@@ -35,7 +35,7 @@ name = "aarch64_sys_reg"
 version = "0.1.0"
 dependencies = [
  "serde",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -90,7 +90,7 @@ dependencies = [
  "async-trait",
  "audio_streams",
  "base",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -145,7 +145,7 @@ dependencies = [
  "swap",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "uuid",
  "vm_control",
  "vm_memory",
@@ -233,7 +233,7 @@ dependencies = [
  "futures",
  "remain",
  "serde",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -248,7 +248,7 @@ dependencies = [
  "remain",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -258,7 +258,7 @@ dependencies = [
  "async-trait",
  "audio_streams",
  "base",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -312,7 +312,7 @@ dependencies = [
  "smallvec",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "uuid",
  "win_util",
  "winapi",
@@ -708,7 +708,7 @@ dependencies = [
  "cros-libva",
  "enumn",
  "log",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -720,7 +720,7 @@ dependencies = [
  "bitflags 1.3.2",
  "log",
  "pkg-config",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -749,7 +749,7 @@ dependencies = [
  "static_assertions",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "tokio",
  "win_util",
  "winapi",
@@ -761,7 +761,7 @@ version = "0.1.0"
 dependencies = [
  "indexmap 1.9.1",
  "remain",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -892,7 +892,7 @@ dependencies = [
  "swap",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "tube_transporter",
  "uuid",
  "vhost",
@@ -1078,7 +1078,7 @@ dependencies = [
  "sync",
  "system_api",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "tube_transporter",
  "usb_util",
  "uuid",
@@ -1113,7 +1113,7 @@ dependencies = [
  "remain",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "uuid",
  "vm_memory",
  "winapi",
@@ -1263,7 +1263,7 @@ dependencies = [
  "bindgen 0.63.0",
  "libc",
  "pkg-config",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -1327,7 +1327,7 @@ dependencies = [
  "enumn",
  "libc",
  "remain",
- "thiserror",
+ "thiserror 1.0.38",
  "zerocopy 0.8.14",
 ]
 
@@ -1502,7 +1502,7 @@ dependencies = [
  "serde",
  "smallvec",
  "sync",
- "thiserror",
+ "thiserror 1.0.38",
  "vm_control",
  "vulkano 0.31.1",
  "which",
@@ -1577,7 +1577,7 @@ dependencies = [
  "snapshot",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "vm_memory",
  "win_util",
  "winapi",
@@ -1662,7 +1662,7 @@ dependencies = [
  "remain",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -1725,7 +1725,7 @@ name = "kernel_cmdline"
 version = "0.1.0"
 dependencies = [
  "remain",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -1738,7 +1738,7 @@ dependencies = [
  "remain",
  "resources",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "vm_memory",
  "zerocopy 0.8.14",
 ]
@@ -1875,9 +1875,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.21"
+version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lz4_flex"
@@ -1886,6 +1886,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ea9b256699eda7b0387ffbc776dd625e28bde3918446381781245b7a50349d8"
 dependencies = [
  "twox-hash",
+]
+
+[[package]]
+name = "magma-gpu"
+version = "0.1.80"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "002536499cb45b3509c179f42f8c48729364931668f5a2c1bef8c407addaa629"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "log",
+ "remain",
+ "rustix 1.0.7",
+ "thiserror 2.0.19",
+ "zerocopy 0.8.14",
 ]
 
 [[package]]
@@ -1925,21 +1940,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a634b1c61a95585bd15607c6ab0c4e5b226e695ff2800ba0cdccddf208c406c"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "mesa3d_util"
-version = "0.1.76-alpha.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "659fee097888a000ce2412571495943fe505cd3552d751009286ae635957a284"
-dependencies = [
- "cfg-if",
- "libc",
- "log",
- "remain",
- "rustix 1.0.7",
- "thiserror",
- "zerocopy 0.8.14",
 ]
 
 [[package]]
@@ -2034,7 +2034,7 @@ dependencies = [
  "libc",
  "once_cell",
  "parking_lot",
- "thiserror",
+ "thiserror 1.0.38",
  "widestring",
  "winapi",
 ]
@@ -2065,7 +2065,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.38",
  "virtio_sys",
  "winapi",
  "zerocopy 0.8.14",
@@ -2274,7 +2274,7 @@ checksum = "6ad13fed1a83120159aea81b265074f21d753d157dd16b10cc3790ecba40a341"
 dependencies = [
  "byteorder",
  "derive-into-owned",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -2333,7 +2333,7 @@ dependencies = [
  "protobuf",
  "remain",
  "system_api",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -2397,9 +2397,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.85"
+version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22244ce15aa966053a896d1accb3a6e68469b97c7f33f284b99f0d576879fc23"
+checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
 ]
@@ -2440,7 +2440,7 @@ checksum = "d65a1d4ddae7d8b5de68153b48f6aa3bba8cb002b243dbdbc55a5afbc98f99f4"
 dependencies = [
  "once_cell",
  "protobuf-support",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -2455,7 +2455,7 @@ dependencies = [
  "protobuf-parse",
  "regex",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -2470,7 +2470,7 @@ dependencies = [
  "protobuf",
  "protobuf-support",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "which",
 ]
 
@@ -2480,7 +2480,7 @@ version = "3.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e36c2f31e0a47f9280fb347ef5e461ffcd2c52dd520d8e216b52f93b0b0d7d6"
 dependencies = [
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -2627,7 +2627,7 @@ dependencies = [
  "remain",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -2648,7 +2648,7 @@ dependencies = [
  "resources",
  "swap",
  "sync",
- "thiserror",
+ "thiserror 1.0.38",
  "vm_control",
  "vm_memory",
 ]
@@ -2694,19 +2694,19 @@ dependencies = [
 
 [[package]]
 name = "rutabaga_gfx"
-version = "0.1.76-alpha.0"
+version = "0.1.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "988c93caed844e77bcb3c3988d89d249408aa772702b543c980d49b6665fb5fd"
+checksum = "2817d168222af3c49269f583dd8e67429912953ae608f715fd97683ed50320a5"
 dependencies = [
  "cfg-if",
  "libc",
  "log",
- "mesa3d_util",
+ "magma-gpu",
  "pkg-config",
  "remain",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.38",
  "vulkano 0.33.0",
  "zerocopy 0.8.14",
 ]
@@ -2836,7 +2836,7 @@ dependencies = [
  "remain",
  "serde",
  "serde_keyvalue_derive",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -2919,7 +2919,7 @@ dependencies = [
  "serde",
  "sync",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "userfaultfd",
  "userfaultfd-sys",
  "vm_memory",
@@ -2952,6 +2952,17 @@ name = "syn"
 version = "2.0.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25aa4ce346d03a6dcd68dd8b4010bcb74e54e62c90c573f394c46eae99aba32d"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.36",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a207d6d6a2b7fc470b80443726053f18a2481b7e1eee970597051596567987a3"
 dependencies = [
  "proc-macro2",
  "quote 1.0.36",
@@ -3014,7 +3025,16 @@ version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a9cd18aa97d5c45c6603caea1da6628790b37f7a34b6ca89522331c5180fed0"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.38",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09a43598840e33d5b0331f38c5e30d13bb11c11210a4b58f0d9b18a5a5eefcd9"
+dependencies = [
+ "thiserror-impl 2.0.19",
 ]
 
 [[package]]
@@ -3026,6 +3046,17 @@ dependencies = [
  "proc-macro2",
  "quote 1.0.36",
  "syn 1.0.103",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43cbfe0cf76104d42a574802844187e84a305e531ed54455f11fbde0f10541cd"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.36",
+ "syn 3.0.2",
 ]
 
 [[package]]
@@ -3122,7 +3153,7 @@ version = "0.1.0"
 dependencies = [
  "base",
  "serde",
- "thiserror",
+ "thiserror 1.0.38",
  "win_util",
  "winapi",
 ]
@@ -3192,7 +3223,7 @@ dependencies = [
  "remain",
  "static_assertions",
  "sync",
- "thiserror",
+ "thiserror 1.0.38",
  "usb_sys",
  "zerocopy 0.8.14",
 ]
@@ -3207,7 +3238,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "nix 0.27.1",
- "thiserror",
+ "thiserror 1.0.38",
  "userfaultfd-sys",
 ]
 
@@ -3245,7 +3276,7 @@ dependencies = [
  "log",
  "nix 0.28.0",
  "paste",
- "thiserror",
+ "thiserror 1.0.38",
 ]
 
 [[package]]
@@ -3277,7 +3308,7 @@ dependencies = [
  "net_util",
  "remain",
  "static_assertions",
- "thiserror",
+ "thiserror 1.0.38",
  "virtio_sys",
  "vm_memory",
 ]
@@ -3293,7 +3324,7 @@ dependencies = [
  "libc",
  "log",
  "nix 0.31.3",
- "thiserror",
+ "thiserror 1.0.38",
  "v4l2r",
  "zerocopy 0.8.14",
 ]
@@ -3341,7 +3372,7 @@ dependencies = [
  "static_assertions",
  "swap",
  "sync",
- "thiserror",
+ "thiserror 1.0.38",
  "vm_control_product",
  "vm_memory",
  "winapi",
@@ -3370,7 +3401,7 @@ dependencies = [
  "serde_keyvalue",
  "snapshot",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "zerocopy 0.8.14",
 ]
 
@@ -3388,7 +3419,7 @@ dependencies = [
  "remain",
  "serde",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.38",
  "tube_transporter",
  "zerocopy 0.8.14",
 ]
@@ -3516,7 +3547,7 @@ dependencies = [
  "metrics",
  "prebuilts",
  "sync",
- "thiserror",
+ "thiserror 1.0.38",
  "win_util",
  "winapi",
  "wio",
@@ -3943,7 +3974,7 @@ dependencies = [
  "resources",
  "swap",
  "sync",
- "thiserror",
+ "thiserror 1.0.38",
  "uuid",
  "vm_control",
  "vm_memory",

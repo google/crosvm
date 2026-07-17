@@ -105,9 +105,9 @@ use rutabaga_gfx::RutabagaFromRawDescriptor;
 #[cfg(feature = "gpu")]
 use rutabaga_gfx::RutabagaGralloc;
 #[cfg(feature = "gpu")]
-use rutabaga_gfx::RutabagaMappedRegion;
+use rutabaga_gfx::RutabagaMagmaHandle;
 #[cfg(feature = "gpu")]
-use rutabaga_gfx::RutabagaMesaHandle;
+use rutabaga_gfx::RutabagaMappedRegion;
 #[cfg(feature = "gpu")]
 use rutabaga_gfx::VulkanInfo;
 use serde::de::Error;
@@ -511,7 +511,7 @@ impl VmMemorySource {
                 };
                 let mapped_region = gralloc
                         .import_and_map(
-                            RutabagaMesaHandle {
+                            RutabagaMagmaHandle {
                                 os_handle: to_rutabaga_desciptor(descriptor),
                                 handle_type,
                             },
