@@ -4,6 +4,7 @@
 # https://github.com/rust-lang/cargo/issues/5034
 [build]
 rustflags = [
+    "-Dclippy::undocumented_unsafe_blocks",
     # We don't care about these lints. Okay to remain suppressed globally.
     "-Aclippy::bool_assert_comparison",
     "-Aclippy::cast_lossless",
@@ -18,9 +19,9 @@ rustflags = [
     "-Aclippy::single-range-in-vec-init",
     "-Aclippy::too_many_arguments",
     "-Aclippy::type_complexity",
+    "-Aclippy::uninlined_format_args",
     "-Aclippy::unreadable_literal",
     "-Aclippy::useless_transmute",
-    "-Dclippy::undocumented_unsafe_blocks",
 ]
 
 [env]
