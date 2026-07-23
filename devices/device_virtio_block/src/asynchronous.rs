@@ -8,8 +8,6 @@ use std::collections::BTreeSet;
 use std::io;
 use std::io::Write;
 use std::mem::size_of;
-#[cfg(windows)]
-use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::result;
 use std::sync::atomic::AtomicU64;
@@ -42,6 +40,36 @@ use cros_async::TimerAsync;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
+use devices::virtio::async_utils;
+use devices::virtio::copy_config;
+use devices::virtio::device_constants::block::virtio_blk_config;
+use devices::virtio::device_constants::block::virtio_blk_discard_write_zeroes;
+use devices::virtio::device_constants::block::virtio_blk_req_header;
+use devices::virtio::device_constants::block::VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP;
+use devices::virtio::device_constants::block::VIRTIO_BLK_F_BLK_SIZE;
+use devices::virtio::device_constants::block::VIRTIO_BLK_F_DISCARD;
+use devices::virtio::device_constants::block::VIRTIO_BLK_F_FLUSH;
+use devices::virtio::device_constants::block::VIRTIO_BLK_F_MQ;
+use devices::virtio::device_constants::block::VIRTIO_BLK_F_RO;
+use devices::virtio::device_constants::block::VIRTIO_BLK_F_SEG_MAX;
+use devices::virtio::device_constants::block::VIRTIO_BLK_F_WRITE_ZEROES;
+use devices::virtio::device_constants::block::VIRTIO_BLK_S_IOERR;
+use devices::virtio::device_constants::block::VIRTIO_BLK_S_OK;
+use devices::virtio::device_constants::block::VIRTIO_BLK_S_UNSUPP;
+use devices::virtio::device_constants::block::VIRTIO_BLK_T_DISCARD;
+use devices::virtio::device_constants::block::VIRTIO_BLK_T_FLUSH;
+use devices::virtio::device_constants::block::VIRTIO_BLK_T_GET_ID;
+use devices::virtio::device_constants::block::VIRTIO_BLK_T_IN;
+use devices::virtio::device_constants::block::VIRTIO_BLK_T_OUT;
+use devices::virtio::device_constants::block::VIRTIO_BLK_T_WRITE_ZEROES;
+use devices::virtio::DescriptorChain;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::Reader;
+use devices::virtio::VirtioDevice;
+use devices::virtio::Writer;
+use devices::PciAddress;
 use disk::AsyncDisk;
 use disk::DiskFile;
 use futures::channel::mpsc;
@@ -59,38 +87,8 @@ use vm_control::DiskControlResult;
 use vm_memory::GuestMemory;
 use zerocopy::IntoBytes;
 
-use crate::virtio::async_utils;
-use crate::virtio::block::sys::*;
-use crate::virtio::block::DiskOption;
-use crate::virtio::copy_config;
-use crate::virtio::device_constants::block::virtio_blk_config;
-use crate::virtio::device_constants::block::virtio_blk_discard_write_zeroes;
-use crate::virtio::device_constants::block::virtio_blk_req_header;
-use crate::virtio::device_constants::block::VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP;
-use crate::virtio::device_constants::block::VIRTIO_BLK_F_BLK_SIZE;
-use crate::virtio::device_constants::block::VIRTIO_BLK_F_DISCARD;
-use crate::virtio::device_constants::block::VIRTIO_BLK_F_FLUSH;
-use crate::virtio::device_constants::block::VIRTIO_BLK_F_MQ;
-use crate::virtio::device_constants::block::VIRTIO_BLK_F_RO;
-use crate::virtio::device_constants::block::VIRTIO_BLK_F_SEG_MAX;
-use crate::virtio::device_constants::block::VIRTIO_BLK_F_WRITE_ZEROES;
-use crate::virtio::device_constants::block::VIRTIO_BLK_S_IOERR;
-use crate::virtio::device_constants::block::VIRTIO_BLK_S_OK;
-use crate::virtio::device_constants::block::VIRTIO_BLK_S_UNSUPP;
-use crate::virtio::device_constants::block::VIRTIO_BLK_T_DISCARD;
-use crate::virtio::device_constants::block::VIRTIO_BLK_T_FLUSH;
-use crate::virtio::device_constants::block::VIRTIO_BLK_T_GET_ID;
-use crate::virtio::device_constants::block::VIRTIO_BLK_T_IN;
-use crate::virtio::device_constants::block::VIRTIO_BLK_T_OUT;
-use crate::virtio::device_constants::block::VIRTIO_BLK_T_WRITE_ZEROES;
-use crate::virtio::DescriptorChain;
-use crate::virtio::DeviceType;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
-use crate::virtio::Reader;
-use crate::virtio::VirtioDevice;
-use crate::virtio::Writer;
-use crate::PciAddress;
+use crate::sys::*;
+use crate::DiskOption;
 
 const DEFAULT_QUEUE_SIZE: u16 = 256;
 const DEFAULT_NUM_QUEUES: u16 = 16;
@@ -1242,6 +1240,12 @@ mod tests {
 
     use data_model::Le32;
     use data_model::Le64;
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    use devices::suspendable_virtio_tests;
+    use devices::virtio::base_features;
+    use devices::virtio::create_descriptor_chain;
+    use devices::virtio::DescriptorType;
+    use devices::virtio::QueueConfig;
     use disk::SingleFileDisk;
     use hypervisor::ProtectionType;
     use tempfile::tempfile;
@@ -1249,11 +1253,6 @@ mod tests {
     use vm_memory::GuestAddress;
 
     use super::*;
-    use crate::suspendable_virtio_tests;
-    use crate::virtio::base_features;
-    use crate::virtio::descriptor_utils::create_descriptor_chain;
-    use crate::virtio::descriptor_utils::DescriptorType;
-    use crate::virtio::QueueConfig;
 
     #[test]
     fn read_size() {
@@ -1859,7 +1858,7 @@ mod tests {
 
         assert_eq!(
             interrupt.read_interrupt_status(),
-            crate::virtio::INTERRUPT_STATUS_CONFIG_CHANGED as u8,
+            devices::virtio::INTERRUPT_STATUS_CONFIG_CHANGED as u8,
             "INTERRUPT_STATUS_CONFIG_CHANGED should be signaled"
         );
     }
@@ -1938,12 +1937,15 @@ mod tests {
         assert_eq!(b.worker_threads.len(), 2, "2 threads should be spawned.");
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     struct BlockContext {}
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn modify_device(_block_context: &mut BlockContext, b: &mut BlockAsync) {
         b.avail_features = !b.avail_features;
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn create_device() -> (BlockContext, BlockAsync) {
         // Create an empty disk image
         let f = tempfile().unwrap();

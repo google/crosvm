@@ -6,12 +6,12 @@ use anyhow::Context;
 use argh::FromArgs;
 use base::RawDescriptor;
 use cros_async::Executor;
+use devices::virtio::base_features;
+use devices::virtio::vhost_user_backend::BackendConnection;
 use hypervisor::ProtectionType;
 
-use crate::virtio::base_features;
-use crate::virtio::block::DiskOption;
-use crate::virtio::vhost_user_backend::BackendConnection;
-use crate::virtio::BlockAsync;
+use crate::asynchronous::BlockAsync;
+use crate::DiskOption;
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "block")]

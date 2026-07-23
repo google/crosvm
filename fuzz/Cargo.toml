@@ -12,6 +12,7 @@ cargo-fuzz = true
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [dependencies]
+device_virtio_block = { workspace = true }
 devices = { workspace = true }
 disk = { workspace = true }
 fuse = { workspace = true }

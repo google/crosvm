@@ -9,22 +9,23 @@ use std::path::PathBuf;
 use anyhow::Context;
 use base::Tube;
 use cros_async::ExecutorKind;
+use devices::virtio::VirtioDevice;
+use devices::PciAddress;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 use vm_control::AnyControlTube;
 
-use crate::virtio;
-use crate::virtio::VirtioDevice;
-use crate::PciAddress;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
-
 pub mod asynchronous;
 pub mod sys;
+pub mod vhost_user;
 
 pub use asynchronous::BlockAsync;
+pub use vhost_user::run_block_device;
+pub use vhost_user::Options as BlockOptions;
 
 fn block_option_sparse_default() -> bool {
     true
@@ -183,7 +184,7 @@ impl VirtioDeviceModule for DiskOption {
         (args.add_control_tube)(AnyControlTube::Disk(disk_host_tube));
 
         let dev = BlockAsync::new(
-            virtio::base_features(args.protection_type),
+            devices::virtio::base_features(args.protection_type),
             self.open()?,
             self,
             Some(disk_device_tube),
@@ -202,7 +203,7 @@ impl VirtioDeviceModule for DiskOption {
     ) -> anyhow::Result<Option<minijail::Minijail>> {
         let jail = jail::simple_jail(
             Some(jail_config),
-            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file("block"),
+            &devices::virtio::VirtioDeviceType::Regular.seccomp_policy_file("block"),
         )?;
         Ok(jail)
     }
@@ -503,7 +504,7 @@ mod tests {
         // All together
         let params = from_block_arg(&format!(
             "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL\
-            ,direct,async-executor={ex_kind_opt},packed-queue=false,pci-address=00:01.1"
+             ,direct,async-executor={ex_kind_opt},packed-queue=false,pci-address=00:01.1"
         ))
         .unwrap();
         assert_eq!(

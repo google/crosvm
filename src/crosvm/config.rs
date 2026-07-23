@@ -647,7 +647,7 @@ pub struct Config {
     pub disable_virtio_intx: bool,
     // Disks that run as an automatically setup vhost-user backend.
     #[cfg(windows)]
-    pub disks_auto_vhost_user: Vec<devices::virtio::block::DiskOption>,
+    pub disks_auto_vhost_user: Vec<device_virtio_block::DiskOption>,
     pub display_input_height: Option<u32>,
     pub display_input_width: Option<u32>,
     pub display_window_keyboard: bool,

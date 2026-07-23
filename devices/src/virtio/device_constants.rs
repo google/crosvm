@@ -85,7 +85,7 @@ pub mod block {
 
     #[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
     #[repr(C)]
-    pub(crate) struct virtio_blk_req_header {
+    pub struct virtio_blk_req_header {
         pub req_type: Le32,
         pub reserved: Le32,
         pub sector: Le64,
@@ -93,13 +93,13 @@ pub mod block {
 
     #[derive(Copy, Clone, Debug, Default, FromBytes, Immutable, IntoBytes, KnownLayout)]
     #[repr(C)]
-    pub(crate) struct virtio_blk_discard_write_zeroes {
+    pub struct virtio_blk_discard_write_zeroes {
         pub sector: Le64,
         pub num_sectors: Le32,
         pub flags: Le32,
     }
 
-    pub(crate) const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
+    pub const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
 }
 
 pub mod fs {

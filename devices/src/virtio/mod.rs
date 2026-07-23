@@ -23,7 +23,6 @@ mod virtio_mmio_device;
 mod virtio_pci_common_config;
 mod virtio_pci_device;
 
-pub mod block;
 pub mod console;
 #[cfg(feature = "gpu")]
 pub mod gpu;
@@ -42,7 +41,6 @@ pub use vmm_vhost::SharedMemoryRegion;
 pub use self::balloon::Balloon;
 #[cfg(feature = "balloon")]
 pub use self::balloon::BalloonFeatures;
-pub use self::block::BlockAsync;
 pub use self::console::Console;
 pub use self::descriptor_chain::DescriptorChain;
 pub use self::descriptor_chain::DescriptorChainIter;
@@ -131,7 +129,7 @@ use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 const DEVICE_RESET: u32 = 0x0;
 
 const INTERRUPT_STATUS_USED_RING: u32 = 0x1;
-const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
+pub const INTERRUPT_STATUS_CONFIG_CHANGED: u32 = 0x2;
 
 const VIRTIO_MSI_NO_VECTOR: u16 = 0xffff;
 

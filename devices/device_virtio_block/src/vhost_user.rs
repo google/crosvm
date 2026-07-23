@@ -6,6 +6,11 @@ mod sys;
 
 use anyhow::Context;
 use cros_async::Executor;
+use devices::virtio;
+use devices::virtio::vhost_user_backend::handler::DeviceRequestHandler;
+use devices::virtio::vhost_user_backend::handler::VhostUserDevice;
+use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
+use devices::virtio::VirtioDevice;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
@@ -14,12 +19,7 @@ pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::*;
 
-use crate::virtio;
-use crate::virtio::block::asynchronous::BlockAsync;
-use crate::virtio::vhost_user_backend::handler::DeviceRequestHandler;
-use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
-use crate::virtio::vhost_user_backend::VhostUserDeviceBuilder;
-use crate::virtio::VirtioDevice;
+use crate::asynchronous::BlockAsync;
 
 const NUM_QUEUES: u16 = 16;
 

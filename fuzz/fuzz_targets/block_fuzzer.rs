@@ -14,9 +14,9 @@ use std::mem::size_of;
 
 use base::Event;
 use crosvm_fuzz::fuzz_target;
+use device_virtio_block::BlockAsync;
+use device_virtio_block::DiskOption;
 use devices::virtio::base_features;
-use devices::virtio::block::DiskOption;
-use devices::virtio::BlockAsync;
 use devices::virtio::Interrupt;
 use devices::virtio::QueueConfig;
 use devices::virtio::VirtioDevice;

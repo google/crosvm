@@ -2,35 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::os::windows::fs::OpenOptionsExt;
-
-use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
 use base::enable_high_res_timers;
 use base::info;
 use base::Event;
 use base::RawDescriptor;
-use cros_async::sys::windows::ExecutorKindSys;
 use cros_async::Executor;
 use crosvm_cli::sys::windows::exit::Exit;
-use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
+use devices::virtio::base_features;
+use devices::virtio::vhost_user_backend::handler::sys::windows::read_from_tube_transporter;
+use devices::virtio::vhost_user_backend::handler::sys::windows::run_handler;
+use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
 use hypervisor::ProtectionType;
 use proc_init::common_child_setup;
 use proc_init::CommonChildStartupArgs;
 use tube_transporter::TubeToken;
 
-use crate::virtio::base_features;
-use crate::virtio::block::DiskOption;
-use crate::virtio::vhost_user_backend::block::BlockBackend;
-use crate::virtio::vhost_user_backend::handler::sys::windows::read_from_tube_transporter;
-use crate::virtio::vhost_user_backend::handler::sys::windows::run_handler;
-use crate::virtio::vhost_user_backend::VhostUserDevice;
-use crate::virtio::vhost_user_backend::VhostUserDeviceBuilder;
-use crate::virtio::BlockAsync;
+use crate::asynchronous::BlockAsync;
+use crate::DiskOption;
 
 #[derive(FromArgs, Debug)]
 #[argh(subcommand, name = "block", description = "")]

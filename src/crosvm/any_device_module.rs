@@ -85,6 +85,6 @@ declare_any_virtio_device_module! {
         #[cfg(feature = "net")]
         Net(device_virtio_net::NetParameters),
         Scsi(device_virtio_scsi::VirtioScsiModule),
-        Block(devices::virtio::block::DiskOption),
+        Block(device_virtio_block::DiskOption),
     }
 }

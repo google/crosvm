@@ -1,5 +1,5 @@
 [package]
-name = "device_virtio_scsi"
+name = "device_virtio_block"
 version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 license = "BSD-3-Clause"
@@ -10,26 +10,37 @@ registered_events = ["devices/registered_events"]
 
 [dependencies]
 anyhow = { workspace = true }
+argh = { workspace = true }
 base = { workspace = true }
 cfg-if = { workspace = true }
 cros_async = { workspace = true }
 cros_tracing = { workspace = true }
 data_model = { workspace = true }
-device_virtio_block = { workspace = true }
 devices = { workspace = true }
 disk = { workspace = true }
 futures = { version = "0.3", features = ["async-await", "std"], default-features = false }
+hypervisor = { workspace = true }
+libc = { workspace = true }
 remain = { workspace = true }
 serde = { workspace = true, features = [ "derive", "rc" ] }
 serde_keyvalue = { workspace = true }
+snapshot = { workspace = true }
 thiserror = { workspace = true }
 virtio_sys = { workspace = true }
+vm_control = { workspace = true }
 vm_memory = { workspace = true }
+vmm_vhost = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 tempfile = "3"
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 jail = { workspace = true }
 minijail = "*"
+
+[target.'cfg(windows)'.dependencies]
+crosvm_cli = { workspace = true }
+proc_init = { workspace = true }
+tube_transporter = { workspace = true }

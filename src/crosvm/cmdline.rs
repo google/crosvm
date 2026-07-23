@@ -41,13 +41,13 @@ use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
 use cros_async::ExecutorKind;
+use device_virtio_block::DiskOption;
 #[cfg(all(unix, feature = "net"))]
 use device_virtio_net::NetParameters;
 #[cfg(all(unix, feature = "net"))]
 use device_virtio_net::NetParametersMode;
 use device_virtio_scsi::ScsiOption;
 use device_virtio_vsock::VsockConfig;
-use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "audio")]
@@ -575,7 +575,7 @@ pub struct DeviceCommand {
 #[argh(subcommand)]
 /// Cross-platform Devices
 pub enum CrossPlatformDevicesCommands {
-    Block(vhost_user_backend::BlockOptions),
+    Block(device_virtio_block::BlockOptions),
     #[cfg(feature = "gpu")]
     Gpu(vhost_user_backend::GpuOptions),
     #[cfg(feature = "net")]

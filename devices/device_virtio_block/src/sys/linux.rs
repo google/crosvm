@@ -15,8 +15,8 @@ use base::RawDescriptor;
 use cros_async::Executor;
 use disk::DiskFile;
 
-use crate::virtio::block::DiskOption;
-use crate::virtio::BlockAsync;
+use crate::asynchronous::BlockAsync;
+use crate::DiskOption;
 
 pub fn get_seg_max(queue_size: u16) -> u32 {
     let seg_max = min(max(iov_max(), 1), u32::MAX as usize) as u32;

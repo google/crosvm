@@ -28,9 +28,9 @@ use cmdline::RunCommand;
 mod crosvm;
 use crosvm::cmdline;
 use crosvm::config::Config;
+use device_virtio_block::run_block_device;
 #[cfg(feature = "net")]
 use device_virtio_net::run_net_device;
-use devices::virtio::vhost_user_backend::run_block_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::run_gpu_device;
 #[cfg(feature = "audio")]

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod block;
 pub mod connection;
 #[cfg(feature = "gpu")]
 pub mod gpu;
@@ -11,8 +10,6 @@ pub mod params;
 #[cfg(feature = "audio")]
 pub mod snd;
 
-pub use block::run_block_device;
-pub use block::Options as BlockOptions;
 pub use connection::sys::VhostUserListener;
 pub use connection::sys::VhostUserStream;
 pub use connection::VhostUserConnectionTrait;

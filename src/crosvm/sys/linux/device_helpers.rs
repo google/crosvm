@@ -25,6 +25,7 @@ use arch::VirtioDeviceStub;
 use base::linux::MemfdSeals;
 use base::sys::SharedMemoryLinux;
 use base::*;
+use device_virtio_block::DiskOption;
 #[cfg(feature = "net")]
 use device_virtio_net::create_tap_for_net_device;
 #[cfg(feature = "net")]
@@ -36,7 +37,6 @@ use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
 use devices::vfio::VfioContainerManager;
 use devices::virtio;
-use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoBackendType;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -260,7 +260,7 @@ impl VirtioDeviceBuilder for DiskConfig<'_> {
         let disk_image = self.disk.open()?;
         let base_features = virtio::base_features(protection_type);
         Ok(Box::new(
-            virtio::BlockAsync::new(
+            device_virtio_block::BlockAsync::new(
                 base_features,
                 disk_image,
                 self.disk,
@@ -281,7 +281,7 @@ impl VirtioDeviceBuilder for DiskConfig<'_> {
         let base_features = virtio::base_features(ProtectionType::Unprotected);
 
         let block = Box::new(
-            virtio::BlockAsync::new(
+            device_virtio_block::BlockAsync::new(
                 base_features,
                 disk_image,
                 disk,
