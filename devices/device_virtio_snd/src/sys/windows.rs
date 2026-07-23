@@ -4,10 +4,7 @@
 
 // TODO(b/275406212): Deleted resampler code to make upstream easier. The resample
 // will be in win_audio now
-use std::io;
-use std::io::Read;
 use std::rc::Rc;
-use std::slice;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,39 +13,26 @@ use audio_streams::capture::AsyncCaptureBufferStream;
 use audio_streams::AsyncPlaybackBuffer;
 use audio_streams::AsyncPlaybackBufferStream;
 use audio_streams::BoxError;
-use base::error;
 pub(crate) use base::set_audio_thread_priority;
-use base::warn;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::Executor;
-use data_model::Le32;
-use futures::channel::mpsc::UnboundedReceiver;
+use devices::virtio::Reader;
 use futures::channel::mpsc::UnboundedSender;
-use futures::SinkExt;
 use serde::Deserialize;
 use serde::Serialize;
-use sync::Mutex;
-use vm_memory::GuestMemory;
 use win_audio::async_stream::WinAudioStreamSourceGenerator;
-use win_audio::AudioSharedFormat;
 use win_audio::WinAudioServer;
 use win_audio::WinStreamSourceGenerator;
-use win_audio::ANDROID_CAPTURE_FRAME_SIZE_BYTES;
-use win_audio::BYTES_PER_32FLOAT;
 
-use crate::virtio::snd::common_backend::async_funcs::CaptureBufferReader;
-use crate::virtio::snd::common_backend::async_funcs::PlaybackBufferWriter;
-use crate::virtio::snd::common_backend::stream_info::StreamInfo;
-use crate::virtio::snd::common_backend::DirectionalStream;
-use crate::virtio::snd::common_backend::Error;
-use crate::virtio::snd::common_backend::PcmResponse;
-use crate::virtio::snd::common_backend::SndData;
-use crate::virtio::snd::constants::StatusCode;
-use crate::virtio::snd::layout::virtio_snd_pcm_status;
-use crate::virtio::snd::parameters::Error as ParametersError;
-use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::DescriptorChain;
-use crate::virtio::Reader;
+use crate::common_backend::async_funcs::CaptureBufferReader;
+use crate::common_backend::async_funcs::PlaybackBufferWriter;
+use crate::common_backend::stream_info::StreamInfo;
+use crate::common_backend::DirectionalStream;
+use crate::common_backend::Error;
+use crate::common_backend::PcmResponse;
+use crate::common_backend::SndData;
+use crate::parameters::Error as ParametersError;
+use crate::parameters::Parameters;
 
 pub(crate) type SysAudioStreamSourceGenerator = Box<dyn WinStreamSourceGenerator>;
 pub(crate) type SysAudioStreamSource = Box<dyn WinAudioServer>;
@@ -135,7 +119,7 @@ impl StreamInfo {
         frame_size: usize,
         ex: &Executor,
     ) -> Result<SysBufferReader, Error> {
-        let (async_capture_buffer_stream, audio_shared_format) = self
+        let (async_capture_buffer_stream, _audio_shared_format) = self
             .stream_source
             .as_mut()
             .ok_or(Error::EmptyStreamSource)?
@@ -147,7 +131,7 @@ impl StreamInfo {
                 ex,
             )
             .map_err(Error::CreateStream)?;
-        let mut buffer_reader = WinBufferReader::new(async_capture_buffer_stream);
+        let buffer_reader = WinBufferReader::new(async_capture_buffer_stream);
         Ok(buffer_reader)
     }
 

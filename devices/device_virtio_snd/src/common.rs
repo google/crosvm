@@ -6,7 +6,7 @@ use audio_streams::SampleFormat;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use crate::virtio::snd::constants::*;
+use crate::constants::*;
 
 #[sorted]
 #[derive(ThisError, Debug)]

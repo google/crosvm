@@ -47,11 +47,12 @@ use device_virtio_net::NetParameters;
 #[cfg(all(unix, feature = "net"))]
 use device_virtio_net::NetParametersMode;
 use device_virtio_scsi::ScsiOption;
+#[cfg(feature = "audio")]
+use device_virtio_snd::parameters::Parameters as SndParameters;
 use device_virtio_vsock::VsockConfig;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
-#[cfg(feature = "audio")]
-use devices::virtio::snd::parameters::Parameters as SndParameters;
+#[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
@@ -581,7 +582,7 @@ pub enum CrossPlatformDevicesCommands {
     #[cfg(feature = "net")]
     Net(device_virtio_net::NetOptions),
     #[cfg(feature = "audio")]
-    Snd(vhost_user_backend::SndOptions),
+    Snd(device_virtio_snd::SndOptions),
 }
 
 #[derive(argh_helpers::FlattenSubcommand)]
@@ -2919,7 +2920,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             for (i, mut snd) in cmd.virtio_snd.into_iter().enumerate() {
                 snd.card_index = i;
                 cfg.virtio_device_modules
-                    .push(devices::virtio::VirtioSndModule::new(snd).into());
+                    .push(device_virtio_snd::VirtioSndModule::new(snd).into());
             }
         }
 

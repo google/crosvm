@@ -151,6 +151,7 @@ device_virtio_block = { path = "devices/device_virtio_block" }
 device_virtio_net = { path = "devices/device_virtio_net" }
 device_virtio_rng = { path = "devices/device_virtio_rng" }
 device_virtio_scsi = { path = "devices/device_virtio_scsi" }
+device_virtio_snd = { path = "devices/device_virtio_snd" }
 device_virtio_tpm = { path = "devices/device_virtio_tpm" }
 device_virtio_vsock = { path = "devices/device_virtio_vsock" }
 disk = { path = "disk" }
@@ -230,7 +231,7 @@ appimage = ["jail/appimage"]
 android-sparse = ["disk/android-sparse"]
 
 ## Enables cross-platform audio devices
-audio = ["devices/audio", "vm_control/audio"]
+audio = ["devices/audio", "vm_control/audio", "dep:device_virtio_snd"]
 
 ## Enables the virtio-balloon device which allows dynamic scaling of memory via `vm_control`
 ## commands. See [Balloon Device](https://crosvm.dev/book/devices/balloon.html) for more
@@ -424,7 +425,7 @@ default-no-sandbox = []
 arc_quota = ["devices/arc_quota"]
 
 ## Enables use of Android AAudio virtio-snd backend.
-audio_aaudio = ["devices/audio_aaudio"]
+audio_aaudio = ["device_virtio_snd/audio_aaudio"]
 
 ## Stub implementation of Android AAudio NDK library. This is only used for building and testing the
 ## Android audio on a non-Android target
@@ -432,7 +433,7 @@ libaaudio_stub = ["android_audio/libaaudio_stub"]
 
 ## Enables use of the ChromeOS audio server. ChromeOS builds will replace libcras_stub with an
 ## implementation that talks to the audio server. In upstream builds, using this option will panic.
-audio_cras = ["devices/audio_cras", "libcras"]
+audio_cras = ["device_virtio_snd/audio_cras", "devices/audio_cras", "libcras"]
 
 ## Enables the VDA backend of the video devices. This feature requires the ChromeOS only
 ## libvda library and can be compiled but not linked. See b/244619291.
@@ -589,6 +590,7 @@ device_virtio_block = { workspace = true }
 device_virtio_net = { workspace = true, optional = true }
 device_virtio_rng = { workspace = true }
 device_virtio_scsi = { workspace = true }
+device_virtio_snd = { workspace = true, optional = true }
 device_virtio_tpm = { workspace = true, optional = true }
 device_virtio_vsock = { workspace = true }
 disk = { workspace = true }

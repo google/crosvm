@@ -46,9 +46,9 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use crate::virtio::snd::constants::*;
-use crate::virtio::snd::layout::*;
-use crate::virtio::snd::vios_backend::streams::StreamState;
+use crate::constants::*;
+use crate::layout::*;
+use crate::vios_backend::streams::StreamState;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

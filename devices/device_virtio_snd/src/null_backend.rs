@@ -4,8 +4,8 @@
 
 use audio_streams::NoopStreamSourceGenerator;
 
-use crate::virtio::snd::common_backend::SndData;
-use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
+use crate::common_backend::SndData;
+use crate::sys::SysAudioStreamSourceGenerator;
 
 pub(crate) fn create_null_stream_source_generators(
     snd_data: &SndData,

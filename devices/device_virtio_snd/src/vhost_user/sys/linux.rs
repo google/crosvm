@@ -6,10 +6,10 @@ use anyhow::Context;
 use argh::FromArgs;
 use base::RawDescriptor;
 use cros_async::Executor;
+use devices::virtio::vhost_user_backend::BackendConnection;
 
-use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::vhost_user_backend::snd::SndBackend;
-use crate::virtio::vhost_user_backend::BackendConnection;
+use crate::parameters::Parameters;
+use crate::vhost_user::SndBackend;
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "snd")]

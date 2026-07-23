@@ -21,6 +21,12 @@ use base::ProtoTube;
 use base::ReadNotifier;
 use base::Tube;
 use base::WaitContext;
+#[cfg(feature = "audio")]
+use device_virtio_snd::vhost_user::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
+#[cfg(feature = "audio")]
+use device_virtio_snd::vhost_user::sys::windows::product::SndVmmConfig as SndVmmConfigProduct;
+#[cfg(feature = "audio")]
+use device_virtio_snd::vhost_user::sys::windows::SndVmmConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
 #[cfg(feature = "gpu")]
@@ -33,12 +39,6 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuVmmConfig;
 use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadVmmConfig;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::product::SndVmmConfig as SndVmmConfigProduct;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::SndVmmConfig;
 #[cfg(feature = "gpu")]
 use gpu_display::WindowProcedureThreadBuilder;
 pub(crate) use metrics::log_descriptor;

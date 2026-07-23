@@ -29,6 +29,8 @@ use arch::VcpuAffinity;
 use base::debug;
 use base::pagesize;
 use cros_async::ExecutorKind;
+#[cfg(all(windows, feature = "audio"))]
+use device_virtio_snd::vhost_user::sys::windows::SndSplitConfig;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
@@ -43,8 +45,6 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuVmmConfig;
 use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfig;
 #[cfg(all(windows, feature = "gpu"))]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadSplitConfig;
-#[cfg(all(windows, feature = "audio"))]
-use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 use devices::virtio::DeviceType;
 use devices::FwCfgParameters;
 use devices::PciAddress;

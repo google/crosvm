@@ -29,8 +29,6 @@ pub mod gpu;
 #[cfg(all(unix, feature = "media"))]
 pub mod media;
 pub mod resource_bridge;
-#[cfg(feature = "audio")]
-pub mod snd;
 pub mod vhost;
 pub mod vhost_user_backend;
 pub mod vhost_user_frontend;
@@ -75,8 +73,6 @@ pub use self::queue::split_descriptor_chain::SplitDescriptorChain;
 pub use self::queue::PeekedDescriptorChain;
 pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
-#[cfg(feature = "audio")]
-pub use self::snd::VirtioSndModule;
 pub use self::vhost_user_frontend::VhostUserFrontend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;
@@ -105,8 +101,6 @@ cfg_if::cfg_if! {
         pub use self::pmem::Pmem;
         pub use self::pmem::PmemConfig;
         pub use self::pmem::MemSlotConfig;
-        #[cfg(feature = "audio")]
-        pub use self::snd::new_sound;
         #[cfg(feature = "virtio_wl")]
         pub use self::wl::Wl;
     } else if #[cfg(windows)] {

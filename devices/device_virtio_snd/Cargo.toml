@@ -1,0 +1,51 @@
+[package]
+name = "device_virtio_snd"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+license = "BSD-3-Clause"
+edition = "2021"
+
+[features]
+audio_aaudio = ["android_audio"]
+audio_cras = ["libcras"]
+registered_events = ["devices/registered_events"]
+
+[dependencies]
+android_audio = { workspace = true, optional = true }
+anyhow = { workspace = true }
+argh = { workspace = true }
+async-trait = "0.1"
+audio_streams = { workspace = true }
+audio_util = { workspace = true }
+base = { workspace = true }
+cfg-if = { workspace = true }
+cros_async = { workspace = true }
+cros_tracing = { workspace = true }
+data_model = { workspace = true }
+devices = { workspace = true }
+futures = { version = "0.3", features = ["async-await", "std"], default-features = false }
+hypervisor = { workspace = true }
+libc = { workspace = true }
+libcras = { version = "*", optional = true }
+remain = { workspace = true }
+serde = { workspace = true, features = [ "derive", "rc" ] }
+serde_bytes = "0.11"
+serde_keyvalue = { workspace = true }
+snapshot = { workspace = true }
+sync = { workspace = true }
+thiserror = { workspace = true }
+virtio_sys = { workspace = true }
+vm_control = { workspace = true }
+vm_memory = { workspace = true }
+vmm_vhost = { workspace = true }
+zerocopy = { version = "0.8.13", features = ["derive"] }
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+jail = { workspace = true }
+minijail = "*"
+
+[target.'cfg(windows)'.dependencies]
+crosvm_cli = { workspace = true }
+proc_init = { workspace = true }
+tube_transporter = { workspace = true }
+win_audio = { workspace = true }

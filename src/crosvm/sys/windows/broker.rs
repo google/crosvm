@@ -68,9 +68,15 @@ use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 #[cfg(feature = "net")]
 use device_virtio_net::NetBackendConfig;
 #[cfg(feature = "audio")]
-use devices::virtio::gpu::AudioDeviceMode;
+use device_virtio_snd::parameters::Parameters as SndParameters;
 #[cfg(feature = "audio")]
-use devices::virtio::snd::parameters::Parameters as SndParameters;
+use device_virtio_snd::vhost_user::sys::windows::SndBackendConfig;
+#[cfg(feature = "audio")]
+use device_virtio_snd::vhost_user::sys::windows::SndSplitConfig;
+#[cfg(feature = "audio")]
+use device_virtio_snd::vhost_user::sys::windows::SndVmmConfig;
+#[cfg(feature = "audio")]
+use devices::virtio::gpu::AudioDeviceMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuBackendConfig;
 #[cfg(feature = "gpu")]
@@ -85,12 +91,6 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventVmmConfig;
 use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadSplitConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::WindowProcedureThreadVmmConfig;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::SndBackendConfig;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::SndVmmConfig;
 use devices::virtio::DeviceType;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;

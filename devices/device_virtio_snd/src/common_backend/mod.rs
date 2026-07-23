@@ -29,6 +29,14 @@ use cros_async::AsyncError;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
+use devices::virtio::async_utils;
+use devices::virtio::copy_config;
+use devices::virtio::device_constants::snd::virtio_snd_config;
+use devices::virtio::DescriptorChain;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
@@ -44,30 +52,22 @@ use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use zerocopy::IntoBytes;
 
-use crate::virtio::async_utils;
-use crate::virtio::copy_config;
-use crate::virtio::device_constants::snd::virtio_snd_config;
-use crate::virtio::snd::common_backend::async_funcs::*;
-use crate::virtio::snd::common_backend::stream_info::StreamInfo;
-use crate::virtio::snd::common_backend::stream_info::StreamInfoBuilder;
-use crate::virtio::snd::common_backend::stream_info::StreamInfoSnapshot;
-use crate::virtio::snd::constants::*;
-use crate::virtio::snd::file_backend::create_file_stream_source_generators;
-use crate::virtio::snd::file_backend::Error as FileError;
-use crate::virtio::snd::layout::*;
-use crate::virtio::snd::null_backend::create_null_stream_source_generators;
-use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::snd::parameters::StreamSourceBackend;
-use crate::virtio::snd::sys::create_stream_source_generators as sys_create_stream_source_generators;
-use crate::virtio::snd::sys::set_audio_thread_priority;
-use crate::virtio::snd::sys::SysAsyncStreamObjects;
-use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
-use crate::virtio::snd::sys::SysDirectionOutput;
-use crate::virtio::DescriptorChain;
-use crate::virtio::DeviceType;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
-use crate::virtio::VirtioDevice;
+use crate::common_backend::async_funcs::*;
+use crate::common_backend::stream_info::StreamInfo;
+use crate::common_backend::stream_info::StreamInfoBuilder;
+use crate::common_backend::stream_info::StreamInfoSnapshot;
+use crate::constants::*;
+use crate::file_backend::create_file_stream_source_generators;
+use crate::file_backend::Error as FileError;
+use crate::layout::*;
+use crate::null_backend::create_null_stream_source_generators;
+use crate::parameters::Parameters;
+use crate::parameters::StreamSourceBackend;
+use crate::sys::create_stream_source_generators as sys_create_stream_source_generators;
+use crate::sys::set_audio_thread_priority;
+use crate::sys::SysAsyncStreamObjects;
+use crate::sys::SysAudioStreamSourceGenerator;
+use crate::sys::SysDirectionOutput;
 
 pub mod async_funcs;
 pub mod stream_info;
@@ -274,7 +274,7 @@ fn create_stream_source_generators(
 }
 
 /// Creates [`StreamInfoBuilder`]s by calling [`create_stream_source_generators()`] then zip
-/// them with [`crate::virtio::snd::parameters::PCMDeviceParameters`] from the params to set
+/// them with [`crate::parameters::PCMDeviceParameters`] from the params to set
 /// the parameters on each [`StreamInfoBuilder`] (e.g. effects).
 pub(crate) fn create_stream_info_builders(
     params: &Parameters,
@@ -947,7 +947,7 @@ mod tests {
     use audio_streams::StreamEffect;
 
     use super::*;
-    use crate::virtio::snd::parameters::PCMDeviceParameters;
+    use crate::parameters::PCMDeviceParameters;
 
     #[test]
     fn test_virtio_snd_new() {

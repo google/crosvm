@@ -33,16 +33,16 @@ use minijail::Minijail;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::virtio::snd::common_backend::async_funcs::CaptureBufferReader;
-use crate::virtio::snd::common_backend::async_funcs::PlaybackBufferWriter;
-use crate::virtio::snd::common_backend::stream_info::StreamInfo;
-use crate::virtio::snd::common_backend::DirectionalStream;
-use crate::virtio::snd::common_backend::Error;
-use crate::virtio::snd::common_backend::PcmResponse;
-use crate::virtio::snd::common_backend::SndData;
-use crate::virtio::snd::parameters::Error as ParametersError;
-use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::snd::parameters::StreamSourceBackend as Backend;
+use crate::common_backend::async_funcs::CaptureBufferReader;
+use crate::common_backend::async_funcs::PlaybackBufferWriter;
+use crate::common_backend::stream_info::StreamInfo;
+use crate::common_backend::DirectionalStream;
+use crate::common_backend::Error;
+use crate::common_backend::PcmResponse;
+use crate::common_backend::SndData;
+use crate::parameters::Error as ParametersError;
+use crate::parameters::Parameters;
+use crate::parameters::StreamSourceBackend as Backend;
 
 const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 

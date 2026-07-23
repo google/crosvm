@@ -18,10 +18,10 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use thiserror::Error as ThisError;
 
-use crate::virtio::snd::common_backend::SndData;
-use crate::virtio::snd::constants::VIRTIO_SND_D_OUTPUT;
-use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
+use crate::common_backend::SndData;
+use crate::constants::VIRTIO_SND_D_OUTPUT;
+use crate::parameters::Parameters;
+use crate::sys::SysAudioStreamSourceGenerator;
 
 #[derive(ThisError, Debug)]
 pub enum Error {

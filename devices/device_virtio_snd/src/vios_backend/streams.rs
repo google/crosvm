@@ -16,6 +16,8 @@ use base::set_rt_prio_limit;
 use base::set_rt_round_robin;
 use base::warn;
 use data_model::Le32;
+use devices::virtio::DescriptorChain;
+use devices::virtio::Queue;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -24,11 +26,9 @@ use super::Error as VioSError;
 use super::Result;
 use super::SoundError;
 use super::*;
-use crate::virtio::snd::common::from_virtio_frame_rate;
-use crate::virtio::snd::constants::*;
-use crate::virtio::snd::layout::*;
-use crate::virtio::DescriptorChain;
-use crate::virtio::Queue;
+use crate::common::from_virtio_frame_rate;
+use crate::constants::*;
+use crate::layout::*;
 
 /// Messages that the worker can send to the stream (thread).
 pub enum StreamMsg {

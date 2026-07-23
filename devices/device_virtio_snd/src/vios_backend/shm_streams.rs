@@ -37,8 +37,8 @@ use super::shm_vios::Error;
 use super::shm_vios::Result;
 use super::shm_vios::VioSClient;
 use super::shm_vios::VioSStreamParams;
-use crate::virtio::snd::common::*;
-use crate::virtio::snd::constants::*;
+use crate::common::*;
+use crate::constants::*;
 
 // This is the error type used in audio_streams::shm_streams. Unfortunately, it's not declared
 // public there so it needs to be re-declared here. It also prevents the usage of anyhow::Error.

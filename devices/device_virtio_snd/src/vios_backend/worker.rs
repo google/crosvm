@@ -13,6 +13,8 @@ use base::Event;
 use base::EventToken;
 use base::WaitContext;
 use data_model::Le32;
+use devices::virtio::DescriptorChain;
+use devices::virtio::Queue;
 use sync::Mutex;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
@@ -23,8 +25,6 @@ use super::streams::*;
 use super::Result;
 use super::SoundError;
 use super::*;
-use crate::virtio::DescriptorChain;
-use crate::virtio::Queue;
 
 pub struct Worker {
     // Lock order: Must never hold more than one queue lock at the same time.

@@ -7,9 +7,6 @@ pub mod connection;
 pub mod gpu;
 pub mod handler;
 pub mod params;
-#[cfg(feature = "audio")]
-pub mod snd;
-
 pub use connection::sys::VhostUserListener;
 pub use connection::sys::VhostUserStream;
 pub use connection::VhostUserConnectionTrait;
@@ -19,10 +16,6 @@ pub use gpu::run_gpu_device;
 #[cfg(feature = "gpu")]
 pub use gpu::Options as GpuOptions;
 pub use handler::VhostUserDevice;
-#[cfg(feature = "audio")]
-pub use snd::run_snd_device;
-#[cfg(feature = "audio")]
-pub use snd::Options as SndOptions;
 
 pub use crate::virtio::vhost_user_backend::connection::BackendConnection;
 

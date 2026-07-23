@@ -995,8 +995,8 @@ impl SharedMemoryMapper for VhostShmemMapper {
 }
 
 pub struct WorkerState<T, U> {
-    pub(crate) queue_task: TaskHandle<U>,
-    pub(crate) queue: T,
+    pub queue_task: TaskHandle<U>,
+    pub queue: T,
 }
 
 /// Errors for device operations

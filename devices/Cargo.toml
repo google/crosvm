@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
 license = "BSD-3-Clause"
-build = "build.rs"
 
 [features]
 android_display = ["gpu_display/android_display"]
@@ -17,7 +16,6 @@ fs_runtime_ugid_map = ["fs_permission_translation"]
 # enabled when either `arc_quota` or `fs_runtime_ugid_map` is enabled.
 fs_permission_translation = []
 audio = []
-audio_aaudio = []
 audio_cras = ["libcras"]
 balloon = []
 gpu = ["gpu_display", "rutabaga_gfx"]

@@ -11,6 +11,10 @@ pub mod sys;
 pub mod common_backend;
 pub mod file_backend;
 pub mod null_backend;
+pub mod vhost_user;
+
+pub use vhost_user::run_snd_device;
+pub use vhost_user::Options as SndOptions;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
@@ -21,15 +25,17 @@ cfg_if::cfg_if! {
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use anyhow::Context;
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use serde::Deserialize;
 use serde::Serialize;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use vm_control::AnyControlTube;
 
 use self::parameters::Parameters;
-use crate::virtio::VirtioDevice;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct VirtioSndModule {
@@ -54,7 +60,7 @@ impl VirtioDeviceModule for VirtioSndModule {
                 base::Tube::pair().context("failed to create tube for snd")?;
 
             let dev = common_backend::VirtioSnd::new(
-                crate::virtio::base_features(args.protection_type),
+                devices::virtio::base_features(args.protection_type),
                 self.params.clone(),
                 snd_device_tube,
             )

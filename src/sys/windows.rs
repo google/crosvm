@@ -71,6 +71,10 @@ use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use crosvm_cli::sys::windows::exit::ExitContextOption;
+#[cfg(feature = "audio")]
+use device_virtio_snd::vhost_user::sys::windows::run_snd_device_worker;
+#[cfg(feature = "audio")]
+use device_virtio_snd::vhost_user::sys::windows::SndSplitConfig;
 use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
@@ -86,10 +90,6 @@ use devices::virtio::vhost_user_backend::gpu::sys::windows::GpuVmmConfig;
 use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventSplitConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::gpu::sys::windows::InputEventVmmConfig;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::run_snd_device_worker;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::snd::sys::windows::SndSplitConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 use devices::virtio::Console;

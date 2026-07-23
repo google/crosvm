@@ -26,6 +26,12 @@ use base::Error as BaseError;
 use base::RawDescriptor;
 use base::WorkerThread;
 use data_model::Le32;
+use devices::virtio::copy_config;
+use devices::virtio::device_constants::snd::virtio_snd_config;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -38,13 +44,7 @@ use vm_memory::GuestMemory;
 use worker::*;
 use zerocopy::IntoBytes;
 
-use crate::virtio::copy_config;
-use crate::virtio::device_constants::snd::virtio_snd_config;
-use crate::virtio::snd::constants::VIRTIO_SND_F_CTLS;
-use crate::virtio::DeviceType;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
-use crate::virtio::VirtioDevice;
+use crate::constants::VIRTIO_SND_F_CTLS;
 
 const QUEUE_SIZES: &[u16] = &[64, 64, 64, 64];
 

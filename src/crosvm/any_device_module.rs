@@ -87,6 +87,6 @@ declare_any_virtio_device_module! {
         Scsi(device_virtio_scsi::VirtioScsiModule),
         Block(device_virtio_block::DiskOption),
         #[cfg(feature = "audio")]
-        Snd(devices::virtio::VirtioSndModule),
+        Snd(device_virtio_snd::VirtioSndModule),
     }
 }

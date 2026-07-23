@@ -31,10 +31,10 @@ use crosvm::config::Config;
 use device_virtio_block::run_block_device;
 #[cfg(feature = "net")]
 use device_virtio_net::run_net_device;
+#[cfg(feature = "audio")]
+use device_virtio_snd::run_snd_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend::run_gpu_device;
-#[cfg(feature = "audio")]
-use devices::virtio::vhost_user_backend::run_snd_device;
 #[cfg(feature = "composite-disk")]
 use disk::create_composite_disk;
 #[cfg(feature = "composite-disk")]

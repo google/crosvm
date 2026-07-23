@@ -11,8 +11,8 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use crate::virtio::snd::constants::StatusCode;
-use crate::virtio::snd::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
+use crate::constants::StatusCode;
+use crate::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
 
 #[derive(
     Copy, Clone, Default, FromBytes, Immutable, IntoBytes, KnownLayout, Serialize, Deserialize,

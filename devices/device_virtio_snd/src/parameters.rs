@@ -17,9 +17,9 @@ use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use thiserror::Error as ThisError;
 
-use crate::virtio::snd::constants::*;
-use crate::virtio::snd::layout::*;
-use crate::virtio::snd::sys::StreamSourceBackend as SysStreamSourceBackend;
+use crate::constants::*;
+use crate::layout::*;
+use crate::sys::StreamSourceBackend as SysStreamSourceBackend;
 
 #[derive(ThisError, Debug, PartialEq, Eq)]
 pub enum Error {

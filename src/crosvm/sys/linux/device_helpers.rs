@@ -1340,7 +1340,7 @@ pub fn create_sound_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,
 ) -> DeviceResult {
-    let dev = virtio::new_sound(path, virtio::base_features(protection_type))
+    let dev = device_virtio_snd::new_sound(path, virtio::base_features(protection_type))
         .context("failed to create sound device")?;
 
     Ok(VirtioDeviceStub {

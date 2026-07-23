@@ -24,6 +24,10 @@ use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::TimerAsync;
+use devices::virtio::DescriptorChain;
+use devices::virtio::Queue;
+use devices::virtio::Reader;
+use devices::virtio::Writer;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::pin_mut;
@@ -39,17 +43,13 @@ use zerocopy::IntoBytes;
 use super::Error;
 use super::SndData;
 use super::WorkerStatus;
-use crate::virtio::snd::common::*;
-use crate::virtio::snd::common_backend::stream_info::SetParams;
-use crate::virtio::snd::common_backend::stream_info::StreamInfo;
-use crate::virtio::snd::common_backend::DirectionalStream;
-use crate::virtio::snd::common_backend::PcmResponse;
-use crate::virtio::snd::constants::*;
-use crate::virtio::snd::layout::*;
-use crate::virtio::DescriptorChain;
-use crate::virtio::Queue;
-use crate::virtio::Reader;
-use crate::virtio::Writer;
+use crate::common::*;
+use crate::common_backend::stream_info::SetParams;
+use crate::common_backend::stream_info::StreamInfo;
+use crate::common_backend::DirectionalStream;
+use crate::common_backend::PcmResponse;
+use crate::constants::*;
+use crate::layout::*;
 
 /// Trait to wrap system specific helpers for reading from the start point capture buffer.
 #[async_trait(?Send)]
@@ -382,6 +382,11 @@ async fn pcm_worker_loop(
 
     match dstream {
         DirectionalStream::Output(mut sys_direction_output) => loop {
+            #[cfg(windows)]
+            #[allow(clippy::self_assignment)]
+            {
+                sys_direction_output = sys_direction_output; // unused_mut workaround
+            }
             #[cfg(windows)]
             let (mut stream, mut buffer_writer_lock) = (
                 sys_direction_output
@@ -1016,7 +1021,7 @@ mod tests {
     use base::Tube;
 
     use super::*;
-    use crate::virtio::snd::common_backend::notify_reset_signal;
+    use crate::common_backend::notify_reset_signal;
 
     #[test]
     fn test_handle_ctrl_tube_reset_signal() {

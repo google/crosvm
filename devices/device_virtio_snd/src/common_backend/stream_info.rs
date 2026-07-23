@@ -16,6 +16,7 @@ use base::warn;
 use cros_async::sync::Condvar;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::Executor;
+use devices::virtio::DescriptorChain;
 use futures::channel::mpsc;
 use futures::Future;
 use futures::TryFutureExt;
@@ -25,14 +26,13 @@ use serde::Serialize;
 use super::Error;
 use super::PcmResponse;
 use super::WorkerStatus;
-use crate::virtio::snd::common::*;
-use crate::virtio::snd::common_backend::async_funcs::*;
-use crate::virtio::snd::common_backend::DirectionalStream;
-use crate::virtio::snd::common_backend::SysAsyncStreamObjects;
-use crate::virtio::snd::constants::*;
-use crate::virtio::snd::sys::SysAudioStreamSource;
-use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
-use crate::virtio::DescriptorChain;
+use crate::common::*;
+use crate::common_backend::async_funcs::*;
+use crate::common_backend::DirectionalStream;
+use crate::common_backend::SysAsyncStreamObjects;
+use crate::constants::*;
+use crate::sys::SysAudioStreamSource;
+use crate::sys::SysAudioStreamSourceGenerator;
 
 /// Parameters for setting parameters in StreamInfo
 #[derive(Copy, Clone, Debug)]

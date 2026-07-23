@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
 use base::info;
@@ -11,18 +10,18 @@ use base::Event;
 use base::RawDescriptor;
 use base::Tube;
 use cros_async::Executor;
+use devices::virtio::vhost_user_backend::handler::sys::windows::read_from_tube_transporter;
+use devices::virtio::vhost_user_backend::handler::sys::windows::run_handler;
+use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
 use proc_init::common_child_setup;
 use proc_init::CommonChildStartupArgs;
 use serde::Deserialize;
 use serde::Serialize;
 use tube_transporter::TubeToken;
 
-use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::snd::sys::set_audio_thread_priority;
-use crate::virtio::vhost_user_backend::handler::sys::windows::read_from_tube_transporter;
-use crate::virtio::vhost_user_backend::handler::sys::windows::run_handler;
-use crate::virtio::vhost_user_backend::snd::SndBackend;
-use crate::virtio::vhost_user_backend::VhostUserDeviceBuilder;
+use crate::parameters::Parameters;
+use crate::sys::set_audio_thread_priority;
+use crate::vhost_user::SndBackend;
 
 pub mod generic;
 pub use generic as product;
@@ -91,7 +90,7 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     let startup_args: CommonChildStartupArgs = bootstrap_tube.recv::<CommonChildStartupArgs>()?;
     let _child_cleanup = common_child_setup(startup_args)?;
 
-    let mut config: SndBackendConfig = bootstrap_tube
+    let config: SndBackendConfig = bootstrap_tube
         .recv()
         .context("failed to parse Snd backend config from bootstrap tube")?;
 
