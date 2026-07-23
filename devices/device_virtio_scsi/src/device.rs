@@ -23,6 +23,16 @@ use base::WorkerThread;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
+use devices::virtio::async_utils;
+use devices::virtio::block::sys::get_seg_max;
+use devices::virtio::copy_config;
+use devices::virtio::DescriptorChain;
+use devices::virtio::DeviceType as VirtioDeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::Reader;
+use devices::virtio::VirtioDevice;
+use devices::virtio::Writer;
 use disk::AsyncDisk;
 use disk::DiskFile;
 use futures::pin_mut;
@@ -54,21 +64,11 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use crate::virtio::async_utils;
-use crate::virtio::block::sys::get_seg_max;
-use crate::virtio::copy_config;
-use crate::virtio::scsi::commands::execute_cdb;
-use crate::virtio::scsi::constants::CHECK_CONDITION;
-use crate::virtio::scsi::constants::GOOD;
-use crate::virtio::scsi::constants::ILLEGAL_REQUEST;
-use crate::virtio::scsi::constants::MEDIUM_ERROR;
-use crate::virtio::DescriptorChain;
-use crate::virtio::DeviceType as VirtioDeviceType;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
-use crate::virtio::Reader;
-use crate::virtio::VirtioDevice;
-use crate::virtio::Writer;
+use crate::commands::execute_cdb;
+use crate::constants::CHECK_CONDITION;
+use crate::constants::GOOD;
+use crate::constants::ILLEGAL_REQUEST;
+use crate::constants::MEDIUM_ERROR;
 
 // The following values reflects the virtio v1.2 spec:
 // <https://docs.oasis-open.org/virtio/virtio/v1.2/csd01/virtio-v1.2-csd01.html#x1-3470004>
@@ -847,6 +847,8 @@ mod tests {
     use std::rc::Rc;
 
     use cros_async::Executor;
+    use devices::virtio::create_descriptor_chain;
+    use devices::virtio::DescriptorType;
     use disk::SingleFileDisk;
     use tempfile::tempfile;
     use virtio_sys::virtio_scsi::virtio_scsi_cmd_req;
@@ -856,9 +858,7 @@ mod tests {
     use vm_memory::GuestMemory;
 
     use super::*;
-    use crate::virtio::create_descriptor_chain;
-    use crate::virtio::scsi::constants::READ_10;
-    use crate::virtio::DescriptorType;
+    use crate::constants::READ_10;
 
     fn setup_disk(disk_size: u64) -> (File, Vec<u8>) {
         let mut file_content = vec![0; disk_size as usize];

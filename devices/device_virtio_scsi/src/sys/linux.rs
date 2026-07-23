@@ -5,7 +5,7 @@
 use anyhow::Context;
 use disk::DiskFile;
 
-use crate::virtio::scsi::ScsiOption;
+use crate::ScsiOption;
 
 impl ScsiOption {
     pub fn open(&self) -> anyhow::Result<Box<dyn DiskFile>> {

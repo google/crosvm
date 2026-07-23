@@ -15,7 +15,7 @@ use serde::Serializer;
 use crate::PciAddress;
 
 pub mod asynchronous;
-pub(crate) mod sys;
+pub mod sys;
 
 pub use asynchronous::BlockAsync;
 

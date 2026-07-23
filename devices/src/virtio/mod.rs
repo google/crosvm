@@ -4,7 +4,7 @@
 
 //! Implements virtio devices, queues, and transport mechanisms.
 
-mod async_utils;
+pub mod async_utils;
 #[cfg(feature = "balloon")]
 mod balloon;
 mod descriptor_chain;
@@ -30,7 +30,6 @@ pub mod gpu;
 #[cfg(all(unix, feature = "media"))]
 pub mod media;
 pub mod resource_bridge;
-pub mod scsi;
 #[cfg(feature = "audio")]
 pub mod snd;
 pub mod vhost;
@@ -78,8 +77,6 @@ pub use self::queue::split_descriptor_chain::SplitDescriptorChain;
 pub use self::queue::PeekedDescriptorChain;
 pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
-pub use self::scsi::DiskConfig as ScsiDiskConfig;
-pub use self::scsi::VirtioScsiModule;
 pub use self::vhost_user_frontend::VhostUserFrontend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::VideoDevice;

@@ -855,6 +855,7 @@ dependencies = [
  "ctrlc",
  "device_virtio_net",
  "device_virtio_rng",
+ "device_virtio_scsi",
  "device_virtio_tpm",
  "device_virtio_vsock",
  "devices",
@@ -1066,6 +1067,31 @@ dependencies = [
  "serde",
  "snapshot",
  "vm_memory",
+]
+
+[[package]]
+name = "device_virtio_scsi"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "cfg-if",
+ "cros_async",
+ "cros_tracing",
+ "data_model",
+ "devices",
+ "disk",
+ "futures",
+ "jail",
+ "minijail",
+ "remain",
+ "serde",
+ "serde_keyvalue",
+ "tempfile",
+ "thiserror 1.0.38",
+ "virtio_sys",
+ "vm_memory",
+ "zerocopy 0.8.14",
 ]
 
 [[package]]

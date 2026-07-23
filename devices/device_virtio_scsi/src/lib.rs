@@ -5,12 +5,11 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use serde::Deserialize;
 use serde::Serialize;
-
-use crate::virtio::VirtioDevice;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
 
 pub(crate) mod sys;
 
@@ -67,7 +66,7 @@ impl VirtioDeviceModule for VirtioScsiModule {
     }
 
     fn create(&self, args: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
-        let base_features = crate::virtio::base_features(args.protection_type);
+        let base_features = devices::virtio::base_features(args.protection_type);
         let disks = self
             .disks
             .iter()
@@ -92,7 +91,7 @@ impl VirtioDeviceModule for VirtioScsiModule {
     ) -> anyhow::Result<Option<minijail::Minijail>> {
         let jail = jail::simple_jail(
             Some(jail_config),
-            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file("scsi"),
+            &devices::virtio::VirtioDeviceType::Regular.seccomp_policy_file("scsi"),
         )?;
         Ok(jail)
     }

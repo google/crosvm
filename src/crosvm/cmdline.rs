@@ -45,11 +45,11 @@ use cros_async::ExecutorKind;
 use device_virtio_net::NetParameters;
 #[cfg(all(unix, feature = "net"))]
 use device_virtio_net::NetParametersMode;
+use device_virtio_scsi::ScsiOption;
 use device_virtio_vsock::VsockConfig;
 use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
-use devices::virtio::scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost_user_backend;
@@ -2626,7 +2626,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         if !cmd.scsi_block.is_empty() {
             cfg.virtio_device_modules
-                .push(devices::virtio::VirtioScsiModule::new(cmd.scsi_block).into());
+                .push(device_virtio_scsi::VirtioScsiModule::new(cmd.scsi_block).into());
         }
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
