@@ -6,20 +6,20 @@
 
 use base::RawDescriptor;
 use data_model::Le32;
+use devices::virtio::base_features;
+use devices::virtio::copy_config;
+use devices::virtio::device_constants::console::virtio_console_config;
+use devices::virtio::device_constants::console::VIRTIO_CONSOLE_F_MULTIPORT;
+use devices::virtio::Queue;
 use hypervisor::ProtectionType;
 use serde::Deserialize;
 use serde::Serialize;
 use zerocopy::IntoBytes;
 
-use crate::virtio::base_features;
-use crate::virtio::console::port::ConsolePort;
-use crate::virtio::console::port::ConsolePortSnapshot;
-use crate::virtio::console::worker::WorkerHandle;
-use crate::virtio::console::worker::WorkerPort;
-use crate::virtio::copy_config;
-use crate::virtio::device_constants::console::virtio_console_config;
-use crate::virtio::device_constants::console::VIRTIO_CONSOLE_F_MULTIPORT;
-use crate::virtio::Queue;
+use crate::port::ConsolePort;
+use crate::port::ConsolePortSnapshot;
+use crate::worker::WorkerHandle;
+use crate::worker::WorkerPort;
 
 pub struct ConsoleDevice {
     avail_features: u64,

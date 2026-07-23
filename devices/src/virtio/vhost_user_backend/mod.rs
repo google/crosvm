@@ -21,7 +21,6 @@ pub use crate::virtio::vhost_user_backend::connection::BackendConnection;
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        mod console;
         mod fs;
         mod vsock;
         #[cfg(feature = "virtio_wl")]
@@ -30,7 +29,6 @@ cfg_if::cfg_if! {
         pub use vsock::{run_vsock_device, Options as VsockOptions, VhostUserVsockDevice};
         #[cfg(feature = "virtio_wl")]
         pub use wl::{run_wl_device, Options as WlOptions};
-        pub use console::{create_vu_console_device, run_console_device, Options as ConsoleOptions};
         pub use fs::{run_fs_device, Options as FsOptions};
     } else if #[cfg(windows)] {
     }

@@ -4,12 +4,12 @@
 
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
-        pub(in crate::serial) mod linux;
+        pub mod linux;
         use linux as platform;
     } else if #[cfg(windows)] {
-        pub(in crate::serial) mod windows;
+        pub mod windows;
         use windows as platform;
     }
 }
 
-pub(crate) use platform::InStreamType;
+pub use platform::InStreamType;

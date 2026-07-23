@@ -13,23 +13,23 @@ use base::Event;
 use base::RawDescriptor;
 use base::Terminal;
 use cros_async::Executor;
+use devices::serial_device::SerialHardware;
+use devices::virtio::vhost_user_backend::handler::DeviceRequestHandler;
+use devices::virtio::vhost_user_backend::handler::VhostUserDevice;
+use devices::virtio::vhost_user_backend::BackendConnection;
+use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
+use devices::virtio::Queue;
+use devices::SerialParameters;
+use devices::SerialType;
 use hypervisor::ProtectionType;
 use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
-use crate::virtio::console::device::ConsoleDevice;
-use crate::virtio::console::device::ConsoleSnapshot;
-use crate::virtio::console::port::ConsolePort;
-use crate::virtio::vhost_user_backend::handler::DeviceRequestHandler;
-use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
-use crate::virtio::vhost_user_backend::BackendConnection;
-use crate::virtio::vhost_user_backend::VhostUserDeviceBuilder;
-use crate::virtio::Queue;
-use crate::SerialHardware;
-use crate::SerialParameters;
-use crate::SerialType;
+use crate::device::ConsoleDevice;
+use crate::device::ConsoleSnapshot;
+use crate::port::ConsolePort;
 
 /// Console device for use with vhost-user. Will set stdin back to canon mode if we are getting
 /// input from it.

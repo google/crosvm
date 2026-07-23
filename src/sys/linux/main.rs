@@ -13,7 +13,7 @@ use base::syslog;
 use base::syslog::LogArgs;
 use base::syslog::LogConfig;
 use base::warn;
-use devices::virtio::vhost_user_backend::run_console_device;
+use device_virtio_console::vhost_user::run_console_device;
 use devices::virtio::vhost_user_backend::run_fs_device;
 use devices::virtio::vhost_user_backend::run_vsock_device;
 #[cfg(feature = "virtio_wl")]

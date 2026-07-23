@@ -26,7 +26,7 @@ mod pflash;
 pub mod pl030;
 pub mod pmc_virt;
 mod power;
-mod serial;
+pub mod serial;
 pub mod serial_device;
 mod smccc_trng;
 mod suspendable;

@@ -16,17 +16,17 @@ use base::FileSync;
 use base::RawDescriptor;
 use base::WaitContext;
 use base::WorkerThread;
+use devices::serial::sys::InStreamType;
+use devices::serial_device::SerialInput;
+use devices::serial_device::SerialOptions;
+use devices::SerialDevice;
+use hypervisor::ProtectionType;
 use sync::Mutex;
 
-use crate::serial::sys::InStreamType;
-use crate::serial_device::SerialInput;
-use crate::serial_device::SerialOptions;
-use crate::virtio::console::device::ConsoleDevice;
-use crate::virtio::console::port::ConsolePort;
-use crate::virtio::console::port::ConsolePortInfo;
-use crate::virtio::console::Console;
-use crate::virtio::ProtectionType;
-use crate::SerialDevice;
+use crate::device::ConsoleDevice;
+use crate::port::ConsolePort;
+use crate::port::ConsolePortInfo;
+use crate::Console;
 
 impl SerialDevice for Console {
     fn new(
@@ -98,7 +98,7 @@ impl SerialDevice for ConsolePort {
 ///
 /// * `input` - Data source that the reader thread will wait on to send data back to the buffer
 /// * `in_avail_evt` - Event triggered by the thread when new input is available on the buffer
-pub(in crate::virtio::console) fn spawn_input_thread(
+pub(crate) fn spawn_input_thread(
     mut input: InStreamType,
     in_avail_evt: Event,
     input_buffer: Arc<Mutex<VecDeque<u8>>>,

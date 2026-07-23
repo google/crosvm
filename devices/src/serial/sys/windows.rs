@@ -29,7 +29,7 @@ use crate::Serial;
 
 // TODO(b/234469655): Remove type alias once ReadNotifier is implemented for
 // PipeConnection.
-pub(crate) type InStreamType = Box<PipeConnection>;
+pub type InStreamType = Box<PipeConnection>;
 
 /// Windows specific paramters for the serial device.
 pub struct SystemSerialParams {

@@ -11,18 +11,18 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
+use devices::virtio::device_constants::console::virtio_console_control;
+use devices::virtio::device_constants::console::VIRTIO_CONSOLE_CONSOLE_PORT;
+use devices::virtio::device_constants::console::VIRTIO_CONSOLE_DEVICE_ADD;
+use devices::virtio::device_constants::console::VIRTIO_CONSOLE_DEVICE_READY;
+use devices::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_NAME;
+use devices::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_OPEN;
+use devices::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_READY;
+use devices::virtio::Queue;
+use devices::virtio::Reader;
 use zerocopy::IntoBytes;
 
-use crate::virtio::console::worker::WorkerPort;
-use crate::virtio::device_constants::console::virtio_console_control;
-use crate::virtio::device_constants::console::VIRTIO_CONSOLE_CONSOLE_PORT;
-use crate::virtio::device_constants::console::VIRTIO_CONSOLE_DEVICE_ADD;
-use crate::virtio::device_constants::console::VIRTIO_CONSOLE_DEVICE_READY;
-use crate::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_NAME;
-use crate::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_OPEN;
-use crate::virtio::device_constants::console::VIRTIO_CONSOLE_PORT_READY;
-use crate::virtio::Queue;
-use crate::virtio::Reader;
+use crate::worker::WorkerPort;
 
 pub type ControlMsgBytes = Box<[u8]>;
 

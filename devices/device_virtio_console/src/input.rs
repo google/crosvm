@@ -7,7 +7,7 @@
 use std::collections::VecDeque;
 use std::io::Write;
 
-use crate::virtio::Queue;
+use devices::virtio::Queue;
 
 /// Checks for input from `buffer` and transfers it to the receive queue, if any.
 ///

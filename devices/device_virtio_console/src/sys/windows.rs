@@ -14,13 +14,13 @@ use base::Event;
 use base::FileSync;
 use base::RawDescriptor;
 use base::WorkerThread;
+use devices::serial_device::SerialInput;
+use devices::serial_device::SerialOptions;
+use devices::SerialDevice;
+use hypervisor::ProtectionType;
 use sync::Mutex;
 
-use crate::serial_device::SerialInput;
-use crate::serial_device::SerialOptions;
-use crate::virtio::console::Console;
-use crate::virtio::ProtectionType;
-use crate::SerialDevice;
+use crate::Console;
 
 impl SerialDevice for Console {
     fn new(
@@ -96,7 +96,7 @@ fn is_a_fatal_input_error(e: &io::Error) -> bool {
 ///
 /// * `rx` - Data source that the reader thread will wait on to send data back to the buffer
 /// * `in_avail_evt` - Event triggered by the thread when new input is available on the buffer
-pub(in crate::virtio::console) fn spawn_input_thread(
+pub(crate) fn spawn_input_thread(
     mut rx: Box<named_pipes::PipeConnection>,
     in_avail_evt: Event,
     input_buffer: Arc<Mutex<VecDeque<u8>>>,

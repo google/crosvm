@@ -16,7 +16,7 @@ use crate::Serial;
 
 // TODO(b/234469655): Remove type alias once ReadNotifier is implemented for
 // PipeConnection.
-pub(crate) type InStreamType = Box<dyn SerialInput>;
+pub type InStreamType = Box<dyn SerialInput>;
 
 impl SerialDevice for Serial {
     /// Constructs a Serial device ready for input and output.

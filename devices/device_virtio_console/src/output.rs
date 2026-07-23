@@ -8,9 +8,8 @@ use std::io;
 use std::io::Read;
 
 use base::error;
-
-use crate::virtio::Queue;
-use crate::virtio::Reader;
+use devices::virtio::Queue;
+use devices::virtio::Reader;
 
 /// Writes the available data from the reader into the given output queue.
 ///

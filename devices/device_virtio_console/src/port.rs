@@ -13,12 +13,12 @@ use base::Descriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
+use devices::serial::sys::InStreamType;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
 
-use crate::serial::sys::InStreamType;
-use crate::virtio::console::sys::spawn_input_thread;
+use crate::sys::spawn_input_thread;
 
 /// Each port info for multi-port virtio-console
 #[derive(Clone, Debug)]

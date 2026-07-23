@@ -22,7 +22,7 @@ use crate::crosvm::config::validate_serial_parameters;
 #[argh(subcommand)]
 /// Unix Devices
 pub enum DeviceSubcommand {
-    Console(vhost_user_backend::ConsoleOptions),
+    Console(device_virtio_console::vhost_user::Options),
     Fs(vhost_user_backend::FsOptions),
     Vsock(vhost_user_backend::VsockOptions),
     #[cfg(feature = "virtio_wl")]

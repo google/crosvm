@@ -854,6 +854,7 @@ dependencies = [
  "crosvm_cli",
  "ctrlc",
  "device_virtio_block",
+ "device_virtio_console",
  "device_virtio_net",
  "device_virtio_rng",
  "device_virtio_scsi",
@@ -1051,6 +1052,35 @@ dependencies = [
  "tube_transporter",
  "virtio_sys",
  "vm_control",
+ "vm_memory",
+ "vmm_vhost",
+ "zerocopy 0.8.14",
+]
+
+[[package]]
+name = "device_virtio_console"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argh",
+ "base",
+ "cfg-if",
+ "cros_async",
+ "cros_tracing",
+ "data_model",
+ "devices",
+ "futures",
+ "hypervisor",
+ "jail",
+ "libc",
+ "minijail",
+ "remain",
+ "serde",
+ "snapshot",
+ "sync",
+ "tempfile",
+ "thiserror 1.0.38",
+ "virtio_sys",
  "vm_memory",
  "vmm_vhost",
  "zerocopy 0.8.14",

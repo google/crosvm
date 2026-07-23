@@ -23,7 +23,6 @@ mod virtio_mmio_device;
 mod virtio_pci_common_config;
 mod virtio_pci_device;
 
-pub mod console;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 #[cfg(all(unix, feature = "media"))]
@@ -39,7 +38,6 @@ pub use vmm_vhost::SharedMemoryRegion;
 pub use self::balloon::Balloon;
 #[cfg(feature = "balloon")]
 pub use self::balloon::BalloonFeatures;
-pub use self::console::Console;
 pub use self::descriptor_chain::DescriptorChain;
 pub use self::descriptor_chain::DescriptorChainIter;
 pub use self::descriptor_utils::create_descriptor_chain;

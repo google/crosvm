@@ -16,6 +16,7 @@ mod sys;
 use std::collections::BTreeMap;
 
 use anyhow::Context;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use base::info;
 use base::Event;
 use base::RawDescriptor;
@@ -23,19 +24,24 @@ use hypervisor::ProtectionType;
 use snapshot::AnySnapshot;
 use vm_memory::GuestMemory;
 
-use crate::serial::sys::InStreamType;
-use crate::virtio::console::device::ConsoleDevice;
-use crate::virtio::console::device::ConsoleSnapshot;
-use crate::virtio::console::port::ConsolePort;
-use crate::virtio::DeviceType;
-use crate::virtio::Interrupt;
-use crate::virtio::Queue;
-use crate::virtio::VirtioDevice;
-use crate::PciAddress;
-use crate::SerialParameters;
-use crate::SerialType;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub mod vhost_user;
+
+use devices::serial::sys::InStreamType;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
+use devices::PciAddress;
+use devices::SerialParameters;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use devices::SerialType;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
+
+use crate::device::ConsoleDevice;
+use crate::device::ConsoleSnapshot;
+use crate::port::ConsolePort;
 
 const QUEUE_SIZE: u16 = 256;
 
@@ -190,7 +196,7 @@ impl VirtioDeviceModule for VirtioConsoleModule {
         create_jail(
             &self.0,
             jail_config,
-            &crate::virtio::VirtioDeviceType::Regular.seccomp_policy_file("serial"),
+            &devices::virtio::VirtioDeviceType::Regular.seccomp_policy_file("serial"),
         )
     }
 }
@@ -226,13 +232,14 @@ pub fn create_jail(
 mod tests {
     #[cfg(windows)]
     use base::windows::named_pipes;
+    use devices::suspendable_virtio_tests;
     use tempfile::tempfile;
 
     use super::*;
-    use crate::suspendable_virtio_tests;
 
     struct ConsoleContext {
         #[cfg(windows)]
+        #[allow(dead_code)]
         input_pipe_client: named_pipes::PipeConnection,
     }
 

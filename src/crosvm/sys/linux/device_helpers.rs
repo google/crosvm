@@ -26,6 +26,7 @@ use base::linux::MemfdSeals;
 use base::sys::SharedMemoryLinux;
 use base::*;
 use device_virtio_block::DiskOption;
+use device_virtio_console::Console;
 #[cfg(feature = "net")]
 use device_virtio_net::create_tap_for_net_device;
 #[cfg(feature = "net")]
@@ -49,7 +50,6 @@ use devices::virtio::pvclock::PvClock;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
 use devices::virtio::vhost_user_backend::VhostUserVsockDevice;
-use devices::virtio::Console;
 use devices::virtio::MemSlotConfig;
 use devices::virtio::PmemConfig;
 use devices::virtio::VhostUserFrontend;
@@ -1297,7 +1297,7 @@ impl VirtioDeviceBuilder for &SerialParameters {
         keep_rds: &mut Vec<RawDescriptor>,
     ) -> anyhow::Result<Box<dyn VhostUserDeviceBuilder>> {
         Ok(Box::new(
-            virtio::vhost_user_backend::create_vu_console_device(self, keep_rds)?,
+            device_virtio_console::vhost_user::create_vu_console_device(self, keep_rds)?,
         ))
     }
 
@@ -1307,7 +1307,7 @@ impl VirtioDeviceBuilder for &SerialParameters {
         virtio_transport: VirtioDeviceType,
     ) -> anyhow::Result<Option<Minijail>> {
         if let Some(jail_config) = jail_config {
-            devices::virtio::console::create_jail(
+            device_virtio_console::create_jail(
                 self,
                 jail_config,
                 virtio_transport.seccomp_policy_file("serial").as_str(),

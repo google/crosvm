@@ -16,16 +16,16 @@ use base::Event;
 use base::EventToken;
 use base::WaitContext;
 use base::WorkerThread;
+use devices::virtio::Queue;
 use sync::Mutex;
 
-use crate::virtio::console::control::process_control_receive_queue;
-use crate::virtio::console::control::process_control_transmit_queue;
-use crate::virtio::console::control::ControlMsgBytes;
-use crate::virtio::console::input::process_receive_queue;
-use crate::virtio::console::output::process_transmit_queue;
-use crate::virtio::console::port::ConsolePort;
-use crate::virtio::console::port::ConsolePortInfo;
-use crate::virtio::Queue;
+use crate::control::process_control_receive_queue;
+use crate::control::process_control_transmit_queue;
+use crate::control::ControlMsgBytes;
+use crate::input::process_receive_queue;
+use crate::output::process_transmit_queue;
+use crate::port::ConsolePort;
+use crate::port::ConsolePortInfo;
 
 const PORT0_RECEIVEQ_IDX: usize = 0;
 const PORT0_TRANSMITQ_IDX: usize = 1;
