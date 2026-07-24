@@ -2,7 +2,7 @@
 # Copyright 2025 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-set -ex
+set -ex -o pipefail
 
 # This script installs dependencies for rutabaga_gfx:
 # - minigbm
@@ -11,7 +11,7 @@ set -ex
 # for x86_64 and aarch64.
 
 sudo apt-get update --allow-releaseinfo-change
-sudo apt-get install --yes --no-install-recommends g++-aarch64-linux-gnu python3-yaml
+sudo apt-get install --yes --no-install-recommends g++-aarch64-linux-gnu python3-yaml mesa-common-dev
 
 DEPS_DIR=$(mktemp -d)
 cd "${DEPS_DIR}"
@@ -25,9 +25,15 @@ AARCH64_LIBDIR="${COMMON_PREFIX}/lib/${AARCH64_DIR}"
 # minigbm
 git clone https://chromium.googlesource.com/chromiumos/platform/minigbm
 cd minigbm
-git checkout b1fccad660ff4034f186d68b6474e3139e2dc4db
+git checkout 9d21b5cb5896c0cde186b54d430131f9f537104c
+
+# Fetch and generate the fallback header for DRI formats (removed in Mesa 24.1.0)
+PARENT_COMMIT="e9891f9cf10e9aec2fabab1a04c92008a990a899"
+curl -sSfL "https://gitlab.freedesktop.org/mesa/mesa/-/raw/${PARENT_COMMIT}/include/GL/internal/dri_interface.h" \
+    | grep '#define __DRI_IMAGE_FORMAT_' > dri_format_fallbacks.h
+
 # x86_64
-sudo make install DESTDIR="${COMMON_PREFIX}" LIBDIR=/lib/"${X86_64_DIR}" INCLUDEDIR=/include OUT=out
+sudo DRV_AMDGPU=1 DRV_I915=1 DRV_XE=1 CPPFLAGS="-DDRV_AMDGPU -DDRV_I915 -DDRV_XE -include $(pwd)/dri_format_fallbacks.h" make install DESTDIR="${COMMON_PREFIX}" LIBDIR=/lib/"${X86_64_DIR}" INCLUDEDIR=/include OUT=out
 # aarch64 - Install to the aarch64 sysroot prefix
 sudo make install DESTDIR="${COMMON_PREFIX}" LIBDIR=/lib/"${AARCH64_DIR}" INCLUDEDIR=/include CROSS_COMPILE=aarch64-linux-gnu- OUT=out-arm64
 cd ..
@@ -50,13 +56,14 @@ cd ..
 # virglrenderer
 git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git
 cd virglrenderer
-git checkout 1.0.0
+git checkout 1.3.0
 # x86_64
-meson setup build --prefix="${COMMON_PREFIX}" --libdir="${X86_64_LIBDIR}"
+meson setup build --prefix="${COMMON_PREFIX}" --libdir="${X86_64_LIBDIR}" --libexecdir="${X86_64_LIBDIR}" -Dvenus=true
 ninja -C build
 sudo ninja -C build install
+sudo ln -sf "${X86_64_LIBDIR}/virgl_render_server" /usr/libexec/virgl_render_server
 # aarch64
-env PKG_CONFIG_PATH="${AARCH64_LIBDIR}/pkgconfig" meson setup build-arm64 --cross-file aarch64 --prefix="${COMMON_PREFIX}" --libdir="${AARCH64_LIBDIR}"
+env PKG_CONFIG_PATH="${AARCH64_LIBDIR}/pkgconfig" meson setup build-arm64 --cross-file aarch64 --prefix="${COMMON_PREFIX}" --libdir="${AARCH64_LIBDIR}" --libexecdir="${AARCH64_LIBDIR}" -Dvenus=true
 ninja -C build-arm64
 sudo ninja -C build-arm64 install
 cd ..
