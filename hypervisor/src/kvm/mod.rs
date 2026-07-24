@@ -632,6 +632,8 @@ impl Vm for KvmVm {
                     && self.check_raw_capability(KvmCap::MemNoncoherentDma)
             }
             #[cfg(target_arch = "aarch64")]
+            VmCap::Mte => self.check_raw_capability(KvmCap::ArmMte),
+            #[cfg(target_arch = "aarch64")]
             VmCap::Sve => self.check_raw_capability(KvmCap::Sve),
             #[cfg(target_arch = "aarch64")]
             VmCap::NestedVirt => self.check_raw_capability(KvmCap::El2),

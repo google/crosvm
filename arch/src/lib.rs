@@ -157,6 +157,30 @@ impl FromIterator<usize> for CpuSet {
 }
 
 #[cfg(target_arch = "aarch64")]
+fn mte_auto_default() -> bool {
+    true
+}
+
+/// The MTE config for Vcpus.
+#[cfg(target_arch = "aarch64")]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct MteConfig {
+    /// Detect if MTE is available and enable accordingly. `enable` is ignored if auto is true
+    #[serde(default = "mte_auto_default")]
+    pub auto: bool,
+}
+
+#[cfg(target_arch = "aarch64")]
+impl Default for MteConfig {
+    fn default() -> Self {
+        MteConfig {
+            auto: mte_auto_default(),
+        }
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
 fn sve_auto_default() -> bool {
     true
 }

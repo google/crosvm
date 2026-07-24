@@ -69,6 +69,7 @@ use crate::MemCacheType;
 use crate::MemSlot;
 use crate::ProtectionType;
 use crate::PsciVersion;
+use crate::ToggleMode;
 use crate::Vcpu;
 use crate::VcpuAArch64;
 use crate::VcpuExit;
@@ -109,7 +110,11 @@ impl HallaVm {
     /// Does platform specific initialization for the HallaVm.
     pub fn init_arch(&self, cfg: &Config) -> Result<()> {
         #[cfg(target_arch = "aarch64")]
-        if cfg.mte {
+        if match cfg.mte {
+            ToggleMode::On => true,
+            ToggleMode::Auto => self.check_capability(VmCap::Mte),
+            ToggleMode::Off => false,
+        } {
             // SAFETY:
             // Safe because it does not take pointer arguments.
             unsafe { self.ctrl_halla_enable_capability(HallaCap::ArmMte, &[0, 0, 0, 0, 0]) }?;
@@ -899,6 +904,7 @@ impl Vm for HallaVm {
             VmCap::EarlyInitCpuid => false,
             VmCap::ReadOnlyMemoryRegion => false,
             VmCap::MemNoncoherentDma => false,
+            VmCap::Mte => self.check_raw_capability(HallaCap::ArmMte),
             VmCap::Sve => false,
             VmCap::NestedVirt => false,
         }

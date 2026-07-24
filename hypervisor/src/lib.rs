@@ -707,11 +707,28 @@ pub enum NestedMode {
     On,
 }
 
+/// Generic tri-state for discoverable features that can be user-enabled.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToggleMode {
+    #[default]
+    Off,
+    Auto,
+    On,
+}
+
+impl ToggleMode {
+    /// Returns whether the feature could be enabled.
+    pub fn might_be_enabled(&self) -> bool {
+        !matches!(self, Self::Off)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Config {
     #[cfg(target_arch = "aarch64")]
     /// enable the Memory Tagging Extension in the guest
-    pub mte: bool,
+    pub mte: ToggleMode,
     pub protection_type: ProtectionType,
     #[cfg(all(target_os = "android", target_arch = "aarch64"))]
     pub ffa: bool,
@@ -722,7 +739,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             #[cfg(target_arch = "aarch64")]
-            mte: false,
+            mte: ToggleMode::Off,
             protection_type: ProtectionType::Unprotected,
             #[cfg(all(target_os = "android", target_arch = "aarch64"))]
             ffa: false,

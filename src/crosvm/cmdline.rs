@@ -31,6 +31,8 @@ use arch::FdtPosition;
 use arch::FfaConfig;
 #[cfg(target_arch = "x86_64")]
 use arch::MemoryRegionConfig;
+#[cfg(target_arch = "aarch64")]
+use arch::MteConfig;
 use arch::PciConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
@@ -100,6 +102,8 @@ use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 use crate::crosvm::config::NestedConfig;
+#[cfg(target_arch = "aarch64")]
+use crate::crosvm::config::ToggleMode;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 
@@ -1040,6 +1044,10 @@ pub struct RunCommand {
     ///         Examples:
     ///         sve=[auto=true] - Enables SVE on device if supported. Not enable if unsupported.
     ///         default: auto=true.
+    ///     mte=[auto=bool] - MTE Config. (aarch64 only)
+    ///         Examples:
+    ///         mte=[auto=true] - Enables MTE on device if supported. Not enable if unsupported.
+    ///         default: auto=true.
     pub cpus: Option<CpuOptions>,
 
     #[cfg(all(windows, feature = "crash-report"))]
@@ -1419,6 +1427,7 @@ pub struct RunCommand {
 
     #[cfg(target_arch = "aarch64")]
     #[argh(switch)]
+    /// (DEPRECATED): Use "--cpu mte=[...]".
     /// enable the Memory Tagging Extension in the guest
     pub mte: Option<bool>,
 
@@ -2357,6 +2366,17 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
             #[cfg(target_arch = "aarch64")]
             {
+                if cmd.mte.is_some() {
+                    log::warn!("`--mte` is deprecated; please use `--cpu mte=[...]` instead");
+                }
+                cfg.mte = match (cmd.mte, cpus.mte) {
+                    (Some(true), Some(_)) => {
+                        return Err("cannot specify both --cpu mte=[...] and --mte".to_string());
+                    }
+                    (Some(true), None) => ToggleMode::On,
+                    (_, Some(MteConfig { auto: true })) => ToggleMode::Auto,
+                    _ => ToggleMode::Off,
+                };
                 cfg.sve = cpus.sve;
             }
         }
@@ -2406,17 +2426,16 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(target_arch = "aarch64")]
         {
-            if cmd.mte.unwrap_or_default()
+            if cfg.mte.might_be_enabled()
                 && !(cmd.pmem.is_empty()
                     && cmd.pmem_device.is_empty()
                     && cmd.pstore.is_none()
                     && cmd.rw_pmem_device.is_empty())
             {
                 return Err(
-                    "--mte cannot be specified together with --pstore or pmem flags".to_string(),
+                    "MTE cannot be enabled together with --pstore or pmem flags".to_string()
                 );
             }
-            cfg.mte = cmd.mte.unwrap_or_default();
             cfg.no_pmu = cmd.no_pmu.unwrap_or_default();
             cfg.swiotlb = cmd.swiotlb;
         }
@@ -3273,5 +3292,27 @@ mod tests {
         assert_eq!(format_disk_letter("/dev/sd", 701), "/dev/sdzz");
         assert_eq!(format_disk_letter("/dev/sd", 702), "/dev/sdaaa");
         assert_eq!(format_disk_letter("/dev/sd", 703), "/dev/sdaab");
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn parse_cpu_mte_cli() {
+        use argh::FromArgs;
+
+        let cmd = RunCommand::from_args(&[], &["--cpus", "mte=[auto=true]", "/dev/null"]).unwrap();
+        let cfg: crate::crosvm::config::Config = cmd.try_into().unwrap();
+        assert_eq!(cfg.mte, ToggleMode::Auto);
+
+        let cmd = RunCommand::from_args(&[], &["--cpus", "mte=[auto=false]", "/dev/null"]).unwrap();
+        let cfg: crate::crosvm::config::Config = cmd.try_into().unwrap();
+        assert_eq!(cfg.mte, ToggleMode::Off);
+
+        let cmd = RunCommand::from_args(&[], &["--mte", "/dev/null"]).unwrap();
+        let cfg: crate::crosvm::config::Config = cmd.try_into().unwrap();
+        assert_eq!(cfg.mte, ToggleMode::On);
+
+        let cmd = RunCommand::from_args(&[], &["--mte", "--cpus", "mte=[auto=true]", "/dev/null"])
+            .unwrap();
+        assert!(crate::crosvm::config::Config::try_from(cmd).is_err());
     }
 }

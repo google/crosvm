@@ -57,6 +57,9 @@ pub enum VmCap {
     ReadOnlyMemoryRegion,
     /// VM can set guest memory cache noncoherent DMA flag
     MemNoncoherentDma,
+    /// If supported, this VM supports enabling ARM MTE (Memory Tagging Extension).
+    #[cfg(target_arch = "aarch64")]
+    Mte,
     /// If supported, this VM supports enabling ARM SVE (Scalable Vector Extension)
     /// by requesting `VcpuFeature::Sve` when calling `VcpuAarch64::init()`.
     #[cfg(target_arch = "aarch64")]

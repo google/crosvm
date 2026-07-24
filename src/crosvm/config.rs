@@ -17,6 +17,8 @@ use arch::DevicePowerManagerConfig;
 use arch::FdtPosition;
 #[cfg(all(target_os = "android", target_arch = "aarch64"))]
 use arch::FfaConfig;
+#[cfg(target_arch = "aarch64")]
+use arch::MteConfig;
 use arch::PciConfig;
 use arch::Pstore;
 #[cfg(target_arch = "x86_64")]
@@ -60,6 +62,8 @@ use hypervisor::CpuHybridType;
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 use hypervisor::NestedMode;
 use hypervisor::ProtectionType;
+#[cfg(target_arch = "aarch64")]
+pub use hypervisor::ToggleMode;
 use jail::JailConfig;
 use resources::AddressRange;
 use serde::Deserialize;
@@ -160,6 +164,9 @@ pub struct CpuOptions {
     /// Vector of CPU ids to be grouped into the same freq domain.
     #[serde(default)]
     pub freq_domains: Vec<CpuSet>,
+    /// Memory Tagging Extension.
+    #[cfg(target_arch = "aarch64")]
+    pub mte: Option<MteConfig>,
     /// Scalable Vector Extension.
     #[cfg(target_arch = "aarch64")]
     pub sve: Option<SveConfig>,
@@ -705,7 +712,7 @@ pub struct Config {
     pub memory_file: Option<PathBuf>,
     pub mmio_address_ranges: Vec<AddressRange>,
     #[cfg(target_arch = "aarch64")]
-    pub mte: bool,
+    pub mte: ToggleMode,
     pub name: Option<String>,
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     pub nested: NestedConfig,
@@ -950,7 +957,7 @@ impl Default for Config {
             memory_file: None,
             mmio_address_ranges: Vec::new(),
             #[cfg(target_arch = "aarch64")]
-            mte: false,
+            mte: ToggleMode::Off,
             name: None,
             #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
             nested: NestedConfig::default(),
@@ -1458,6 +1465,23 @@ mod tests {
         from_key_values::<NestedConfig>("maybe").unwrap_err();
         from_key_values::<NestedConfig>("mode=maybe").unwrap_err();
         from_key_values::<NestedConfig>("bogus=true").unwrap_err();
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn parse_cpu_mte_config() {
+        assert_eq!(
+            from_key_values::<CpuOptions>("mte=[auto=true]")
+                .unwrap()
+                .mte,
+            Some(MteConfig { auto: true })
+        );
+        assert_eq!(
+            from_key_values::<CpuOptions>("mte=[auto=false]")
+                .unwrap()
+                .mte,
+            Some(MteConfig { auto: false })
+        );
     }
 
     #[test]

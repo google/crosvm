@@ -46,10 +46,12 @@ use crate::Hypervisor;
 use crate::IrqSourceChip;
 use crate::ProtectionType;
 use crate::PsciVersion;
+use crate::ToggleMode;
 use crate::VcpuAArch64;
 use crate::VcpuExit;
 use crate::VcpuFeature;
 use crate::VcpuRegAArch64;
+use crate::Vm;
 use crate::VmAArch64;
 use crate::VmCap;
 use crate::AARCH64_MAX_REG_COUNT;
@@ -94,7 +96,11 @@ impl Kvm {
 impl KvmVm {
     /// Does platform specific initialization for the KvmVm.
     pub fn init_arch(&self, cfg: &Config) -> Result<()> {
-        if cfg.mte {
+        if match cfg.mte {
+            ToggleMode::On => true,
+            ToggleMode::Auto => self.check_capability(VmCap::Mte),
+            ToggleMode::Off => false,
+        } {
             // SAFETY:
             // Safe because it does not take pointer arguments.
             unsafe { self.enable_raw_capability(KvmCap::ArmMte, 0, &[0, 0, 0, 0])? }
