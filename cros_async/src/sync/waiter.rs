@@ -289,6 +289,6 @@ impl Drop for WaitFuture<'_> {
     }
 }
 
-intrusive_adapter!(pub WaiterAdapter = Arc<Waiter>: Waiter { link: AtomicLink });
+intrusive_adapter!(pub WaiterAdapter = Arc<Waiter>: Waiter { link => AtomicLink });
 
 pub type WaiterList = LinkedList<WaiterAdapter>;
