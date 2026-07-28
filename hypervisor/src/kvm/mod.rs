@@ -33,6 +33,7 @@ use base::ioctl_with_mut_ref;
 use base::ioctl_with_ref;
 use base::ioctl_with_val;
 use base::pagesize;
+use base::warn;
 use base::AsRawDescriptor;
 use base::Error;
 use base::Event;
@@ -116,13 +117,30 @@ unsafe fn set_user_memory_region(
     if log_dirty_pages {
         flags |= KVM_MEM_LOG_DIRTY_PAGES;
     }
-    if kvm.caps.user_noncoherent_dma && cache == MemCacheType::CacheNonCoherent {
+
+    // Downstream ChromeOS kernels assign capability ID 236/239 to
+    // KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA, which enables the
+    // KVM_MEM_NON_COHERENT_DMA (0x8) flag. However, upstream Linux assigned capability
+    // ID 236/239 to other caps.
+    // This means on upstream Linux kernels, kvm.caps.user_noncoherent_dma_or_another_conflict_cap
+    // might falsely evaluate to true due to this capability ID collision, causing KVM to
+    // return -EINVAL when passed KVM_MEM_NON_COHERENT_DMA.
+    //
+    // To remain compatible with both ChromeOS and upstream Linux kernels, if
+    // the initial ioctl fails while KVM_MEM_NON_COHERENT_DMA is set, we retry
+    // without KVM_MEM_NON_COHERENT_DMA.
+
+    // We are not sure if cap 236/239 set means user_noncoherent_dma due to cap const collision, but
+    // we try.
+    if kvm.caps.user_noncoherent_dma_or_another_conflict_cap
+        && cache == MemCacheType::CacheNonCoherent
+    {
         flags |= KVM_MEM_NON_COHERENT_DMA;
         use_2_variant = kvm.caps.user_memory_region2;
     }
 
     let untagged_userspace_addr = untagged_addr(userspace_addr as usize);
-    let ret = if use_2_variant {
+    let mut ret = if use_2_variant {
         let region2 = kvm_userspace_memory_region2 {
             slot,
             flags,
@@ -144,6 +162,37 @@ unsafe fn set_user_memory_region(
         };
         ioctl_with_ref(&kvm.vm, KVM_SET_USER_MEMORY_REGION, &region)
     };
+
+    // If ioctl was rejected, possibly due to KVM_MEM_NON_COHERENT_DMA, we try without it.
+    if ret != 0 && (flags & KVM_MEM_NON_COHERENT_DMA != 0) && Error::last().errno() == EINVAL {
+        let fallback_flags = flags & !KVM_MEM_NON_COHERENT_DMA;
+        warn!(
+            "KVM_MEM_NON_COHERENT_DMA rejected by host kernel, retrying without flag (flags={:#x})",
+            fallback_flags
+        );
+        ret = if use_2_variant {
+            let region2 = kvm_userspace_memory_region2 {
+                slot,
+                flags: fallback_flags,
+                guest_phys_addr: guest_addr,
+                memory_size,
+                userspace_addr: untagged_userspace_addr as u64,
+                guest_memfd_offset: 0,
+                guest_memfd: 0,
+                ..Default::default()
+            };
+            ioctl_with_ref(&kvm.vm, KVM_SET_USER_MEMORY_REGION2, &region2)
+        } else {
+            let region = kvm_userspace_memory_region {
+                slot,
+                flags: fallback_flags,
+                guest_phys_addr: guest_addr,
+                memory_size,
+                userspace_addr: (untagged_userspace_addr as u64),
+            };
+            ioctl_with_ref(&kvm.vm, KVM_SET_USER_MEMORY_REGION, &region)
+        };
+    }
 
     if ret == 0 {
         Ok(())
@@ -262,7 +311,7 @@ impl Hypervisor for Kvm {
 #[derive(Clone, Default)]
 struct KvmVmCaps {
     kvmclock_ctrl: bool,
-    user_noncoherent_dma: bool,
+    user_noncoherent_dma_or_another_conflict_cap: bool,
     user_memory_region2: bool,
     // This capability can't be detected until after the irqchip is configured, so we lazy
     // initialize it when the first MSI is configured.
@@ -310,7 +359,13 @@ impl KvmVm {
             force_disable_readonly_mem: cfg.force_disable_readonly_mem,
         };
         vm.caps.kvmclock_ctrl = vm.check_raw_capability(KvmCap::KvmclockCtrl);
-        vm.caps.user_noncoherent_dma = vm.check_raw_capability(KvmCap::MemNoncoherentDma);
+        // Note: Capability ID 236 is overloaded (KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS on
+        // ChromeOS vs KVM_CAP_PRE_FAULT_MEMORY on upstream Linux 6.11+). On upstream Linux
+        // kernels, this returns true for PRE_FAULT_MEMORY, which set_user_memory_region
+        // handles via fallback retry.
+        vm.caps.user_noncoherent_dma_or_another_conflict_cap = vm
+            .check_raw_capability(KvmCap::MemNoncoherentDmaOrPreFaultMemory)
+            || vm.check_raw_capability(KvmCap::MemNoncoherentDmaOrArmWritableImpIdRegs);
         vm.caps.user_memory_region2 = vm.check_raw_capability(KvmCap::UserMemory2);
 
         vm.init_arch(&cfg)?;
@@ -629,7 +684,9 @@ impl Vm for KvmVm {
             }
             VmCap::MemNoncoherentDma => {
                 cfg!(feature = "noncoherent-dma")
-                    && self.check_raw_capability(KvmCap::MemNoncoherentDma)
+                    && (self.check_raw_capability(KvmCap::MemNoncoherentDmaOrPreFaultMemory)
+                        || self
+                            .check_raw_capability(KvmCap::MemNoncoherentDmaOrArmWritableImpIdRegs))
             }
             #[cfg(target_arch = "aarch64")]
             VmCap::Mte => self.check_raw_capability(KvmCap::ArmMte),
@@ -710,6 +767,10 @@ impl Vm for KvmVm {
         };
 
         if let Err(e) = res {
+            error!(
+                "set_user_memory_region failed: slot={}, guest_addr={:#x}, size={:#x}, ptr={:p}, cache={:?}, err={:?}",
+                slot, guest_addr.offset(), size, mem.as_ptr(), cache, e
+            );
             gaps.push(Reverse(slot));
             return Err(e);
         }

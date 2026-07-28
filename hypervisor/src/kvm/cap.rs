@@ -125,8 +125,9 @@ pub enum KvmCap {
     ArmMte = KVM_CAP_ARM_MTE,
     #[cfg(target_arch = "x86_64")]
     BusLockDetect = KVM_CAP_X86_BUS_LOCK_EXIT,
-    // TODO(b/388092267): use upstream cap when available
-    MemNoncoherentDma = KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS,
+    // TODO(b/388092267): Rename when the overloading is resolved.
+    MemNoncoherentDmaOrPreFaultMemory = KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS_OLD,
+    MemNoncoherentDmaOrArmWritableImpIdRegs = KVM_CAP_USER_CONFIGURE_NONCOHERENT_DMA_CROS_612,
     UserMemory2 = KVM_CAP_USER_MEMORY2,
     #[cfg(target_arch = "aarch64")]
     Sve = KVM_CAP_ARM_SVE,
