@@ -69,6 +69,32 @@ def verify_minigbm(path: Path) -> bool:
     return False
 
 
+def detect_virgl_render_server(build_target):
+    try:
+        libexecdir = subprocess.check_output(
+            ["pkg-config", "--variable=libexecdir", "virglrenderer"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if libexecdir:
+            path = Path(libexecdir) / "virgl_render_server"
+            if path.exists():
+                return path
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    paths = [
+        Path("/usr/libexec/virgl_render_server"),
+        Path(f"/usr/lib/{build_target.arch}-linux-gnu/virgl_render_server"),
+        Path("/usr/local/libexec/virgl_render_server"),
+    ]
+    for path in paths:
+        if path.exists():
+            return path
+
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(usage=USAGE)
     parser.add_argument(
@@ -162,26 +188,61 @@ def main():
             f"Error: Found libgbm at {libgbm_path} but it is not minigbm. crosvm requires minigbm."
         )
 
+    virgl_render_server_path = detect_virgl_render_server(build_target)
+    if virgl_render_server_path:
+        print(f"Using virgl_render_server: {virgl_render_server_path}")
+    else:
+        print(
+            "Warning: virgl_render_server not found. virglrenderer out-of-process render server will not be packaged."
+        )
+
+    # Step 1: Deploy files into AppDir without building AppImage yet
     cmd_args = [
         linuxdeploy_cmd,
         f"--executable={binary_path}",
         f"--appdir={appdir_path}",
-        "--output=appimage",
         f"--desktop-file={desktop_file}",
         f"--icon-file={icon_file}",
     ]
+
+    if virgl_render_server_path:
+        cmd_args.append(f"--executable={virgl_render_server_path}")
 
     if libgbm_path:
         cmd_args.append(f"--library={libgbm_path}")
 
     if verbose():
-        print("Running:", " ".join(cmd_args))
+        print("Running linuxdeploy stage 1:", " ".join(cmd_args))
 
     try:
-        # Run in output_dir so the AppImage is generated directly there
         subprocess.check_call(cmd_args, cwd=output_dir, env=env)
     except subprocess.CalledProcessError as e:
-        sys.exit(f"Error: linuxdeploy failed with exit code {e.returncode}")
+        sys.exit(f"Error: linuxdeploy stage 1 failed with exit code {e.returncode}")
+
+    # Step 2: Ensure usr/libexec/virgl_render_server exists in AppDir
+    if virgl_render_server_path:
+        libexec_dir = appdir_path / "usr" / "libexec"
+        libexec_dir.mkdir(parents=True, exist_ok=True)
+        target_server = libexec_dir / "virgl_render_server"
+        if not target_server.exists() and not target_server.is_symlink():
+            bin_server = appdir_path / "usr" / "bin" / "virgl_render_server"
+            if bin_server.exists():
+                target_server.symlink_to("../bin/virgl_render_server")
+
+    # Step 3: Package AppDir into final AppImage
+    package_cmd_args = [
+        linuxdeploy_cmd,
+        f"--appdir={appdir_path}",
+        "--output=appimage",
+    ]
+
+    if verbose():
+        print("Running linuxdeploy stage 2:", " ".join(package_cmd_args))
+
+    try:
+        subprocess.check_call(package_cmd_args, cwd=output_dir, env=env)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"Error: linuxdeploy stage 2 failed with exit code {e.returncode}")
 
     print(f"AppImage successfully packaged at: {output_dir}")
 

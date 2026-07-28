@@ -340,7 +340,24 @@ pub fn start_gpu_render_server(
         libc::STDERR_FILENO,
     ];
 
-    let cmd = &render_server_parameters.path;
+    #[allow(unused_mut)]
+    let mut cmd = render_server_parameters.path.clone();
+    #[cfg(feature = "appimage")]
+    if let Ok(appdir) = std::env::var("APPDIR") {
+        if let Ok(rel_path) = cmd.strip_prefix("/") {
+            let appdir_cmd = Path::new(&appdir).join(rel_path);
+            if let Ok(canonical_cmd) = appdir_cmd.canonicalize() {
+                cmd = canonical_cmd;
+            } else if let Ok(fallback_cmd) = Path::new(&appdir)
+                .join("usr/libexec/virgl_render_server")
+                .canonicalize()
+            {
+                // Fallback in case linuxdeploy moved it from e.g., /usr/local/libexec
+                cmd = fallback_cmd;
+            }
+        }
+    }
+
     let cmd_str = cmd
         .to_str()
         .ok_or_else(|| anyhow!("invalid render server path"))?;
@@ -358,7 +375,7 @@ pub fn start_gpu_render_server(
 
     let render_server_pid = jail
         .run_command(minijail::Command::new_for_path(
-            cmd,
+            &cmd,
             &inheritable_fds,
             &args,
             envp.as_deref(),
