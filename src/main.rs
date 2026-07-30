@@ -451,10 +451,7 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
                 path: PathBuf::from(&path),
                 is_read_only: !writable,
                 is_sparse_file: true,
-                is_overlapped: false,
-                is_direct: false,
-                lock: true,
-                depth: 0,
+                ..Default::default()
             })
             .map_err(|e| error!("Failed to create DiskFile instance: {}", e))?
             .get_len()
@@ -520,12 +517,7 @@ fn create_qcow2(cmd: cmdline::CreateQcow2Command) -> std::result::Result<(), ()>
 
     let params = DiskFileParams {
         path: PathBuf::from(&cmd.file_path),
-        is_read_only: false,
-        is_sparse_file: false,
-        is_overlapped: false,
-        is_direct: false,
-        lock: true,
-        depth: 0,
+        ..Default::default()
     };
     match (cmd.size, cmd.backing_file) {
         (Some(size), None) => QcowFile::new(file, params, size).map_err(|e| {

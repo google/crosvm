@@ -29,7 +29,7 @@ impl DiskOption {
             ),
             is_direct: self.direct,
             lock: self.lock,
-            depth: 0,
+            ..Default::default()
         })?)
     }
 }

@@ -29,10 +29,9 @@ impl DiskOption {
             path: self.path.clone(),
             is_read_only: self.read_only,
             is_sparse_file: self.sparse,
-            is_overlapped: false,
             is_direct: self.direct,
             lock: self.lock,
-            depth: 0,
+            ..Default::default()
         })
         .context("open_disk_file failed")
     }

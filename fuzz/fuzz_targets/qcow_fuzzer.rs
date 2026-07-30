@@ -34,12 +34,7 @@ fuzz_target!(|bytes| {
         disk_file,
         disk::DiskFileParams {
             path: "/foo".into(),
-            is_read_only: false,
-            is_sparse_file: false,
-            is_overlapped: false,
-            is_direct: false,
-            lock: true,
-            depth: 0,
+            ..Default::default()
         },
     ) {
         let mut mem = value.to_le_bytes().to_owned();

@@ -557,12 +557,7 @@ fn max_refcount_clusters(refcount_order: u32, cluster_size: u32, num_clusters: u
 /// # fn test(file: std::fs::File, path: PathBuf) -> std::io::Result<()> {
 ///     let mut q = QcowFile::from(file, DiskFileParams {
 ///         path,
-///         is_read_only: false,
-///         is_sparse_file: false,
-///         is_overlapped: false,
-///         is_direct: false,
-///         lock: true,
-///         depth: 0,
+///         ..Default::default()
 ///     }).expect("Can't open qcow file");
 ///     let mut buf = [0u8; 12];
 ///     let mut vslice = VolatileSlice::new(&mut buf);
@@ -634,13 +629,12 @@ impl QcowFile {
                 path: PathBuf::from(backing_file_path),
                 // The backing file is only read from.
                 is_read_only: true,
-                // Sparse isn't meaningful for read only files.
-                is_sparse_file: false,
                 // TODO: Should pass `params.is_overlapped` through here. Needs testing.
-                is_overlapped: false,
+                // is_overlapped: false,
                 is_direct: params.is_direct,
                 lock: params.lock,
                 depth: params.depth + 1,
+                ..Default::default()
             };
             let backing_image_type = match header.backing_file_format {
                 Some(format) => format,
@@ -796,13 +790,12 @@ impl QcowFile {
                 path: PathBuf::from(backing_file_name),
                 // The backing file is only read from.
                 is_read_only: true,
-                // Sparse isn't meaningful for read only files.
-                is_sparse_file: false,
                 // TODO: Should pass `params.is_overlapped` through here. Needs testing.
-                is_overlapped: false,
+                // is_overlapped: false,
                 is_direct: params.is_direct,
                 lock: params.lock,
                 depth: params.depth + 1,
+                ..Default::default()
             };
             let backing_file = crate::sys::open_raw_disk_image(&backing_params)
                 .map_err(|e| Error::BackingFileOpen(Box::new(e)))?;
@@ -1885,12 +1878,7 @@ mod tests {
     fn test_params() -> DiskFileParams {
         DiskFileParams {
             path: PathBuf::from("/foo"),
-            is_read_only: false,
-            is_sparse_file: false,
-            is_overlapped: false,
-            is_direct: false,
-            lock: true,
-            depth: 0,
+            ..Default::default()
         }
     }
 

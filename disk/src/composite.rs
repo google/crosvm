@@ -230,10 +230,11 @@ impl CompositeDiskFile {
                         is_read_only: !writable,
                         is_sparse_file: params.is_sparse_file && writable,
                         // TODO: Should pass `params.is_overlapped` through here. Needs testing.
-                        is_overlapped: false,
+                        // is_overlapped: false,
                         is_direct: params.is_direct,
                         lock: params.lock,
                         depth: params.depth + 1,
+                        ..Default::default()
                     })
                     .map_err(|e| Error::DiskError(Box::new(e)))?,
                     offset: disk.offset,
@@ -1555,11 +1556,8 @@ mod tests {
                     DiskFileParams {
                         path: "/foo".into(),
                         is_read_only: true,
-                        is_sparse_file: false,
-                        is_overlapped: false,
-                        is_direct: false,
                         lock: false,
-                        depth: 0,
+                        ..Default::default()
                     },
                 )
                 .unwrap(),

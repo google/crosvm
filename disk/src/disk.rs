@@ -304,6 +304,20 @@ pub struct DiskFileParams {
     pub depth: u32,
 }
 
+impl Default for DiskFileParams {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::new(),
+            is_read_only: false,
+            is_sparse_file: false,
+            is_overlapped: false,
+            is_direct: false,
+            lock: true,
+            depth: 0,
+        }
+    }
+}
+
 /// Inspect the image file type and create an appropriate disk file to match it.
 pub fn open_disk_file(params: DiskFileParams) -> Result<Box<dyn DiskFile>> {
     if params.depth > MAX_NESTING_DEPTH {
