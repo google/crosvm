@@ -399,7 +399,14 @@ where
         let mut pending_buffer_for_mrg_rx = PendingBuffer::new();
         'wait: loop {
             let events = wait_ctx.wait().map_err(NetError::WaitError)?;
-            for event in events.iter().filter(|e| e.is_readable) {
+            for event in events.iter() {
+                if event.is_hungup && matches!(event.token, Token::RxTap) {
+                    warn!("net: TAP fd hung up, exiting worker");
+                    break 'wait;
+                }
+                if !event.is_readable {
+                    continue;
+                }
                 match event.token {
                     Token::RxTap => {
                         let _trace = cros_tracing::trace_event!(VirtioNet, "handle RxTap event");
