@@ -1339,54 +1339,20 @@ impl PassthroughFs {
     fn do_open(&self, inode: Inode, flags: u32) -> io::Result<(Option<Handle>, OpenOptions)> {
         let inode_data = self.find_inode(inode)?;
 
-        let file = self.open_inode(&inode_data, flags as i32)?;
-
-        let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
-        let data = HandleData {
-            inode,
-            file: Mutex::new(OpenedFile::new(file, flags as i32)),
-            unsafe_leak_fd: AtomicBool::new(false),
-        };
-
-        self.handles.lock().insert(handle, Arc::new(data));
-
-        let opts = self.get_cache_open_options(flags);
-
-        Ok((Some(handle), opts))
-    }
-
-    fn do_open_at(
-        &self,
-        parent_data: Arc<InodeData>,
-        name: &CStr,
-        inode: Inode,
-        flags: u32,
-    ) -> io::Result<(Option<Handle>, OpenOptions)> {
         let open_flags = self.update_open_flags(flags as i32);
+        let file = self.open_fd(inode_data.as_raw_descriptor(), open_flags)?;
 
-        let fd_open = syscall!(
-            // SAFETY: return value is checked.
-            unsafe {
-                libc::openat64(
-                    parent_data.as_raw_descriptor(),
-                    name.as_ptr(),
-                    (open_flags | libc::O_CLOEXEC) & !(libc::O_NOFOLLOW | libc::O_DIRECT),
-                )
-            }
-        )?;
-
-        // SAFETY: fd_open is valid
-        let file_open = unsafe { File::from_raw_descriptor(fd_open) };
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
         let data = HandleData {
             inode,
-            file: Mutex::new(OpenedFile::new(file_open, open_flags)),
+            file: Mutex::new(OpenedFile::new(file, open_flags)),
             unsafe_leak_fd: AtomicBool::new(false),
         };
 
         self.handles.lock().insert(handle, Arc::new(data));
 
         let opts = self.get_cache_open_options(open_flags as u32);
+
         Ok((Some(handle), opts))
     }
 
@@ -2781,9 +2747,7 @@ impl FileSystem for PassthroughFs {
         let (handle, opts) = if self.zero_message_open.load(Ordering::Relaxed) {
             (None, OpenOptions::KEEP_CACHE)
         } else {
-            self.do_open_at(
-                data,
-                name,
+            self.do_open(
                 entry.inode,
                 flags as u32 & !((libc::O_CREAT | libc::O_EXCL | libc::O_NOCTTY) as u32),
             )
