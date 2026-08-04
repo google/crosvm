@@ -5,7 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 include = ["src/**/*", "Cargo.toml", "LICENSE"]
 description = "[highly unstable] data model for virtualization"
-license-file = "LICENSE"
+license = "BSD-3-Clause"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }

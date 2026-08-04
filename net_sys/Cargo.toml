@@ -3,6 +3,7 @@ name = "net_sys"
 version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
+license = "BSD-3-Clause"
 
 [dependencies]
 base = { workspace = true }

@@ -3,6 +3,7 @@ name = "bit_field"
 version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
+license = "BSD-3-Clause"
 
 [dependencies]
 bit_field_derive = { path = "bit_field_derive" }

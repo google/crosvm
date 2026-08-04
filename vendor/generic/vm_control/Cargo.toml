@@ -3,6 +3,7 @@ name = "vm_control_product"
 version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
+license = "BSD-3-Clause"
 
 
 [dependencies]

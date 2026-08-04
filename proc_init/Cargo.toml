@@ -3,6 +3,7 @@ name = "proc_init"
 authors = ["The ChromiumOS Authors"]
 version = "0.1.0"
 edition = "2021"
+license = "BSD-3-Clause"
 
 [features]
 crash-report = ["crash_report", "proc_init_product/crash-report"]

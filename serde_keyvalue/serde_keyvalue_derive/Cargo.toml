@@ -2,6 +2,7 @@
 name = "serde_keyvalue_derive"
 version = "0.1.0"
 edition = "2021"
+license = "BSD-3-Clause"
 
 [lib]
 proc-macro = true

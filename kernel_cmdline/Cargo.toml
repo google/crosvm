@@ -2,6 +2,7 @@
 name = "kernel_cmdline"
 version = "0.1.0"
 edition = "2021"
+license = "BSD-3-Clause"
 
 [dependencies]
 remain = { workspace = true }

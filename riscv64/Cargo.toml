@@ -3,6 +3,7 @@ name = "riscv64"
 version = "0.1.0"
 authors = ["Rivos Inc."]
 edition = "2021"
+license = "BSD-3-Clause"
 
 [features]
 gdb = ["gdbstub", "gdbstub_arch", "arch/gdb"]

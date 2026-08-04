@@ -3,6 +3,7 @@ name = "system_api"
 version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
+license = "BSD-3-Clause"
 
 [lib]
 path = "src/system_api.rs"

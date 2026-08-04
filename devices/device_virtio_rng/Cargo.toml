@@ -3,6 +3,7 @@ name = "device_virtio_rng"
 version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
+license = "BSD-3-Clause"
 
 [features]
 
