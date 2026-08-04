@@ -139,7 +139,7 @@ impl VhostUserFrontend {
             | VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::BACKEND_REQ
             | VhostUserProtocolFeatures::DEVICE_STATE
-            | VhostUserProtocolFeatures::SHMEM_MAP
+            | VhostUserProtocolFeatures::SHMEM
             // NOTE: We advertise REPLY_ACK, but we don't actually set the "need_reply" bit in any
             // `BackendClient` requests because there is a theoretical latency penalty and no
             // obvious advantage at the moment. Instead, we negotiate it only so that the backend
@@ -508,7 +508,7 @@ impl VirtioDevice for VhostUserFrontend {
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
         if !self
             .protocol_features
-            .contains(VhostUserProtocolFeatures::SHMEM_MAP)
+            .contains(VhostUserProtocolFeatures::SHMEM)
         {
             return None;
         }
