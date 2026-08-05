@@ -401,6 +401,7 @@ pub fn create_vhost_user_frontend(
         vm_evt_wrtube,
         opt.max_queue_size,
         opt.pci_address,
+        /* is_remote_backend= */ true,
     )
     .context("failed to set up vhost-user frontend")?;
 

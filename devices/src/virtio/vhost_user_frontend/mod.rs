@@ -102,6 +102,8 @@ impl VhostUserFrontend {
     /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
     /// - `connection`: connection to the device backend
     /// - `max_queue_size`: maximum number of entries in each queue (default: [`Queue::MAX_SIZE`])
+    /// - `is_remote_backend`: Whether the backend is running in a separate process. When false, the
+    ///   device gets extra privileges, so, if in doubt, set it to true.
     pub fn new(
         device_type: DeviceType,
         mut base_features: u64,
@@ -109,6 +111,7 @@ impl VhostUserFrontend {
         vm_evt_wrtube: SendTube,
         max_queue_size: Option<u16>,
         pci_address: Option<PciAddress>,
+        is_remote_backend: bool,
     ) -> Result<VhostUserFrontend> {
         // Don't allow packed queues even if requested. We don't handle them properly yet at the
         // protocol layer.
@@ -171,7 +174,7 @@ impl VhostUserFrontend {
         let backend_req_handler =
             if protocol_features.contains(VhostUserProtocolFeatures::BACKEND_REQ) {
                 let (mut handler, tx_fd) = create_backend_req_handler(
-                    BackendReqHandlerImpl::new(),
+                    BackendReqHandlerImpl::new(is_remote_backend),
                     #[cfg(windows)]
                     backend_pid,
                 )?;

@@ -1187,6 +1187,7 @@ mod tests {
                     vm_evt_wrtube,
                     None,
                     None,
+                    /* is_remote_backend= */ true,
                 )
                 .unwrap();
 
@@ -1371,6 +1372,7 @@ mod tests {
                     vm_evt_wrtube,
                     None,
                     None,
+                    /* is_remote_backend= */ true,
                 )
                 .unwrap();
 

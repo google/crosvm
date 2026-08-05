@@ -30,13 +30,15 @@ struct SharedMapperState {
 pub struct BackendReqHandlerImpl {
     interrupt: Option<Interrupt>,
     shared_mapper_state: Option<SharedMapperState>,
+    is_remote_backend: bool,
 }
 
 impl BackendReqHandlerImpl {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(is_remote_backend: bool) -> Self {
         BackendReqHandlerImpl {
             interrupt: None,
             shared_mapper_state: None,
+            is_remote_backend,
         }
     }
 
@@ -149,6 +151,12 @@ impl Frontend for BackendReqHandlerImpl {
     }
 
     fn external_map(&mut self, req: &VhostUserExternalMapMsg) -> HandlerResult<()> {
+        // Only allow EXTERNAL_MAP when the backend is in-process because it contains raw pointers
+        // that can't be trusted between processes.
+        if self.is_remote_backend {
+            return Err(std::io::Error::from_raw_os_error(libc::EPERM));
+        }
+
         let shared_mapper_state = self
             .shared_mapper_state
             .as_mut()

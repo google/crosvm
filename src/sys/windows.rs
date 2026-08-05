@@ -263,6 +263,7 @@ fn create_vhost_user_block_device(
         vm_evt_wrtube,
         None,
         None,
+        /* is_remote_backend= */ true,
     )
     .exit_context(
         Exit::VhostUserBlockDeviceNew,
@@ -298,6 +299,7 @@ fn create_vhost_user_gpu_device(
     base_features: u64,
     connection: Connection,
     vm_evt_wrtube: SendTube,
+    is_remote_backend: bool,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
         virtio::DeviceType::Gpu,
@@ -306,6 +308,7 @@ fn create_vhost_user_gpu_device(
         vm_evt_wrtube,
         None,
         None,
+        is_remote_backend,
     )
     .exit_context(
         Exit::VhostUserGpuDeviceNew,
@@ -323,6 +326,7 @@ fn create_vhost_user_snd_device(
     base_features: u64,
     connection: Connection,
     vm_evt_wrtube: SendTube,
+    is_remote_backend: bool,
 ) -> DeviceResult {
     let dev = virtio::VhostUserFrontend::new(
         virtio::DeviceType::Sound,
@@ -331,6 +335,7 @@ fn create_vhost_user_snd_device(
         vm_evt_wrtube,
         None,
         None,
+        is_remote_backend,
     )
     .exit_context(
         Exit::VhostUserSndDeviceNew,
@@ -391,6 +396,7 @@ fn create_vhost_user_net_device(
         vm_evt_wrtube,
         None,
         None,
+        /* is_remote_backend= */ true,
     )
     .exit_context(
         Exit::VhostUserNetDeviceNew,
@@ -761,6 +767,8 @@ fn create_virtio_gpu_device(
 ) -> DeviceResult<VirtioDeviceStub> {
     product::push_gpu_control_tubes(add_control_tube, &mut gpu_vmm_config);
 
+    let is_remote_backend = cfg.gpu_backend_config.is_none();
+
     // If the GPU backend is passed, start up the vhost-user worker in the main process.
     if let Some(backend_config) = cfg.gpu_backend_config.take() {
         let event_devices = event_devices.ok_or_else(|| {
@@ -786,6 +794,7 @@ fn create_virtio_gpu_device(
         virtio::base_features(cfg.protection_type),
         connection,
         vm_evt_wrtube,
+        is_remote_backend,
     )
     .context("create vhost-user GPU device")
 }
@@ -803,6 +812,8 @@ fn create_virtio_snd_device(
         .expect("snd_vmm_config must exist");
     product::push_snd_control_tubes(add_control_tube, snd_vmm_config);
 
+    let is_remote_backend = snd_split_config.backend_config.is_none();
+
     // If the SND backend is passed, start up the vhost-user worker in the main process.
     if let Some(backend_config) = snd_split_config.backend_config.take() {
         std::thread::spawn(move || run_snd_device_worker(backend_config));
@@ -819,6 +830,7 @@ fn create_virtio_snd_device(
         virtio::base_features(cfg.protection_type),
         connection,
         vm_evt_wrtube,
+        is_remote_backend,
     )
     .context("create vhost-user SND device")
 }
