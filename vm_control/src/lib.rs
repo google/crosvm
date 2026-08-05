@@ -92,6 +92,7 @@ use libc::EINVAL;
 use libc::EIO;
 use libc::ENODEV;
 use libc::ENOTSUP;
+use libc::EPERM;
 use libc::ERANGE;
 #[cfg(feature = "registered_events")]
 use protos::registered_events;
@@ -763,6 +764,7 @@ impl VmMemoryRequest {
         #[cfg(feature = "gpu")] gralloc: &mut RutabagaGralloc,
         iommu_client: Option<&mut VmMemoryRequestIommuClient>,
         region_state: &mut VmMemoryRegionState,
+        remote_peer: bool,
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match self {
@@ -796,6 +798,12 @@ impl VmMemoryRequest {
                 prot,
                 cache,
             } => {
+                // ExternalMapping contains raw pointers and so should only be allowed for peers
+                // within the main process.
+                if remote_peer && matches!(source, VmMemorySource::ExternalMapping { .. }) {
+                    return VmMemoryResponse::Err(anyhow::Error::new(SysError::new(EPERM)).into());
+                }
+
                 if let Some(resp) =
                     try_map_to_prepared_region(vm, region_state, &source, &dest, &prot)
                 {

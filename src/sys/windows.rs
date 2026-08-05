@@ -567,6 +567,7 @@ fn create_virtio_devices(
         add_control_tube(AnyControlTube::VmMemoryTube {
             tube: dynamic_mapping_host_tube,
             expose_with_viommu: false,
+            remote_peer: false,
         });
 
         devs.push((
@@ -871,6 +872,7 @@ fn create_devices(
             add_control_tube(AnyControlTube::VmMemoryTube {
                 tube: host_tube,
                 expose_with_viommu: false,
+                remote_peer: stub.jail.is_some(),
             });
             Some(device_tube)
         } else {
@@ -882,6 +884,7 @@ fn create_devices(
         add_control_tube(AnyControlTube::VmMemoryTube {
             tube: ioevent_host_tube,
             expose_with_viommu: false,
+            remote_peer: stub.jail.is_some(),
         });
 
         let (vm_control_host_tube, vm_control_device_tube) =
@@ -1179,6 +1182,36 @@ fn handle_run_mode_change_for_vm_request(run_mode_opt: &Option<VmRunMode>) -> Op
     None
 }
 
+pub struct VmMemoryTube {
+    pub tube: Tube,
+    /// Whether the other end of the tube is in another process.
+    pub remote_peer: bool,
+}
+
+impl AsRef<Tube> for VmMemoryTube {
+    fn as_ref(&self) -> &Tube {
+        &self.tube
+    }
+}
+
+impl AsRawDescriptor for VmMemoryTube {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.as_ref().as_raw_descriptor()
+    }
+}
+
+impl ReadNotifier for VmMemoryTube {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self.as_ref().get_read_notifier()
+    }
+}
+
+impl CloseNotifier for VmMemoryTube {
+    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
+        self.as_ref().get_close_notifier()
+    }
+}
+
 /// Commands to control the VM Memory handler thread.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum VmMemoryHandlerRequest {
@@ -1187,7 +1220,7 @@ pub enum VmMemoryHandlerRequest {
 }
 
 fn vm_memory_handler_thread(
-    control_tubes: Vec<Tube>,
+    control_tubes: Vec<VmMemoryTube>,
     vm: Arc<dyn Vm>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
     #[cfg(feature = "gpu")] mut gralloc: RutabagaGralloc,
@@ -1239,7 +1272,7 @@ fn vm_memory_handler_thread(
                 },
 
                 Token::VmControl { id } => {
-                    if let Some(tube) = control_tubes.get(&id) {
+                    if let Some(VmMemoryTube { tube, remote_peer }) = control_tubes.get(&id) {
                         match tube.recv::<VmMemoryRequest>() {
                             Ok(request) => {
                                 let response = request.execute(
@@ -1249,6 +1282,7 @@ fn vm_memory_handler_thread(
                                     &mut gralloc,
                                     None,
                                     &mut region_state,
+                                    *remote_peer,
                                 );
                                 if let Err(e) = tube.send(&response) {
                                     error!("failed to send VmMemoryControlResponse: {}", e);
@@ -1374,9 +1408,10 @@ fn run_control(
             AnyControlTube::VmMemoryTube {
                 tube,
                 expose_with_viommu,
+                remote_peer,
             } => {
                 assert!(!expose_with_viommu);
-                vm_memory_control_tubes.push(tube);
+                vm_memory_control_tubes.push(VmMemoryTube { tube, remote_peer });
             }
             AnyControlTube::VmMsync(_) => {
                 unimplemented!("VmMsync control tube not supported on Windows");

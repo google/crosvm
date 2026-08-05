@@ -29,6 +29,8 @@ pub enum AnyControlTube {
         tube: Tube,
         /// See devices::virtio::VirtioDevice.expose_shared_memory_region_with_viommu
         expose_with_viommu: bool,
+        /// Whether the other end of the tube is in another process.
+        remote_peer: bool,
     },
     /// Receives `VmMemoryMappingRequest`.
     VmMsync(Tube),

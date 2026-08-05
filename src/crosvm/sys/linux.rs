@@ -453,6 +453,7 @@ fn create_virtio_devices(
         add_control_tube(AnyControlTube::VmMemoryTube {
             tube: pmem_ext2_host_tube,
             expose_with_viommu: false,
+            remote_peer: cfg.jail_config.is_some(),
         });
         let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
         add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
@@ -730,6 +731,7 @@ fn create_virtio_devices(
         add_control_tube(AnyControlTube::VmMemoryTube {
             tube: dynamic_mapping_host_tube,
             expose_with_viommu: false,
+            remote_peer: cfg.jail_config.is_some(),
         });
 
         devs.push((
@@ -1095,6 +1097,7 @@ fn create_devices(
             add_control_tube(AnyControlTube::VmMemoryTube {
                 tube: coiommu_host_tube,
                 expose_with_viommu: false,
+                remote_peer: cfg.jail_config.is_some(),
             });
             let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u64;
             #[cfg(feature = "balloon")]
@@ -1150,6 +1153,7 @@ fn create_devices(
             add_control_tube(AnyControlTube::VmMemoryTube {
                 tube: host_tube,
                 expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
+                remote_peer: stub.jail.is_some(),
             });
             Some(device_tube)
         } else {
@@ -1161,6 +1165,7 @@ fn create_devices(
         add_control_tube(AnyControlTube::VmMemoryTube {
             tube: ioevent_host_tube,
             expose_with_viommu: false,
+            remote_peer: stub.jail.is_some(),
         });
 
         let (host_tube, device_tube) =
@@ -2484,6 +2489,7 @@ fn run_vm(
         add_control_tube(AnyControlTube::VmMemoryTube {
             tube: ioevent_host_tube,
             expose_with_viommu: false,
+            remote_peer: iommu_dev.jail.is_some(),
         });
         let (host_tube, device_tube) =
             Tube::pair().context("failed to create device control tube")?;
@@ -2615,6 +2621,7 @@ fn run_vm(
         add_control_tube(AnyControlTube::VmMemoryTube {
             tube: hp_vm_mem_host_tube,
             expose_with_viommu: false,
+            remote_peer: false,
         });
 
         let supports_readonly_mapping = linux.vm.as_ref().supports_readonly_mapping();
@@ -2913,6 +2920,7 @@ fn add_hotplug_net(
     add_control_tube(AnyControlTube::VmMemoryTube {
         tube: ioevent_host_tube,
         expose_with_viommu: false,
+        remote_peer: true,
     });
     let (vm_control_host_tube, vm_control_device_tube) = Tube::pair().context("create tube")?;
     add_control_tube(AnyControlTube::Vm(vm_control_host_tube));
@@ -3358,9 +3366,11 @@ fn process_vm_request(
         AnyControlTube::VmMemoryTube {
             tube,
             expose_with_viommu,
+            remote_peer,
         } => add_vm_memory_control_tubes.push(VmMemoryTube {
             tube,
             expose_with_viommu,
+            remote_peer,
         }),
         AnyControlTube::VmMsync(t) => add_tubes.push(TaggedControlTube::VmMsync(t)),
     };
@@ -3873,9 +3883,11 @@ fn run_control(
             AnyControlTube::VmMemoryTube {
                 tube,
                 expose_with_viommu,
+                remote_peer,
             } => vm_memory_control_tubes.push(VmMemoryTube {
                 tube,
                 expose_with_viommu,
+                remote_peer,
             }),
             AnyControlTube::VmMsync(t) => control_tubes.push(TaggedControlTube::VmMsync(t)),
         }
@@ -4225,6 +4237,7 @@ fn run_control(
     vm_memory_control_tubes.push(VmMemoryTube {
         tube: vm_memory_control_tube1,
         expose_with_viommu: false,
+        remote_peer: false,
     });
     let vm_memory_control_client = VmMemoryClient::new(vm_memory_control_tube_2);
     let (vm_memory_handler_control, vm_memory_handler_control_for_thread) = Tube::pair()?;
@@ -5018,6 +5031,7 @@ fn vm_memory_handler_thread(
                     if let Some(VmMemoryTube {
                         tube,
                         expose_with_viommu,
+                        remote_peer,
                     }) = control_tubes.get(&id)
                     {
                         match tube.recv::<VmMemoryRequest>() {
@@ -5034,6 +5048,7 @@ fn vm_memory_handler_thread(
                                         None
                                     },
                                     &mut region_state,
+                                    *remote_peer,
                                 );
                                 if let Err(e) = tube.send(&response) {
                                     error!("failed to send VmMemoryControlResponse: {}", e);

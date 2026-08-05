@@ -131,6 +131,8 @@ pub struct VmMemoryTube {
     pub tube: Tube,
     /// See devices::virtio::VirtioDevice.expose_shared_memory_region_with_viommu
     pub expose_with_viommu: bool,
+    /// Whether the other end of the tube is in another separate process.
+    pub remote_peer: bool,
 }
 
 impl AsRef<Tube> for VmMemoryTube {
@@ -1542,6 +1544,7 @@ pub fn create_vfio_device(
     add_control_tube(AnyControlTube::VmMemoryTube {
         tube: vfio_host_tube_mem,
         expose_with_viommu: false,
+        remote_peer: jail_config.is_some(),
     });
 
     let (vfio_host_tube_vm, vfio_device_tube_vm) = Tube::pair().context("failed to create tube")?;
