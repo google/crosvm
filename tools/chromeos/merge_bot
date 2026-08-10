@@ -168,11 +168,12 @@ def create_pgo_profile():
         random.choice(string.ascii_lowercase + string.digits) for _ in range(16)
     )
     mkdir(tmpdirname).fg()
-    benchmark_list = list(
-        map(
-            lambda x: os.path.splitext(x)[0],
-            filter(lambda x: x.endswith(".rs"), os.listdir("e2e_tests/benches")),
-        )
+    # TODO(b/461563735): Re-enable postgres once the timeout issue in CI is resolved.
+    disabled_benchmarks = {"postgres"}
+    benchmark_list = sorted(
+        os.path.splitext(x)[0]
+        for x in os.listdir("e2e_tests/benches")
+        if x.endswith(".rs") and os.path.splitext(x)[0] not in disabled_benchmarks
     )
     print(f"Building instrumented binary, perf data will be saved to {tmpdirname}")
     dev_container(
