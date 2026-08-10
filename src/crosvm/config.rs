@@ -773,6 +773,7 @@ pub struct Config {
     pub sound: Option<PathBuf>,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub suspended: bool,
+    pub suspended_vcpus: bool,
     #[cfg(target_arch = "aarch64")]
     pub sve: Option<SveConfig>,
     pub swap_dir: Option<PathBuf>,
@@ -1010,6 +1011,7 @@ impl Default for Config {
             sound: None,
             stub_pci_devices: Vec::new(),
             suspended: false,
+            suspended_vcpus: false,
             #[cfg(target_arch = "aarch64")]
             sve: None,
             swap_dir: None,

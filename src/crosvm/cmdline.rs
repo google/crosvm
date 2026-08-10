@@ -2034,6 +2034,10 @@ pub struct RunCommand {
     /// start a VM with vCPUs and devices suspended
     pub suspended: Option<bool>,
 
+    #[argh(switch)]
+    /// start a VM with vCPUs suspended
+    pub suspended_vcpus: Option<bool>,
+
     #[argh(option, long = "swap", arg_name = "PATH")]
     /// enable vmm-swap via an unnamed temporary file on the filesystem which contains the
     /// specified directory.
@@ -2685,6 +2689,11 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.swap_dir = cmd.swap_dir;
         cfg.restore_path = cmd.restore;
         cfg.suspended = cmd.suspended.unwrap_or_default();
+        cfg.suspended_vcpus = cmd.suspended_vcpus.unwrap_or_default();
+
+        if cfg.suspended && cfg.suspended_vcpus {
+            return Err("cannot specify both --suspended and --suspended-vcpus".to_string());
+        }
 
         if let Some(mut socket_path) = cmd.socket {
             if socket_path.is_dir() {
@@ -3117,7 +3126,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "gdb")]
         {
-            if cfg.suspended && cmd.gdb.is_some() {
+            if (cfg.suspended || cfg.suspended_vcpus) && cmd.gdb.is_some() {
                 return Err("suspended mode not supported with GDB".to_string());
             }
             cfg.gdb = cmd.gdb;
@@ -3316,6 +3325,25 @@ mod tests {
 
         let cmd = RunCommand::from_args(&[], &["--mte", "--cpus", "mte=[auto=true]", "/dev/null"])
             .unwrap();
+        assert!(crate::crosvm::config::Config::try_from(cmd).is_err());
+    }
+
+    #[test]
+    fn parse_suspended_flags() {
+        use argh::FromArgs;
+
+        let cmd = RunCommand::from_args(&[], &["--suspended", "/dev/null"]).unwrap();
+        let cfg: crate::crosvm::config::Config = cmd.try_into().unwrap();
+        assert!(cfg.suspended);
+        assert!(!cfg.suspended_vcpus);
+
+        let cmd = RunCommand::from_args(&[], &["--suspended-vcpus", "/dev/null"]).unwrap();
+        let cfg: crate::crosvm::config::Config = cmd.try_into().unwrap();
+        assert!(!cfg.suspended);
+        assert!(cfg.suspended_vcpus);
+
+        let cmd =
+            RunCommand::from_args(&[], &["--suspended", "--suspended-vcpus", "/dev/null"]).unwrap();
         assert!(crate::crosvm::config::Config::try_from(cmd).is_err());
     }
 }

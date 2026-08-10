@@ -4078,6 +4078,8 @@ fn run_control(
             resp => bail!("device sleep failed: {}", resp),
         }
         VmRunMode::Suspending
+    } else if cfg.suspended_vcpus {
+        VmRunMode::Suspending
     } else {
         VmRunMode::Running
     };

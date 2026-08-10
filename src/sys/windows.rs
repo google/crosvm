@@ -1359,6 +1359,7 @@ fn run_control(
     control_server_path: Option<PathBuf>,
     force_s2idle: bool,
     suspended: bool,
+    suspended_vcpus: bool,
 ) -> Result<ExitState> {
     #[cfg(feature = "balloon")]
     let mut balloon_host_tube = None;
@@ -1550,6 +1551,9 @@ fn run_control(
             VmResponse::Ok => (),
             resp => bail!("device sleep failed: {}", resp),
         }
+        run_mode_arc.set_and_notify(VmRunMode::Suspending);
+        VmRunMode::Suspending
+    } else if suspended_vcpus {
         run_mode_arc.set_and_notify(VmRunMode::Suspending);
         VmRunMode::Suspending
     } else {
@@ -2756,6 +2760,7 @@ fn run_vm(
         cfg.socket_path,
         cfg.force_s2idle,
         cfg.suspended,
+        cfg.suspended_vcpus,
     )
 }
 
