@@ -168,12 +168,8 @@ def create_pgo_profile():
         random.choice(string.ascii_lowercase + string.digits) for _ in range(16)
     )
     mkdir(tmpdirname).fg()
-    # TODO(b/461563735): Re-enable postgres once the timeout issue in CI is resolved.
-    disabled_benchmarks = {"postgres"}
     benchmark_list = sorted(
-        os.path.splitext(x)[0]
-        for x in os.listdir("e2e_tests/benches")
-        if x.endswith(".rs") and os.path.splitext(x)[0] not in disabled_benchmarks
+        os.path.splitext(x)[0] for x in os.listdir("e2e_tests/benches") if x.endswith(".rs")
     )
     print(f"Building instrumented binary, perf data will be saved to {tmpdirname}")
     dev_container(
@@ -258,10 +254,11 @@ def create_merge_commits(
             has_conflicts = True
         # Only uprev PGO profile on Monday to reduce impact on repo size
         # TODO: b/181105093 - Re-evaluate throttling strategy after sometime
-        if date.today().weekday() == 0 or force_pgo:
-            create_pgo_profile()
-            git("add profiles/benchmarks.profdata.xz").fg()
-            git("commit --amend --no-edit").fg()
+        # TODO(b/461563735): Temporarily disabled until the timeout issue in CI is resolved.
+        # if date.today().weekday() == 0 or force_pgo:
+        #     create_pgo_profile()
+        #     git("add profiles/benchmarks.profdata.xz").fg()
+        #     git("commit --amend --no-edit").fg()
 
     return (len(batches), has_conflicts)
 
