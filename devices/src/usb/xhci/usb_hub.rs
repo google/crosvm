@@ -11,6 +11,7 @@ use sync::Mutex;
 use thiserror::Error;
 use usb_util::DeviceSpeed;
 
+use super::event_ring::Error as EventRingError;
 use super::interrupter::Error as InterrupterError;
 use super::interrupter::Interrupter;
 use super::xhci_backend_device::BackendType;
@@ -61,6 +62,11 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
+/// Whether a port status change event failed only because the guest has no event ring yet.
+fn is_event_ring_uninitialized(e: &InterrupterError) -> bool {
+    matches!(e, InterrupterError::AddEvent(EventRingError::Uninitialized))
+}
+
 /// A port on usb hub. It could have a device connected to it.
 pub struct UsbPort {
     ty: BackendType,
@@ -107,11 +113,15 @@ impl UsbPort {
         };
         info!("usb_hub: device detached from port {}", self.port_id);
         self.portsc.clear_bits(PORTSC_PORT_SPEED_MASK);
-        self.send_device_disconnected_event()
-            .map_err(|reason| Error::Detach {
+        // As in attach(): the port registers already say the device is gone, so a guest that
+        // cannot be signalled yet still sees an empty port once it initializes.
+        match self.send_device_disconnected_event() {
+            Err(ref e) if is_event_ring_uninitialized(e) => Ok(()),
+            other => other.map_err(|reason| Error::Detach {
                 port_id: self.port_id,
                 reason,
-            })
+            }),
+        }
     }
 
     /// Get current connected backend.
@@ -126,7 +136,18 @@ impl UsbPort {
 
     fn reset(&self) -> std::result::Result<(), InterrupterError> {
         if self.is_attached() {
-            self.send_device_connected_event()?;
+            // This runs as part of the guest driver's own reset sequence, so the event ring is
+            // normally not up yet. See is_event_ring_uninitialized().
+            match self.send_device_connected_event() {
+                Err(ref e) if is_event_ring_uninitialized(e) => {
+                    info!(
+                        "usb_hub: port {} kept its device across the controller reset; the guest \
+                         will pick it up when it scans the ports",
+                        self.port_id
+                    );
+                }
+                other => other?,
+            }
         }
         Ok(())
     }
@@ -151,7 +172,23 @@ impl UsbPort {
             Some(DeviceSpeed::SuperPlus) => 5,
         };
         self.portsc.set_bits(speed_id << PORTSC_PORT_SPEED_SHIFT);
-        self.send_device_connected_event()
+        // A device may be plugged in before the guest driver has initialized, e.g. everything
+        // attached at VM startup. The guest driver programs the event ring segment table late in
+        // its own initialization, well after it resets the controller, so any port change raised
+        // before that point has nowhere to go. It is not lost, though: `PORTSC` is updated before
+        // the event is sent, and the guest scans every port once it finishes initializing.
+        // Treating this as an error kills the whole controller, because the reset path runs
+        // `UsbHub::reset` under a `fail_handle`.
+        match self.send_device_connected_event() {
+            Err(ref e) if is_event_ring_uninitialized(e) => {
+                info!(
+                    "usb_hub: port {} attached before the guest initialized its event ring",
+                    self.port_id
+                );
+                Ok(())
+            }
+            other => other,
+        }
     }
 
     /// Inform the guest kernel there is device connected to this port. It combines first few steps
