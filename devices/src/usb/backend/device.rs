@@ -708,10 +708,10 @@ impl BackendDeviceType {
         let config_descriptor = self.get_config_descriptor(config)?;
 
         if let BackendDeviceType::HostDevice(host_device) = self {
-            host_device.claim_interfaces(&config_descriptor);
+            host_device.claim_interfaces_and_create_endpoints(&config_descriptor)?;
+        } else {
+            self.create_endpoints(&config_descriptor)?;
         }
-
-        self.create_endpoints(&config_descriptor)?;
         Ok(TransferStatus::Completed)
     }
 

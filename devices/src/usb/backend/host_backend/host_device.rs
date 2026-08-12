@@ -68,7 +68,7 @@ impl HostDevice {
         };
 
         let config_descriptor = host_device.get_active_config_descriptor()?;
-        host_device.claim_interfaces(&config_descriptor);
+        host_device.claim_interfaces(&config_descriptor)?;
 
         Ok(host_device)
     }
@@ -135,18 +135,46 @@ impl HostDevice {
         Ok(TransferStatus::Completed)
     }
 
-    pub fn claim_interfaces(&mut self, config_descriptor: &ConfigDescriptorTree) {
+    /// Claims every interface of `config_descriptor`, detaching whatever host kernel driver is
+    /// bound to each.
+    ///
+    /// Either all of them are claimed or none are: a device the host still holds an interface of
+    /// has not really been handed over, and the guest has no way to find that out. Rewriting the
+    /// unclaimed interfaces to a vendor-specific class (see `get_config_descriptor_filtered`) hides
+    /// them from guest drivers, but it does not stop the host from using them.
+    pub fn claim_interfaces(&mut self, config_descriptor: &ConfigDescriptorTree) -> Result<()> {
         for i in 0..config_descriptor.num_interfaces() {
-            match self.device.lock().claim_interface(i) {
+            // Bound to a variable, not matched on directly: matching on
+            // `self.device.lock().claim_interface(i)` would keep the lock guard alive through
+            // every arm, and the Err arm below calls release_interfaces(), which locks the same
+            // mutex again.
+            let claimed = self.device.lock().claim_interface(i);
+            match claimed {
                 Ok(()) => {
                     debug!("usb: claimed interface {}", i);
                     self.claimed_interfaces.push(i);
                 }
                 Err(e) => {
-                    error!("unable to claim interface {}: {:?}", i, e);
+                    // Drop the claims taken on the way here. This does not put the host drivers
+                    // back: USBDEVFS_DISCONNECT_CLAIM unbound them, and only USBDEVFS_CONNECT
+                    // rebinds, which we never issue. It does leave the interfaces unclaimed rather
+                    // than held by a device object we are about to throw away.
+                    self.release_interfaces();
+                    return Err(Error::ClaimInterface(i, e));
                 }
             }
         }
+        Ok(())
+    }
+
+    pub fn claim_interfaces_and_create_endpoints(
+        &mut self,
+        config_descriptor: &ConfigDescriptorTree,
+    ) -> Result<()> {
+        let claim_result = self.claim_interfaces(config_descriptor);
+        // Failed claims release every interface, so rebuilding also clears stale endpoints.
+        self.create_endpoints(config_descriptor)?;
+        claim_result
     }
 
     pub fn release_interfaces(&mut self) {
@@ -438,5 +466,60 @@ impl BackendTransfer for Transfer {
 
     fn set_callback<C: 'static + Fn(BackendTransferType) + Send + Sync>(&mut self, cb: C) {
         Transfer::set_callback(self, move |t| cb(BackendTransferType::HostDevice(t)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+    use crate::utils::AsyncJobQueue;
+    use crate::utils::FailHandle;
+
+    #[test]
+    fn failed_claim_clears_previous_endpoints() {
+        // A regular file supplies descriptors but rejects the USB claim ioctl.
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(&[
+            18, 1, 0, 2, 0, 0, 0, 64, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, // device
+            9, 2, 25, 0, 1, 1, 0, 0x80, 50, // configuration
+            9, 4, 0, 0, 1, 0xff, 0, 0, 0, // interface
+            7, 5, 0x81, 2, 64, 0, 0, // bulk IN endpoint
+        ])
+        .unwrap();
+        let device = Device::new(file).unwrap();
+        let config_descriptor = device
+            .get_device_descriptor_tree()
+            .get_config_descriptor_by_index(0)
+            .unwrap()
+            .clone();
+        let (event_loop, join_handle) = EventLoop::start("claim_test".to_string(), None).unwrap();
+        let job_queue = AsyncJobQueue::init(&event_loop).unwrap();
+        let fail_handle: Arc<dyn FailHandle> = Arc::new(None::<Arc<dyn FailHandle>>);
+        let state = Arc::new(RwLock::new(DeviceState::new(fail_handle, job_queue)));
+        let mut host_device = HostDevice {
+            device: Arc::new(Mutex::new(device)),
+            alt_settings: HashMap::new(),
+            claimed_interfaces: vec![0],
+            state: state.clone(),
+            control_transfer_state: Arc::new(RwLock::new(ControlTransferState {
+                ctl_ep_state: ControlEndpointState::SetupStage,
+                control_request_setup: UsbRequestSetup::new(0, 0, 0, 0, 0),
+                executed: false,
+            })),
+        };
+        host_device.create_endpoints(&config_descriptor).unwrap();
+        assert_eq!(state.read().unwrap().endpoints.len(), 1);
+        assert!(state.read().unwrap().endpoints[0]
+            .match_ep(1, crate::usb::xhci::xhci_transfer::TransferDirection::In));
+
+        let result = host_device.claim_interfaces_and_create_endpoints(&config_descriptor);
+        event_loop.stop();
+        join_handle.join().unwrap();
+
+        assert!(matches!(result, Err(Error::ClaimInterface(0, _))));
+        assert!(host_device.claimed_interfaces.is_empty());
+        assert!(state.read().unwrap().endpoints.is_empty());
     }
 }

@@ -191,7 +191,9 @@ impl ProviderInner {
             Ok((host_device, event_handler)) => (host_device, event_handler),
             Err(e) => {
                 error!("could not construct USB device from the given file: {}", e);
-                return UsbControlResult::NoSuchDevice;
+                // The device file itself was valid; constructing state for it is what failed, so
+                // report this as a host-device-init failure rather than an enumeration error.
+                return UsbControlResult::FailedToInitHostDevice;
             }
         };
 

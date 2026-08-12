@@ -25,6 +25,8 @@ pub enum Error {
     BadXhciTransferState,
     #[error("failed to get buffer length: {0}")]
     BufferLen(BufferError),
+    #[error("failed to claim interface {0}: {1}")]
+    ClaimInterface(u8, UsbUtilError),
     #[error("failed to clear halt: {0}")]
     ClearHalt(UsbUtilError),
     #[error("failed to create scatter gather buffer: {0}")]
