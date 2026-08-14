@@ -197,7 +197,7 @@ pub fn prepare_shared_memory_region(
                 Some(v) => v,
                 None => return Err(SysError::new(ERANGE)),
             };
-            let arena = match MemoryMappingArena::new_protection(size, Protection::read_write()) {
+            let arena = match MemoryMappingArena::new(size) {
                 Ok(a) => a,
                 Err(MmapError::SystemCallFailed(e)) => return Err(e),
                 _ => return Err(SysError::new(EINVAL)),

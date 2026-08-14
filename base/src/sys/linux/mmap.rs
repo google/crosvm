@@ -662,11 +662,6 @@ impl MemoryMappingArena {
         MemoryMapping::new_protection(size, None, Protection::read()).map(From::from)
     }
 
-    /// Creates an mmap arena of `size` bytes with custom initial memory protections.
-    pub fn new_protection(size: usize, prot: Protection) -> Result<MemoryMappingArena> {
-        MemoryMapping::new_protection(size, None, prot).map(From::from)
-    }
-
     /// Anonymously maps `size` bytes at `offset` bytes from the start of the arena
     /// with `prot` protections. `offset` must be page aligned.
     ///

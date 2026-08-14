@@ -104,7 +104,7 @@ pub fn create_gpu_device(
             // GPU pci passthrough.
             debug!("gpu fixed blob mapping disabled: not compatible with passthrough GPU.");
             gpu_params.fixed_blob_mapping = false;
-        } else if cfg!(feature = "vulkano") && gpu_params.use_vulkan.unwrap_or(false) {
+        } else if cfg!(feature = "vulkano") {
             // TODO(b/244591751): make fixed_blob_mapping compatible with vulkano for opaque_fd blob
             // mapping.
             debug!("gpu fixed blob mapping disabled: not compatible with vulkano");
