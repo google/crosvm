@@ -42,10 +42,12 @@ cfg_if::cfg_if! {
         mod console;
         mod fs;
         mod vsock;
+        #[cfg(feature = "virtio_wl")]
         mod wl;
 
         pub use vsock::{run_vsock_device, Options as VsockOptions, VhostUserVsockDevice};
-        pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
+        #[cfg(feature = "virtio_wl")]
+        pub use wl::{run_wl_device, Options as WlOptions};
         pub use console::{create_vu_console_device, run_console_device, Options as ConsoleOptions};
         pub use fs::{run_fs_device, Options as FsOptions};
     } else if #[cfg(windows)] {

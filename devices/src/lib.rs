@@ -171,6 +171,7 @@ cfg_if::cfg_if! {
         pub use self::usb::backend::device_provider::DeviceProvider;
         #[cfg(feature = "usb")]
         pub use self::usb::xhci::xhci_controller::XhciController;
+        pub use self::sys::linux::parse_wayland_sock;
         pub use self::vfio::VfioContainer;
         pub use self::vfio::VfioDevice;
         pub use self::vfio::VfioDeviceType;

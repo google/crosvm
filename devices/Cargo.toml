@@ -44,6 +44,7 @@ swap = ["swap/enable"]
 whpx = []
 pci-hotplug = []
 noncoherent-dma = []
+virtio_wl = []
 
 [dependencies]
 argh = { workspace = true }

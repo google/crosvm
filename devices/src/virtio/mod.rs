@@ -111,6 +111,7 @@ cfg_if::cfg_if! {
         mod p9;
         mod pmem;
 
+        #[cfg(feature = "virtio_wl")]
         pub mod wl;
         pub mod fs;
 
@@ -125,6 +126,7 @@ cfg_if::cfg_if! {
         pub use self::pmem::MemSlotConfig;
         #[cfg(feature = "audio")]
         pub use self::snd::new_sound;
+        #[cfg(feature = "virtio_wl")]
         pub use self::wl::Wl;
     } else if #[cfg(windows)] {
         pub use self::vsock::Vsock;

@@ -5,7 +5,7 @@
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         use base::RawDescriptor;
-        use devices::virtio::vhost_user_backend::parse_wayland_sock;
+        use devices::parse_wayland_sock;
 
         use crate::crosvm::sys::config::parse_pmem_ext2_option;
         use crate::crosvm::sys::config::VfioOption;

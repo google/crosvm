@@ -16,6 +16,7 @@ use base::warn;
 use devices::virtio::vhost_user_backend::run_console_device;
 use devices::virtio::vhost_user_backend::run_fs_device;
 use devices::virtio::vhost_user_backend::run_vsock_device;
+#[cfg(feature = "virtio_wl")]
 use devices::virtio::vhost_user_backend::run_wl_device;
 
 use crate::crosvm::sys::cmdline::Commands;
@@ -29,6 +30,7 @@ pub(crate) fn start_device(command: DeviceSubcommand) -> anyhow::Result<()> {
         DeviceSubcommand::Console(cfg) => run_console_device(cfg),
         DeviceSubcommand::Fs(cfg) => run_fs_device(cfg),
         DeviceSubcommand::Vsock(cfg) => run_vsock_device(cfg),
+        #[cfg(feature = "virtio_wl")]
         DeviceSubcommand::Wl(cfg) => run_wl_device(cfg),
     }
 }

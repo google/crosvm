@@ -239,6 +239,7 @@ fn create_virtio_devices(
     #[cfg(any(feature = "gpu", feature = "video-decoder", feature = "video-encoder"))]
     let mut resource_bridges = Vec::<Tube>::new();
 
+    #[cfg(feature = "virtio_wl")]
     if !cfg.wayland_socket_paths.is_empty() {
         #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
         let mut wl_resource_bridge = None::<Tube>;

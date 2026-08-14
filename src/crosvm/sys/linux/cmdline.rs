@@ -25,6 +25,7 @@ pub enum DeviceSubcommand {
     Console(vhost_user_backend::ConsoleOptions),
     Fs(vhost_user_backend::FsOptions),
     Vsock(vhost_user_backend::VsockOptions),
+    #[cfg(feature = "virtio_wl")]
     Wl(vhost_user_backend::WlOptions),
 }
 

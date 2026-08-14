@@ -867,6 +867,7 @@ fn create_tap_for_net_device(
     }
 }
 
+#[cfg(feature = "virtio_wl")]
 pub fn create_wayland_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,

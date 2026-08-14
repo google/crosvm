@@ -23,11 +23,11 @@ use cros_async::IoSource;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 
+use crate::sys::linux::parse_wayland_sock;
 use crate::virtio;
 use crate::virtio::gpu;
 use crate::virtio::gpu::ProcessDisplayResult;
 use crate::virtio::vhost_user_backend::gpu::GpuBackend;
-use crate::virtio::vhost_user_backend::wl::parse_wayland_sock;
 use crate::virtio::vhost_user_backend::BackendConnection;
 use crate::virtio::Gpu;
 use crate::virtio::GpuDisplayParameters;
