@@ -6,10 +6,12 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::mem;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 use anyhow::Context;
 use base::error;
+use base::warn;
 use base::AsRawDescriptor;
 use base::EventType;
 use base::RawDescriptor;
@@ -27,6 +29,7 @@ use crate::usb::backend::error::Result;
 use crate::usb::backend::fido_backend::fido_provider::attach_security_key;
 use crate::usb::backend::host_backend::host_backend_device_provider::attach_host_backend_device;
 use crate::usb::backend::utils::UsbUtilEventHandler;
+use crate::usb::xhci::usb_hub::Error as UsbHubError;
 use crate::usb::xhci::usb_hub::UsbHub;
 use crate::usb::xhci::xhci_backend_device::XhciBackendDevice;
 use crate::usb::xhci::xhci_backend_device_provider::XhciBackendDeviceProvider;
@@ -74,15 +77,27 @@ impl DeviceProvider {
             DeviceProvider::Created { control_tube } => {
                 let job_queue =
                     AsyncJobQueue::init(&event_loop).map_err(Error::StartAsyncJobQueue)?;
+                // The control channel runs on its own event loop, with no fail handle attached,
+                // so a failed controller cannot take `usb list`/`usb detach` down with it --
+                // those two commands are how an exhausted hub gets its ports back, so they must
+                // keep working after a failure. Devices and their transfers stay on the xhci
+                // loop instead, where a failed controller should stop them: an attach attempted
+                // after the failure is still turned away, by add_event.
+                let (control_event_loop, join_handle) =
+                    EventLoop::start("usb_provider".to_string(), None)
+                        .map_err(Error::StartEventLoop)?;
+                let control_event_loop = Arc::new(control_event_loop);
                 let inner = Arc::new(ProviderInner::new(
                     fail_handle,
                     job_queue,
-                    event_loop.clone(),
+                    event_loop,
+                    control_event_loop.clone(),
+                    join_handle,
                     control_tube,
                     hub,
                 ));
                 let handler: Arc<dyn EventHandler> = inner.clone();
-                event_loop
+                control_event_loop
                     .add_event(
                         &*inner.control_tube.lock(),
                         EventType::Read,
@@ -131,7 +146,13 @@ impl XhciBackendDeviceProvider for DeviceProvider {
 pub struct ProviderInner {
     fail_handle: Arc<dyn FailHandle>,
     job_queue: Arc<AsyncJobQueue>,
+    // The xhci loop, shared with the controller. Attached devices poll here, so that a failed
+    // controller stops them.
     event_loop: Arc<EventLoop>,
+    // A separate event loop from the xhci one above, so the control channel keeps working
+    // after a controller failure; see start_helper() for why.
+    control_event_loop: Arc<EventLoop>,
+    control_event_loop_join_handle: Option<thread::JoinHandle<()>>,
     control_tube: Mutex<Tube>,
     usb_hub: Arc<UsbHub>,
 
@@ -144,6 +165,8 @@ impl ProviderInner {
         fail_handle: Arc<dyn FailHandle>,
         job_queue: Arc<AsyncJobQueue>,
         event_loop: Arc<EventLoop>,
+        control_event_loop: Arc<EventLoop>,
+        control_event_loop_join_handle: thread::JoinHandle<()>,
         control_tube: Mutex<Tube>,
         usb_hub: Arc<UsbHub>,
     ) -> ProviderInner {
@@ -151,6 +174,8 @@ impl ProviderInner {
             fail_handle,
             job_queue,
             event_loop,
+            control_event_loop,
+            control_event_loop_join_handle: Some(control_event_loop_join_handle),
             control_tube,
             usb_hub,
             devices: Mutex::new(HashMap::new()),
@@ -208,20 +233,29 @@ impl ProviderInner {
 
     fn handle_detach_device(&self, port: u8) -> UsbControlResult {
         match self.usb_hub.disconnect_port(port) {
-            Ok(()) => {
-                // The device enters a detaching state in hub.disconnect_port(). We'll remove the
-                // event handler from the event loop in on_event() to properly wait and clean-up
-                // all the in-flight transfers.
-                if let Some(event_handler) = self.devices.lock().remove(&port) {
-                    event_handler.signal_detach();
-                }
-                UsbControlResult::Ok { port }
+            Ok(()) => {}
+            Err(e @ UsbHubError::Detach { .. }) => {
+                // UsbPort::detach() removes and stops the backend before notifying the guest.
+                // The host-side detach therefore succeeded even if a failed event ring could not
+                // accept the port-status-change event. Continue releasing the host resources.
+                warn!(
+                    "detached device from port {}, but failed to notify the guest: {}",
+                    port, e
+                );
             }
             Err(e) => {
                 error!("failed to disconnect device from port {}: {}", port, e);
-                UsbControlResult::NoSuchDevice
+                return UsbControlResult::NoSuchDevice;
             }
         }
+
+        // The device enters a detaching state in hub.disconnect_port(). Remove the event handler
+        // from the event loop after in-flight transfers have completed and release its host
+        // resources. This is also required when only the guest notification above failed.
+        if let Some(event_handler) = self.devices.lock().remove(&port) {
+            event_handler.signal_detach();
+        }
+        UsbControlResult::Ok { port }
     }
 
     fn handle_attach_security_key(&self, hidraw: File) -> UsbControlResult {
@@ -290,5 +324,16 @@ impl EventHandler for ProviderInner {
     fn on_event(&self) -> anyhow::Result<()> {
         self.on_event_helper()
             .context("host backend device provider failed")
+    }
+}
+
+impl Drop for ProviderInner {
+    fn drop(&mut self) {
+        // The loop holds a weak reference to us, so it cannot be what is keeping us alive, and
+        // by the time we get here it has nothing left to dispatch to.
+        self.control_event_loop.stop();
+        if let Some(join_handle) = self.control_event_loop_join_handle.take() {
+            let _ = join_handle.join();
+        }
     }
 }

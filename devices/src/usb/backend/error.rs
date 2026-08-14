@@ -84,6 +84,8 @@ pub enum Error {
     SetupControlTube(TubeError),
     #[error("failed to start async job queue: {0}")]
     StartAsyncJobQueue(UtilsError),
+    #[error("failed to start the control event loop: {0}")]
+    StartEventLoop(UtilsError),
     #[error("xhci transfer completed: {0}")]
     TransferComplete(XhciTransferError),
     #[error("failed to get max payload size for xhci transfer: {0}")]
