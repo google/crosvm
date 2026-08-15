@@ -964,6 +964,7 @@ fn create_virtio_devices(
         "wayland",
         "multi_touch",
         "window_keyboard",
+        "gpu",
         "console",
         "disk",
         "scsi",
