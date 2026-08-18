@@ -4,6 +4,7 @@
 
 use anyhow::Context;
 use base::warn;
+use base::RawDescriptor;
 use cros_async::sys::windows::ExecutorKindSys;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
@@ -14,6 +15,10 @@ use crate::virtio::BlockAsync;
 pub fn get_seg_max(_queue_size: u16) -> u32 {
     // Allow a single segment per request, since vectored I/O is not implemented for Windows yet.
     1
+}
+
+pub fn check_dontcache_support(_fd: RawDescriptor) -> bool {
+    false
 }
 
 impl DiskOption {

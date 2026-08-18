@@ -703,6 +703,19 @@ impl BlockAsync {
             disk_size: disk_size.clone(),
         }));
 
+        let mut dontcache = disk_option.dontcache;
+        if dontcache {
+            let descriptors = disk_image.as_raw_descriptors();
+            if descriptors.is_empty() || !descriptors.iter().all(|&fd| check_dontcache_support(fd))
+            {
+                base::info!(
+                    "dontcache requested, but not supported by backing filesystem; falling back to
+                    cached I/O"
+                );
+                dontcache = false;
+            }
+        }
+
         Ok(BlockAsync {
             disk_image: Some(disk_image),
             disk_size,
@@ -723,7 +736,7 @@ impl BlockAsync {
             #[cfg(windows)]
             io_concurrency,
             pci_address: disk_option.pci_address,
-            dontcache: disk_option.dontcache,
+            dontcache,
         })
     }
 
