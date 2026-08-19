@@ -17,7 +17,7 @@ pub fn get_seg_max(_queue_size: u16) -> u32 {
     1
 }
 
-pub fn check_dontcache_support(_fd: RawDescriptor) -> bool {
+pub fn check_dontcache_support(_fd: RawDescriptor, _write: bool) -> bool {
     false
 }
 

@@ -8,6 +8,7 @@ use std::os::fd::BorrowedFd;
 
 use anyhow::Context;
 use base::linux::preadv2;
+use base::linux::pwritev2;
 use base::unix::iov_max;
 use base::IoBufMut;
 use base::RawDescriptor;
@@ -26,12 +27,21 @@ pub fn get_seg_max(queue_size: u16) -> u32 {
     min(seg_max, u32::from(queue_size) - 2)
 }
 
-pub fn check_dontcache_support(fd: RawDescriptor) -> bool {
+pub fn check_dontcache_support(fd: RawDescriptor, write: bool) -> bool {
     let mut buf = [0u8; 1];
     let mut iovs = [IoBufMut::new(&mut buf)];
     // SAFETY: fd is an open file descriptor.
     let borrowed_fd = unsafe { BorrowedFd::borrow_raw(fd) };
-    let res = preadv2(borrowed_fd, &mut iovs, 0, libc::RWF_DONTCACHE);
+    let res = if write {
+        pwritev2(
+            borrowed_fd,
+            IoBufMut::as_iobufs(&iovs),
+            0,
+            libc::RWF_DONTCACHE,
+        )
+    } else {
+        preadv2(borrowed_fd, &mut iovs, 0, libc::RWF_DONTCACHE)
+    };
     if res < 0 {
         let err = base::Error::last();
         match err.errno() {

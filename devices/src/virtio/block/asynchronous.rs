@@ -219,7 +219,8 @@ struct DiskState {
     read_only: bool,
     sparse: bool,
     id: BlockId,
-    dontcache: bool,
+    dontcache_read: bool,
+    dontcache_write: bool,
     /// A DiskState is owned by each worker's executor and cannot be shared by workers, thus
     /// `worker_shared_state` holds the state shared by workers in Arc.
     worker_shared_state: Arc<AsyncRwLock<WorkerSharedState>>,
@@ -636,7 +637,8 @@ pub struct BlockAsync {
     #[cfg(windows)]
     pub(super) io_concurrency: u32,
     pci_address: Option<PciAddress>,
-    dontcache: bool,
+    dontcache_read: bool,
+    dontcache_write: bool,
 }
 
 impl BlockAsync {
@@ -703,16 +705,34 @@ impl BlockAsync {
             disk_size: disk_size.clone(),
         }));
 
-        let mut dontcache = disk_option.dontcache;
-        if dontcache {
+        let mut dontcache_read = disk_option.dontcache;
+        let mut dontcache_write = disk_option.dontcache;
+        if dontcache_write {
             let descriptors = disk_image.as_raw_descriptors();
-            if descriptors.is_empty() || !descriptors.iter().all(|&fd| check_dontcache_support(fd))
+            if descriptors.is_empty()
+                || !descriptors
+                    .iter()
+                    .all(|&fd| check_dontcache_support(fd, true /* write */))
             {
                 base::info!(
-                    "dontcache requested, but not supported by backing filesystem; falling back to
-                    cached I/O"
+                    "dontcache requested, but not supported for writes by backing filesystem; falling
+                    back to cached I/O"
                 );
-                dontcache = false;
+                dontcache_write = false;
+            }
+        }
+        if dontcache_read {
+            let descriptors = disk_image.as_raw_descriptors();
+            if descriptors.is_empty()
+                || !descriptors
+                    .iter()
+                    .all(|&fd| check_dontcache_support(fd, false /* write */))
+            {
+                base::info!(
+                    "dontcache requested, but not supported for reads by backing filesystem; falling
+                    back to cached I/O"
+                );
+                dontcache_read = false;
             }
         }
 
@@ -736,7 +756,8 @@ impl BlockAsync {
             #[cfg(windows)]
             io_concurrency,
             pci_address: disk_option.pci_address,
-            dontcache,
+            dontcache_read,
+            dontcache_write,
         })
     }
 
@@ -831,7 +852,7 @@ impl BlockAsync {
                         data_len,
                         offset,
                         IoOptions {
-                            dontcache: disk_state.dontcache,
+                            dontcache: disk_state.dontcache_read,
                         },
                     )
                     .await
@@ -857,7 +878,7 @@ impl BlockAsync {
                         data_len,
                         offset,
                         IoOptions {
-                            dontcache: disk_state.dontcache,
+                            dontcache: disk_state.dontcache_write,
                         },
                     )
                     .await
@@ -1005,7 +1026,8 @@ impl BlockAsync {
 
         let ex = self.create_executor();
         let control_tube = self.control_tube.take();
-        let dontcache = self.dontcache;
+        let dontcache_read = self.dontcache_read;
+        let dontcache_write = self.dontcache_write;
         let disk_image = if self.worker_per_queue {
             self.disk_image
                 .as_ref()
@@ -1037,7 +1059,8 @@ impl BlockAsync {
                 read_only,
                 sparse,
                 id,
-                dontcache,
+                dontcache_read,
+                dontcache_write,
                 worker_shared_state,
             }));
 
@@ -1419,7 +1442,8 @@ mod tests {
             read_only: false,
             sparse: true,
             id: Default::default(),
-            dontcache: false,
+            dontcache_read: false,
+            dontcache_write: false,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
@@ -1488,7 +1512,8 @@ mod tests {
             read_only: false,
             sparse: true,
             id: Default::default(),
-            dontcache: false,
+            dontcache_read: false,
+            dontcache_write: false,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
@@ -1559,7 +1584,8 @@ mod tests {
             read_only: false,
             sparse: true,
             id: *id,
-            dontcache: false,
+            dontcache_read: false,
+            dontcache_write: false,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
             })),
