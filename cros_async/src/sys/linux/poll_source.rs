@@ -3,15 +3,19 @@
 // found in the LICENSE file.
 
 use std::io;
+use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use base::handle_eintr_errno;
+use base::linux::preadv2;
+use base::linux::pwritev2;
 use base::sys::fallocate;
 use base::sys::FallocateMode;
 use base::AsRawDescriptor;
+use base::IoBufMut;
 use base::VolatileSlice;
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -115,22 +119,13 @@ impl<F: AsRawDescriptor> PollSource<F> {
         loop {
             let res = handle_eintr_errno!(if use_dontcache {
                 let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
-                let iovecs = [libc::iovec {
-                    iov_base: vec.as_mut_ptr() as *mut libc::c_void,
-                    iov_len: vec.len(),
-                }];
-                // SAFETY:
-                // Safe because we trust the kernel not to write past the length given and the
-                // pointers/buffers are guaranteed to be valid for the duration of the call.
-                unsafe {
-                    libc::preadv2(
-                        self.registered_source.duped_fd.as_raw_fd(),
-                        iovecs.as_ptr(),
-                        iovecs.len() as i32,
-                        offset,
-                        libc::RWF_DONTCACHE,
-                    )
-                }
+                let mut iovecs = [IoBufMut::new(&mut vec)];
+                preadv2(
+                    self.registered_source.duped_fd.as_fd(),
+                    &mut iovecs,
+                    offset,
+                    libc::RWF_DONTCACHE,
+                )
             } else if let Some(offset) = file_offset {
                 // SAFETY:
                 // Safe because we trust the kernel not to write past the length given and the
@@ -201,18 +196,12 @@ impl<F: AsRawDescriptor> PollSource<F> {
         loop {
             let res = handle_eintr_errno!(if use_dontcache {
                 let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
-                // SAFETY:
-                // Safe because we trust the kernel not to write past the length given and the
-                // volatile slices are guaranteed to be valid for the duration of the call.
-                unsafe {
-                    libc::preadv2(
-                        self.registered_source.duped_fd.as_raw_fd(),
-                        iovecs.as_ptr() as *const libc::iovec,
-                        iovecs.len() as libc::c_int,
-                        offset,
-                        libc::RWF_DONTCACHE,
-                    )
-                }
+                preadv2(
+                    self.registered_source.duped_fd.as_fd(),
+                    VolatileSlice::as_iobufs_mut(&mut iovecs),
+                    offset,
+                    libc::RWF_DONTCACHE,
+                )
             } else if let Some(offset) = file_offset {
                 // SAFETY:
                 // Safe because we trust the kernel not to write past the length given and the
@@ -280,7 +269,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
     pub async fn write_from_vec(
         &self,
         file_offset: Option<u64>,
-        vec: Vec<u8>,
+        mut vec: Vec<u8>,
         options: IoOptions,
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let mut use_dontcache =
@@ -288,22 +277,13 @@ impl<F: AsRawDescriptor> PollSource<F> {
         loop {
             let res = handle_eintr_errno!(if use_dontcache {
                 let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
-                let iovecs = [libc::iovec {
-                    iov_base: vec.as_ptr() as *mut libc::c_void,
-                    iov_len: vec.len(),
-                }];
-                // SAFETY:
-                // Safe because we only read from the passed buffer and the pointers/buffers
-                // are guaranteed to be valid for the duration of the call.
-                unsafe {
-                    libc::pwritev2(
-                        self.registered_source.duped_fd.as_raw_fd(),
-                        iovecs.as_ptr(),
-                        1,
-                        offset,
-                        libc::RWF_DONTCACHE,
-                    )
-                }
+                let iovecs = [IoBufMut::new(&mut vec)];
+                pwritev2(
+                    self.registered_source.duped_fd.as_fd(),
+                    IoBufMut::as_iobufs(&iovecs),
+                    offset,
+                    libc::RWF_DONTCACHE,
+                )
             } else if let Some(offset) = file_offset {
                 // SAFETY:
                 // Safe because we only read from the passed buffer and the pointers/buffers
@@ -375,18 +355,12 @@ impl<F: AsRawDescriptor> PollSource<F> {
         loop {
             let res = handle_eintr_errno!(if use_dontcache {
                 let offset = file_offset.map(|o| o as libc::off_t).unwrap_or(-1);
-                // SAFETY:
-                // Safe because we only read from the passed volatile slices and they are
-                // guaranteed to be valid for the duration of the call.
-                unsafe {
-                    libc::pwritev2(
-                        self.registered_source.duped_fd.as_raw_fd(),
-                        iovecs.as_ptr() as *const libc::iovec,
-                        iovecs.len() as libc::c_int,
-                        offset,
-                        libc::RWF_DONTCACHE,
-                    )
-                }
+                pwritev2(
+                    self.registered_source.duped_fd.as_fd(),
+                    IoBufMut::as_iobufs(VolatileSlice::as_iobufs(&iovecs)),
+                    offset,
+                    libc::RWF_DONTCACHE,
+                )
             } else if let Some(offset) = file_offset {
                 // SAFETY:
                 // Safe because we only read from the passed volatile slices and they are

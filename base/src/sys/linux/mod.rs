@@ -45,6 +45,8 @@ use std::fs::OpenOptions;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
+use std::os::fd::AsRawFd;
+use std::os::fd::BorrowedFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixDatagram;
@@ -106,6 +108,8 @@ use crate::round_up_to_page_size;
 pub use crate::sys::unix::descriptor::*;
 use crate::syscall;
 use crate::AsRawDescriptor;
+use crate::IoBuf;
+use crate::IoBufMut;
 use crate::Pid;
 
 /// Re-export libc types that are part of the API.
@@ -807,6 +811,70 @@ pub fn is_cpu_online(cpu_id: usize) -> bool {
     });
 
     online_cpus.contains(&cpu_id)
+}
+
+/// Wrapper around the `preadv2` syscall for standard I/O slices.
+///
+/// We invoke the Linux syscall directly using `libc::syscall` instead of `libc::preadv2`
+/// because some host build environments (e.g. older glibc sysroots like glibc 2.17 used in
+/// Android prebuilts for Cuttlefish) do not export `preadv2` in libc.
+pub fn preadv2(
+    fd: BorrowedFd<'_>,
+    iovs: &mut [IoBufMut],
+    offset: libc::off_t,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    if iovs.is_empty() {
+        return 0;
+    }
+    let pos_l = offset as libc::c_ulong;
+    let pos_h = 0;
+    // SAFETY:
+    // Safe because `IoBufMut` is ABI-compatible with `libc::iovec`, the buffers referenced by
+    // `iovs` are valid for writes for the duration of the call, and the file descriptor is valid.
+    unsafe {
+        libc::syscall(
+            libc::SYS_preadv2,
+            fd.as_raw_fd(),
+            iovs.as_mut_ptr() as *mut libc::iovec,
+            iovs.len(),
+            pos_l,
+            pos_h,
+            flags,
+        ) as libc::ssize_t
+    }
+}
+
+/// Wrapper around the `pwritev2` syscall for standard I/O slices.
+///
+/// We invoke the Linux syscall directly using `libc::syscall` instead of `libc::pwritev2`
+/// because some host build environments (e.g. older glibc sysroots like glibc 2.17 used in
+/// Android prebuilts for Cuttlefish) do not export `pwritev2` in libc.
+pub fn pwritev2(
+    fd: BorrowedFd<'_>,
+    iovs: &[IoBuf],
+    offset: libc::off_t,
+    flags: libc::c_int,
+) -> libc::ssize_t {
+    if iovs.is_empty() {
+        return 0;
+    }
+    let pos_l = offset as libc::c_ulong;
+    let pos_h = 0;
+    // SAFETY:
+    // Safe because `IoBuf` is ABI-compatible with `libc::iovec`, the buffers referenced by
+    // `iovs` are valid for reads for the duration of the call, and the file descriptor is valid.
+    unsafe {
+        libc::syscall(
+            libc::SYS_pwritev2,
+            fd.as_raw_fd(),
+            iovs.as_ptr(),
+            iovs.len(),
+            pos_l,
+            pos_h,
+            flags,
+        ) as libc::ssize_t
+    }
 }
 
 #[repr(C)]
