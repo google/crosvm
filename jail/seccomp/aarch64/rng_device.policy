@@ -6,4 +6,4 @@
 
 getrandom: 1
 openat: return ENOENT
-prctl: arg0 == PR_SET_NAME
+prctl: arg0 == PR_SET_NAME || arg0 == PR_SET_PDEATHSIG
