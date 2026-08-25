@@ -77,6 +77,29 @@ fn kvm_default_irq_routing_table(ioapic_pins: usize) -> Vec<IrqRoute> {
     routes
 }
 
+/// Restores the Local APIC state and re-signals any pending IRR interrupt vectors via MSI.
+///
+/// On Intel hosts with APICv enabled running older Linux kernels (v4.11 through 6.5.11),
+/// KVM_SET_LAPIC clears the hardware Posted Interrupt Request (PIR) descriptor.
+/// Re-signaling pending IRR vectors via MSI ensures they are properly populated in both
+/// the LAPIC IRR and the hardware PIR descriptor so they are delivered upon guest resume.
+/// This function is idempotent on newer kernels. The already set interrupts get set again,
+/// which is an idempotent function.
+fn set_lapic_and_restore_irr(vm: &KvmVm, vcpu: &KvmVcpu, state: &LapicState) -> Result<()> {
+    vcpu.set_lapic(&kvm_lapic_state::from(state))?;
+
+    let pending_vectors = state.get_pending_irr_vectors();
+    if !pending_vectors.is_empty() {
+        let apic_id = state.get_apic_id();
+        for vec in pending_vectors {
+            if vec >= 32 {
+                vm.signal_msi_to_lapic(apic_id, vec)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// IrqChip implementation where the entire IrqChip is emulated by KVM.
 ///
 /// This implementation will use the KVM API to create and configure the in-kernel irqchip.
@@ -143,7 +166,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
     /// Set the current state of the specified VCPU's local APIC
     fn set_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()> {
         match self.vcpus.lock().get(vcpu_id) {
-            Some(Some(vcpu)) => vcpu.set_lapic(&kvm_lapic_state::from(state)),
+            Some(Some(vcpu)) => set_lapic_and_restore_irr(&self.vm, vcpu, state),
             _ => Err(Error::new(libc::ENOENT)),
         }
     }
@@ -775,7 +798,7 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
     /// Set the current state of the specified VCPU's local APIC
     fn set_lapic_state(&self, vcpu_id: usize, state: &LapicState) -> Result<()> {
         match self.vcpus.lock().get(vcpu_id) {
-            Some(Some(vcpu)) => vcpu.set_lapic(&kvm_lapic_state::from(state)),
+            Some(Some(vcpu)) => set_lapic_and_restore_irr(&self.vm, vcpu, state),
             _ => Err(Error::new(libc::ENOENT)),
         }
     }

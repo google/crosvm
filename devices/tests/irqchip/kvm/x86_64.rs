@@ -41,6 +41,7 @@ use crate::x86_64::test_get_pit;
 use crate::x86_64::test_route_irq;
 use crate::x86_64::test_set_ioapic;
 use crate::x86_64::test_set_lapic;
+use crate::x86_64::test_set_lapic_irr_restore;
 use crate::x86_64::test_set_pic;
 use crate::x86_64::test_set_pit;
 
@@ -122,6 +123,16 @@ fn kernel_irqchip_get_lapic() {
 #[test]
 fn kernel_irqchip_set_lapic() {
     test_set_lapic(get_kernel_chip())
+}
+
+#[test]
+fn kernel_irqchip_set_lapic_irr_restore() {
+    test_set_lapic_irr_restore(get_kernel_chip())
+}
+
+#[test]
+fn split_irqchip_set_lapic_irr_restore() {
+    test_set_lapic_irr_restore(get_split_chip())
 }
 
 #[test]

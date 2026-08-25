@@ -148,6 +148,29 @@ pub fn test_set_lapic(chip: Arc<dyn IrqChipX86_64>) {
     assert_eq!(state.regs[8], 1 << 8);
 }
 
+#[allow(unused)]
+pub fn test_set_lapic_irr_restore(chip: Arc<dyn IrqChipX86_64>) {
+    let mut state = chip.get_lapic_state(0).expect("failed to get lapic state");
+
+    // Set pending interrupt vector 0xEC (SMP call function vector) in regs[39] bit 12
+    let vec: u8 = 0xEC;
+    let reg_offset = ((vec / 32) as usize) + 32;
+    let bit_idx = (vec % 32) as u32;
+    state.regs[reg_offset] |= 1 << bit_idx;
+
+    chip.set_lapic_state(0, &state)
+        .expect("failed to set lapic state with pending IRR");
+
+    // Verify that the pending IRR vector is preserved in LAPIC state
+    let restored_state = chip.get_lapic_state(0).expect("failed to get lapic state");
+    assert_eq!(
+        restored_state.regs[reg_offset] & (1 << bit_idx),
+        1 << bit_idx,
+        "Pending IRR vector 0x{:X} was not preserved in LAPIC state",
+        vec
+    );
+}
+
 /// Helper function for checking the pic interrupt status
 fn check_pic_interrupts(chip: &dyn IrqChipX86_64, select: PicSelect, value: u8) {
     let state = chip

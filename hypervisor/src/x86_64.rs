@@ -638,6 +638,36 @@ impl PartialEq for LapicState {
 // Lapic equality is reflexive, so we impl Eq
 impl Eq for LapicState {}
 
+// Local APIC ID register: index 2 (offset 0x20)
+pub const APIC_ID_REG: usize = 2;
+// Local APIC IRR registers: indices 32..=39 (offsets 0x200..0x270, vectors 0..=255)
+pub const APIC_IRR_START_REG: usize = 32;
+
+impl LapicState {
+    /// Returns the APIC ID from the LAPIC registers.
+    pub fn get_apic_id(&self) -> u32 {
+        (self.regs[APIC_ID_REG] >> 24) & 0xFF
+    }
+
+    /// Returns a list of all pending interrupt vectors set in the IRR (Interrupt Request Register).
+    pub fn get_pending_irr_vectors(&self) -> Vec<u8> {
+        let mut vectors = Vec::new();
+        for (i, &reg) in self.regs[APIC_IRR_START_REG..=APIC_IRR_START_REG + 7]
+            .iter()
+            .enumerate()
+        {
+            if reg != 0 {
+                for bit in 0..32 {
+                    if (reg & (1 << bit)) != 0 {
+                        vectors.push((i * 32 + bit) as u8);
+                    }
+                }
+            }
+        }
+        vectors
+    }
+}
+
 /// The PitState represents the state of the PIT (aka the Programmable Interval Timer).
 /// The state is simply the state of it's three channels.
 #[repr(C)]
@@ -1117,5 +1147,37 @@ impl Xsave {
     /// Returns true is length of XSAVE data is zero
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lapic_get_apic_id() {
+        let mut lapic = LapicState { regs: [0; 64] };
+        assert_eq!(lapic.get_apic_id(), 0);
+
+        // xAPIC mode: ID in bits 24..=31
+        lapic.regs[APIC_ID_REG] = 0x05000000;
+        assert_eq!(lapic.get_apic_id(), 5);
+
+        lapic.regs[APIC_ID_REG] = 0xFE000000;
+        assert_eq!(lapic.get_apic_id(), 0xFE);
+    }
+
+    #[test]
+    fn test_lapic_get_pending_irr_vectors() {
+        let mut lapic = LapicState { regs: [0; 64] };
+        assert!(lapic.get_pending_irr_vectors().is_empty());
+
+        // Vector 0xEC (236): word 7 (regs[39]), bit 12 (236 - 224 = 12)
+        lapic.regs[APIC_IRR_START_REG + 7] |= 1 << 12;
+        // Vector 0x30 (48): word 1 (regs[33]), bit 16 (48 - 32 = 16)
+        lapic.regs[APIC_IRR_START_REG + 1] |= 1 << 16;
+
+        let vectors = lapic.get_pending_irr_vectors();
+        assert_eq!(vectors, vec![48, 236]);
     }
 }

@@ -308,6 +308,36 @@ fn pvclock_restore_on_new_vm() {
 }
 
 #[test]
+fn signal_msi_delivery_to_lapic() {
+    let kvm = Kvm::new().unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    vm.create_irq_chip().unwrap();
+    let vcpu = vm.create_kvm_vcpu(0).unwrap();
+
+    let mut lapic = LapicState::from(&vcpu.get_lapic().unwrap());
+    // Enable APIC by setting bit 8 in SPIV (offset 0xF0, reg 15)
+    lapic.regs[15] |= 0x1ff;
+    vcpu.set_lapic(&kvm_lapic_state::from(&lapic)).unwrap();
+
+    let initial_lapic = LapicState::from(&vcpu.get_lapic().unwrap());
+    let vec: u8 = 0xEC;
+    let reg_offset = ((vec / 32) as usize) + 32;
+    let bit_idx = (vec % 32) as u32;
+    assert_eq!(initial_lapic.regs[reg_offset] & (1 << bit_idx), 0);
+
+    vm.signal_msi_to_lapic(0, vec).unwrap();
+
+    let updated_lapic = LapicState::from(&vcpu.get_lapic().unwrap());
+    assert_eq!(
+        updated_lapic.regs[reg_offset] & (1 << bit_idx),
+        1 << bit_idx,
+        "Vector 0x{:X} was not delivered to LAPIC IRR via MSI",
+        vec
+    );
+}
+
+#[test]
 fn set_gsi_routing() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();

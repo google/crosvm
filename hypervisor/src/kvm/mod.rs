@@ -593,6 +593,19 @@ impl KvmVm {
         }
     }
 
+    /// Signals an MSI (Message Signaled Interrupt) to the guest using KVM_SIGNAL_MSI.
+    pub fn signal_msi(&self, msi: &kvm_msi) -> Result<()> {
+        // SAFETY:
+        // Safe because we know that our file is a VM fd, the kernel will only read from the
+        // kvm_msi struct, and we verify the return result.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SIGNAL_MSI, msi) };
+        if ret >= 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
     /// Checks whether a particular KVM-specific capability is available for this VM.
     pub fn check_raw_capability(&self, capability: KvmCap) -> bool {
         // SAFETY:

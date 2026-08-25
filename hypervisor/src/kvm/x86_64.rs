@@ -257,6 +257,18 @@ impl KvmVm {
         }
     }
 
+    /// Signals an interrupt vector directly to a vCPU's Local APIC using MSI.
+    pub fn signal_msi_to_lapic(&self, apic_id: u32, vector: u8) -> Result<()> {
+        let msi = kvm_msi {
+            address_lo: 0xFEE0_0000 | ((apic_id & 0xFF) << 12),
+            address_hi: 0,
+            data: vector as u32,
+            flags: 0,
+            ..Default::default()
+        };
+        self.signal_msi(&msi)
+    }
+
     /// Retrieves the state of given interrupt controller by issuing KVM_GET_IRQCHIP ioctl.
     ///
     /// Note that this call can only succeed after a call to `Vm::create_irq_chip`.
