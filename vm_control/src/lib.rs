@@ -2238,7 +2238,7 @@ impl VmRequest {
                 // Resume the pvclock as late as possible before starting vCPUs.
                 if vm.check_capability(VmCap::PvClock) {
                     // If None, then we aren't suspended, which is a valid case.
-                    if let Some(x) = suspended_pvclock_state {
+                    if let Some(x) = &suspended_pvclock_state.take() {
                         if let Err(e) = vm.set_pvclock(x) {
                             error!("resume_pvclock failed: {e:?}");
                             return VmResponse::Err(SysError::new(EIO));

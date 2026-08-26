@@ -247,6 +247,67 @@ fn clock_handling() {
 }
 
 #[test]
+fn set_and_get_pvclock() {
+    let kvm = Kvm::new().unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let orig_clock = vm.get_pvclock().unwrap();
+    let mut target_clock = orig_clock;
+    target_clock.clock = 50_000_000_000; // 50s in ns
+    vm.set_pvclock(&target_clock).unwrap();
+    let restored_clock = vm.get_pvclock().unwrap();
+    assert!(
+        restored_clock.clock >= 50_000_000_000,
+        "restored_clock: {0}",
+        restored_clock.clock
+    );
+    assert!(
+        restored_clock.clock < 55_000_000_000,
+        "restored_clock: {0}",
+        restored_clock.clock
+    );
+}
+
+#[test]
+fn pvclock_restore_on_new_vm() {
+    let kvm = Kvm::new().unwrap();
+    let gm1 = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let vm1 = KvmVm::new(&kvm, gm1, Default::default()).unwrap();
+
+    let mut target_clock = vm1.get_pvclock().unwrap();
+    target_clock.clock = 100_000_000_000; // 100s in ns
+    vm1.set_pvclock(&target_clock).unwrap();
+    let snapshotted_clock = vm1.get_pvclock().unwrap();
+    assert!(
+        snapshotted_clock.clock >= 100_000_000_000,
+        "snapshotted clock: {0}",
+        snapshotted_clock.clock
+    );
+    drop(vm1);
+
+    // Create a new VM instance (simulating restore process).
+    let gm2 = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let vm2 = KvmVm::new(&kvm, gm2, Default::default()).unwrap();
+
+    // Prior to restore, a new VM's pvclock is reset/unadjusted (near 0s).
+    let unrestored_clock = vm2.get_pvclock().unwrap();
+    assert!(
+        unrestored_clock.clock < 10_000_000_000,
+        "unrestored clock: {0}",
+        unrestored_clock.clock
+    );
+
+    // After restoring pvclock, the new VM has the snapshot timestamp.
+    vm2.set_pvclock(&snapshotted_clock).unwrap();
+    let restored_clock = vm2.get_pvclock().unwrap();
+    assert!(
+        restored_clock.clock >= 100_000_000_000,
+        "restored_clock: {0}",
+        restored_clock.clock
+    );
+}
+
+#[test]
 fn set_gsi_routing() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();

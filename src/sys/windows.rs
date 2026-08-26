@@ -1591,6 +1591,16 @@ fn run_control(
             &mut suspended_pvclock_state,
             &*guest_os.vm,
         )?;
+        // Restore pvclock just before starting vCPUs on restore.
+        if run_mode_state == VmRunMode::Running
+            && guest_os.vm.check_capability(hypervisor::VmCap::PvClock)
+        {
+            if let Some(x) = suspended_pvclock_state.take() {
+                if let Err(e) = guest_os.vm.set_pvclock(&x) {
+                    error!("failed to restore pvclock on cold restore: {:?}", e);
+                }
+            }
+        }
         // Allow the vCPUs to start for real.
         kick_all_vcpus(
             run_mode_arc.as_ref(),

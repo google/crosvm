@@ -4279,6 +4279,15 @@ fn run_control(
             &mut suspended_pvclock_state,
             &*linux.vm,
         )?;
+        // Restore pvclock just before starting vCPUs on restore.
+        if post_restore_run_mode == VmRunMode::Running && linux.vm.check_capability(VmCap::PvClock)
+        {
+            if let Some(x) = suspended_pvclock_state.take() {
+                if let Err(e) = linux.vm.set_pvclock(&x) {
+                    error!("failed to restore pvclock on cold restore: {:?}", e);
+                }
+            }
+        }
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(
             &vcpu_handles,
