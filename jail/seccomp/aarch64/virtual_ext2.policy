@@ -14,6 +14,7 @@ lgetxattr: 1
 llistxattr: 1
 msync: 1
 mmap: arg2 in ~PROT_EXEC
+madvise: arg2 == MADV_DONTNEED || arg2 == MADV_GUARD_INSTALL || arg2 == MADV_HUGEPAGE
 munmap: 1
 newfstatat: 1
 openat: arg3 in O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY

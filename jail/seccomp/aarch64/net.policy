@@ -7,3 +7,4 @@ ioctl: arg1 == 0x400454d0
 openat: return ENOENT
 
 prctl: arg0 == PR_SET_NAME
+madvise: arg2 == MADV_DONTNEED || arg2 == MADV_GUARD_INSTALL || arg2 == MADV_HUGEPAGE
