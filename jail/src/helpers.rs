@@ -226,7 +226,7 @@ pub fn create_sandbox_minijail(
             }
         }
     }
-    if config.bind_mounts {
+    if config.bind_mounts && root != Path::new("/") {
         // Create a tmpfs in the device's root directory so that we can bind mount files.
         // The size=67108864 is size=64*1024*1024 or size=64MB.
         // TODO(b/267581374): Use appropriate size for tmpfs.
