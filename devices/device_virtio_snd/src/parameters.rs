@@ -90,7 +90,7 @@ pub struct PCMDeviceParameters {
 }
 
 /// Holds the parameters for a cras sound device
-#[derive(Debug, Clone, Deserialize, Serialize, FromKeyValues, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, FromKeyValues)]
 #[serde(deny_unknown_fields, default)]
 pub struct Parameters {
     pub capture: bool,

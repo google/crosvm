@@ -235,7 +235,7 @@ enum Error {
 }
 
 /// Module for creating a Virtio TPM device.
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Default)]
 pub struct VirtioTpmModule;
 
 impl VirtioTpmModule {

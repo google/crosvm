@@ -37,7 +37,7 @@ use vm_control::AnyControlTube;
 
 use self::parameters::Parameters;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize)]
 pub struct VirtioSndModule {
     pub params: Parameters,
 }

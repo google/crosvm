@@ -49,7 +49,7 @@ pub struct ScsiOption {
 }
 
 /// Module for creating a Virtio SCSI controller device.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize)]
 pub struct VirtioScsiModule {
     pub disks: Vec<ScsiOption>,
 }
