@@ -33,6 +33,11 @@ pub fn check_dontcache_support(fd: RawDescriptor, write: bool) -> bool {
     // SAFETY: fd is an open file descriptor.
     let borrowed_fd = unsafe { BorrowedFd::borrow_raw(fd) };
     let res = if write {
+        // To probe write support without clobbering existing disk data, read the byte
+        // at offset 0 first and write it back.
+        if preadv2(borrowed_fd, &mut iovs, 0, 0) != 1 {
+            return false;
+        }
         pwritev2(
             borrowed_fd,
             IoBufMut::as_iobufs(&iovs),
