@@ -1037,6 +1037,14 @@ impl VirtioGpu {
             .remove(&resource_id)
             .ok_or(ErrInvalidResourceId)?;
 
+        if let Some(shmem_offset) = resource.shmem_offset {
+            if let Some(mapper) = self.mapper.lock().as_mut() {
+                if let Err(e) = mapper.remove_mapping(shmem_offset) {
+                    error!("failed to remove memory mapping: {:#}", e);
+                }
+            }
+        }
+
         if resource.rutabaga_external_mapping {
             self.rutabaga.unmap(resource_id)?;
         }
