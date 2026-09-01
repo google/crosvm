@@ -83,6 +83,8 @@ use crate::crosvm::sys::config::PmemExt2Option;
 ///
 /// Only includes those that happen to be handled together in the main `WaitContext` loop.
 pub enum TaggedControlTube {
+    /// Receives `DeviceControlRequest`.
+    Device(Tube),
     /// Receives `FsMappingRequest`.
     Fs(Tube),
     /// Receives `VmRequest`.
@@ -95,7 +97,7 @@ impl AsRef<Tube> for TaggedControlTube {
     fn as_ref(&self) -> &Tube {
         use self::TaggedControlTube::*;
         match &self {
-            Fs(tube) | Vm(tube) | VmMsync(tube) => tube,
+            Device(tube) | Fs(tube) | Vm(tube) | VmMsync(tube) => tube,
         }
     }
 }
@@ -1281,7 +1283,7 @@ pub fn create_vfio_device(
     });
 
     let (vfio_host_tube_vm, vfio_device_tube_vm) = Tube::pair().context("failed to create tube")?;
-    add_control_tube(AnyControlTube::Vm(vfio_host_tube_vm));
+    add_control_tube(AnyControlTube::Device(vfio_host_tube_vm));
 
     let vfio_device =
         VfioDevice::new_passthrough(&vfio_path, vm, vfio_container.clone(), iommu_dev, dt_symbol)

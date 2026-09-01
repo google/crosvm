@@ -164,6 +164,7 @@ use vm_control::AnyControlTube;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonTube;
 use vm_control::DeviceControlCommand;
+use vm_control::DeviceControlRequest;
 use vm_control::InitialAudioSessionState;
 use vm_control::IrqHandlerRequest;
 use vm_control::PvClockCommand;
@@ -211,6 +212,7 @@ use crate::sys::windows::product::MetricEventType;
 const VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS: u8 = 4;
 
 enum TaggedControlTube {
+    Device(FlushOnDropTube),
     Vm(FlushOnDropTube),
     #[allow(dead_code)] // Used downstream.
     Product(product::TaggedControlTube),
@@ -219,7 +221,7 @@ enum TaggedControlTube {
 impl ReadNotifier for TaggedControlTube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         match self {
-            Self::Vm(tube) => tube.0.get_read_notifier(),
+            Self::Device(tube) | Self::Vm(tube) => tube.0.get_read_notifier(),
             Self::Product(tube) => tube.get_read_notifier(),
         }
     }
@@ -228,7 +230,7 @@ impl ReadNotifier for TaggedControlTube {
 impl CloseNotifier for TaggedControlTube {
     fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
         match self {
-            Self::Vm(tube) => tube.0.get_close_notifier(),
+            Self::Device(tube) | Self::Vm(tube) => tube.0.get_close_notifier(),
             Self::Product(tube) => tube.get_close_notifier(),
         }
     }
@@ -814,7 +816,7 @@ fn create_devices(
 
         let (vm_control_host_tube, vm_control_device_tube) =
             Tube::pair().context("failed to create vm_control tube")?;
-        add_control_tube(AnyControlTube::Vm(vm_control_host_tube));
+        add_control_tube(AnyControlTube::Device(vm_control_host_tube));
 
         let dev = Box::new(
             VirtioPciDevice::new(
@@ -968,6 +970,23 @@ fn handle_readable_event(
             if let Some(tube) = control_tubes.get(&id) {
                 #[allow(clippy::single_match)]
                 match tube {
+                    TaggedControlTube::Device(tube) => {
+                        match tube.0.recv::<DeviceControlRequest>() {
+                            Ok(request) => {
+                                let resp = request.execute(&mut guest_os.pm);
+                                if let Err(e) = tube.0.send(&resp) {
+                                    error!("failed to send DeviceControlResponse: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                if let TubeError::Disconnected = e {
+                                    vm_control_ids_to_remove.push(id);
+                                } else {
+                                    error!("failed to recv DeviceControlRequest: {}", e);
+                                }
+                            }
+                        }
+                    }
                     TaggedControlTube::Product(product_tube) => {
                         product::handle_tagged_control_tube_event(
                             product_tube,
@@ -979,11 +998,14 @@ fn handle_readable_event(
                         Ok(request) => {
                             let mut run_mode_opt = None;
                             let response = match request {
-                                VmRequest::HotPlugVfioCommand { device, add } => {
-                                    // Suppress warnings.
-                                    let _ = (device, add);
-                                    unimplemented!("not implemented on Windows");
-                                }
+                                VmRequest::DeviceControl(req) => match req {
+                                    DeviceControlRequest::HotPlugVfioCommand { device, add } => {
+                                        // Suppress warnings.
+                                        let _ = (device, add);
+                                        unimplemented!("not implemented on Windows");
+                                    }
+                                    _ => Some(VmResponse::from(req.execute(&mut guest_os.pm))),
+                                },
                                 #[cfg(feature = "registered_events")]
                                 VmRequest::RegisterListener { socket_addr, event } => {
                                     unimplemented!("not implemented on Windows");
@@ -1327,6 +1349,9 @@ fn run_control(
             AnyControlTube::PvClock(_) => unreachable!(),
             AnyControlTube::Snd(_) => {
                 unimplemented!("snd control tube not supported on Windows");
+            }
+            AnyControlTube::Device(t) => {
+                control_tubes.push(TaggedControlTube::Device(FlushOnDropTube::from(t)));
             }
             AnyControlTube::Vm(t) => {
                 control_tubes.push(TaggedControlTube::Vm(FlushOnDropTube::from(t)));

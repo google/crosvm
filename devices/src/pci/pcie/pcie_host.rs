@@ -19,10 +19,10 @@ use anyhow::Result;
 use base::error;
 use base::Tube;
 use sync::Mutex;
+use vm_control::DeviceControlRequest;
+use vm_control::DeviceControlResponse;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
-use vm_control::VmRequest;
-use vm_control::VmResponse;
 use zerocopy::FromBytes;
 use zerocopy::IntoBytes;
 
@@ -272,7 +272,7 @@ impl HotplugWorker {
                 }
             }
             // Request to hotplug the new added pcie device into guest
-            let request = VmRequest::HotPlugVfioCommand {
+            let request = DeviceControlRequest::HotPlugVfioCommand {
                 device: child.clone(),
                 add: true,
             };
@@ -281,10 +281,10 @@ impl HotplugWorker {
                 .send(&request)
                 .with_context(|| format!("failed to send hotplug request for {child:?}"))?;
             let response = vm_socket
-                .recv::<VmResponse>()
+                .recv::<DeviceControlResponse>()
                 .with_context(|| format!("failed to receive hotplug response for {child:?}"))?;
             match response {
-                VmResponse::Ok => {}
+                DeviceControlResponse::Ok => {}
                 _ => bail!("unexpected hotplug response: {response}"),
             };
             if !*child_exist {

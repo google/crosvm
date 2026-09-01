@@ -85,6 +85,7 @@ use vm_control::client::ModifyGpuResult;
 use vm_control::client::ModifyUsbResult;
 #[cfg(feature = "balloon")]
 use vm_control::BalloonControlCommand;
+use vm_control::DeviceControlRequest;
 use vm_control::DiskControlCommand;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
@@ -227,10 +228,10 @@ fn sleepbtn_vms(cmd: cmdline::SleepCommand) -> std::result::Result<(), ()> {
 
 fn inject_gpe(cmd: cmdline::GpeCommand) -> std::result::Result<(), ()> {
     vms_request(
-        &VmRequest::Gpe {
+        &VmRequest::DeviceControl(DeviceControlRequest::Gpe {
             gpe: cmd.gpe,
             clear_evt: None,
-        },
+        }),
         cmd.socket_path,
     )
 }
@@ -292,25 +293,25 @@ fn modify_battery(cmd: cmdline::BatteryCommand) -> std::result::Result<(), ()> {
 fn modify_vfio(cmd: cmdline::VfioCrosvmCommand) -> std::result::Result<(), ()> {
     let (request, socket_path, vfio_path) = match cmd.command {
         cmdline::VfioSubCommand::Add(c) => {
-            let request = VmRequest::HotPlugVfioCommand {
+            let request = VmRequest::DeviceControl(DeviceControlRequest::HotPlugVfioCommand {
                 device: HotPlugDeviceInfo {
                     device_type: HotPlugDeviceType::EndPoint,
                     path: c.vfio_path.clone(),
                     hp_interrupt: true,
                 },
                 add: true,
-            };
+            });
             (request, c.socket_path, c.vfio_path)
         }
         cmdline::VfioSubCommand::Remove(c) => {
-            let request = VmRequest::HotPlugVfioCommand {
+            let request = VmRequest::DeviceControl(DeviceControlRequest::HotPlugVfioCommand {
                 device: HotPlugDeviceInfo {
                     device_type: HotPlugDeviceType::EndPoint,
                     path: c.vfio_path.clone(),
                     hp_interrupt: false,
                 },
                 add: false,
-            };
+            });
             (request, c.socket_path, c.vfio_path)
         }
     };

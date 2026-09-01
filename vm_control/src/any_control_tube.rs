@@ -11,6 +11,8 @@ use base::Tube;
 pub enum AnyControlTube {
     // See `BalloonTube`.
     Balloon(Tube),
+    /// Receives `DeviceControlRequest`.
+    Device(Tube),
     // Sends `DiskControlCommand`.
     Disk(Tube),
     /// Receives `FsMappingRequest`.

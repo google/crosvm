@@ -1106,7 +1106,7 @@ fn create_devices(
 
         let (host_tube, device_tube) =
             Tube::pair().context("failed to create device control tube")?;
-        add_control_tube(AnyControlTube::Vm(host_tube));
+        add_control_tube(AnyControlTube::Device(host_tube));
 
         let dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
@@ -2429,7 +2429,7 @@ fn run_vm(
         });
         let (host_tube, device_tube) =
             Tube::pair().context("failed to create device control tube")?;
-        add_control_tube(AnyControlTube::Vm(host_tube));
+        add_control_tube(AnyControlTube::Device(host_tube));
         let mut dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             iommu_dev.dev,
@@ -2729,7 +2729,7 @@ fn add_hotplug_device(
     let (hotplug_key, pci_address) = match device.device_type {
         HotPlugDeviceType::UpstreamPort | HotPlugDeviceType::DownstreamPort => {
             let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
-            add_control_tube(AnyControlTube::Vm(vm_host_tube));
+            add_control_tube(AnyControlTube::Device(vm_host_tube));
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
             add_control_tube(AnyControlTube::IrqTube(msi_host_tube));
             let pcie_host = PcieHostPort::new(device.path.as_path(), vm_device_tube)?;
@@ -2859,7 +2859,7 @@ fn add_hotplug_net(
         remote_peer: true,
     });
     let (vm_control_host_tube, vm_control_device_tube) = Tube::pair().context("create tube")?;
-    add_control_tube(AnyControlTube::Vm(vm_control_host_tube));
+    add_control_tube(AnyControlTube::Device(vm_control_host_tube));
     let net_carrier_device = NetPciHotplugResourceCarrier::new(
         net_param,
         msi_device_tube,
@@ -3292,6 +3292,7 @@ fn process_vm_request(
     #[cfg(any(target_arch = "x86_64", feature = "pci-hotplug"))]
     let mut add_control_tube = |t| match t {
         AnyControlTube::Balloon(_) => panic!("balloon tube hotplug not supported"),
+        AnyControlTube::Device(t) => add_tubes.push(TaggedControlTube::Device(t)),
         AnyControlTube::Disk(_) => panic!("disk tube hotplug not supported"),
         AnyControlTube::Fs(t) => add_tubes.push(TaggedControlTube::Fs(t)),
         AnyControlTube::Gpu(_) => panic!("gpu tube hotplug not supported"),
@@ -3315,31 +3316,8 @@ fn process_vm_request(
         VmRequest::Exit => {
             return Ok(VmRequestResult::new(Some(VmResponse::Ok), true));
         }
-        VmRequest::HotPlugVfioCommand { device, add } => {
-            #[cfg(target_arch = "x86_64")]
-            {
-                handle_hotplug_command(
-                    state.linux,
-                    &mut state.sys_allocator.lock(),
-                    state.cfg,
-                    &mut add_control_tube,
-                    state.hp_control_tube,
-                    state.iommu_host_tube.as_ref().map(|t| t.lock()).as_deref(),
-                    &device,
-                    add,
-                    #[cfg(feature = "swap")]
-                    state.swap_controller,
-                    state.vfio_container_manager,
-                )
-            }
-
-            #[cfg(not(target_arch = "x86_64"))]
-            {
-                // Suppress warnings.
-                let _ = (device, add);
-                let _ = &state.vfio_container_manager;
-                VmResponse::Ok
-            }
+        VmRequest::DeviceControl(req) => {
+            handle_device_control_request(state, req, add_tubes)?.into()
         }
         #[cfg(feature = "pci-hotplug")]
         VmRequest::HotPlugNetCommand(net_cmd) => {
@@ -3602,6 +3580,112 @@ fn process_vm_request(
     Ok(VmRequestResult::new(Some(response), false))
 }
 
+fn handle_device_control_request(
+    state: &mut ControlLoopState,
+    request: DeviceControlRequest,
+    #[cfg_attr(not(target_arch = "x86_64"), allow(unused_variables, clippy::ptr_arg))]
+    add_tubes: &mut Vec<TaggedControlTube>,
+) -> Result<DeviceControlResponse> {
+    #[cfg(target_arch = "x86_64")]
+    let mut add_irq_control_tubes = Vec::new();
+    #[cfg(target_arch = "x86_64")]
+    let mut add_vm_memory_control_tubes = Vec::new();
+
+    #[cfg(target_arch = "x86_64")]
+    let mut add_control_tube = |t| match t {
+        AnyControlTube::Balloon(_) => panic!("balloon tube hotplug not supported"),
+        AnyControlTube::Device(t) => add_tubes.push(TaggedControlTube::Device(t)),
+        AnyControlTube::Disk(_) => panic!("disk tube hotplug not supported"),
+        AnyControlTube::Fs(t) => add_tubes.push(TaggedControlTube::Fs(t)),
+        AnyControlTube::Gpu(_) => panic!("gpu tube hotplug not supported"),
+        AnyControlTube::IrqTube(t) => add_irq_control_tubes.push(t),
+        AnyControlTube::PvClock(_) => panic!("pv-clock tube hotplug not supported"),
+        AnyControlTube::Snd(_) => panic!("snd tube hotplug not supported"),
+        AnyControlTube::Vm(t) => add_tubes.push(TaggedControlTube::Vm(t)),
+        AnyControlTube::VmMemoryTube {
+            tube,
+            expose_with_viommu,
+            remote_peer,
+        } => add_vm_memory_control_tubes.push(VmMemoryTube {
+            tube,
+            expose_with_viommu,
+            remote_peer,
+        }),
+        AnyControlTube::VmMsync(t) => add_tubes.push(TaggedControlTube::VmMsync(t)),
+    };
+
+    let response = match request {
+        DeviceControlRequest::HotPlugVfioCommand { device, add } => {
+            #[cfg(target_arch = "x86_64")]
+            {
+                let vm_resp = handle_hotplug_command(
+                    state.linux,
+                    &mut state.sys_allocator.lock(),
+                    state.cfg,
+                    &mut add_control_tube,
+                    state.hp_control_tube,
+                    state.iommu_host_tube.as_ref().map(|t| t.lock()).as_deref(),
+                    &device,
+                    add,
+                    #[cfg(feature = "swap")]
+                    state.swap_controller,
+                    state.vfio_container_manager,
+                );
+                match vm_resp {
+                    VmResponse::Ok => DeviceControlResponse::Ok,
+                    VmResponse::Err(e) => DeviceControlResponse::Err(e),
+                    _ => DeviceControlResponse::Err(base::Error::new(libc::EINVAL)),
+                }
+            }
+
+            #[cfg(not(target_arch = "x86_64"))]
+            {
+                // Suppress warnings.
+                let _ = (device, add);
+                let _ = &state.vfio_container_manager;
+                DeviceControlResponse::Ok
+            }
+        }
+        _ => request.execute(&mut state.linux.pm),
+    };
+
+    cfg_if::cfg_if! {
+        if #[cfg(target_arch = "x86_64")] {
+            if !add_irq_control_tubes.is_empty() {
+                state
+                    .irq_handler_control
+                    .send(&IrqHandlerRequest::AddIrqControlTubes(
+                        add_irq_control_tubes,
+                    ))?;
+            }
+            if !add_vm_memory_control_tubes.is_empty() {
+                state
+                    .vm_memory_handler_control
+                    .send(&VmMemoryHandlerRequest::AddControlTubes(
+                        add_vm_memory_control_tubes,
+                    ))?;
+            }
+        }
+    }
+
+    Ok(response)
+}
+
+fn process_device_control_request(
+    state: &mut ControlLoopState,
+    tube: &Tube,
+    request: DeviceControlRequest,
+    #[cfg_attr(not(target_arch = "x86_64"), allow(unused_variables, clippy::ptr_arg))]
+    add_tubes: &mut Vec<TaggedControlTube>,
+) -> Result<()> {
+    let response = handle_device_control_request(state, request, add_tubes)?;
+    if let Err(e) = tube.send(&response) {
+        error!("failed to send DeviceControlResponse: {}", e);
+    }
+
+    Ok(())
+}
+
 fn process_vm_control_event(
     state: &mut ControlLoopState,
     id: usize,
@@ -3610,6 +3694,18 @@ fn process_vm_control_event(
     let mut vm_control_ids_to_remove = Vec::new();
     let mut add_tubes = Vec::new();
     match socket {
+        TaggedControlTube::Device(tube) => match tube.recv::<DeviceControlRequest>() {
+            Ok(request) => {
+                process_device_control_request(state, tube, request, &mut add_tubes)?;
+            }
+            Err(e) => {
+                if let TubeError::Disconnected = e {
+                    vm_control_ids_to_remove.push(id);
+                } else {
+                    error!("failed to recv DeviceControlRequest: {}", e);
+                }
+            }
+        },
         TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
             Ok(request) => {
                 let res = process_vm_request(state, id, tube, request, &mut add_tubes)?;
@@ -3794,6 +3890,7 @@ fn run_control(
             }
             #[cfg(not(feature = "balloon"))]
             AnyControlTube::Balloon(_) => unreachable!(),
+            AnyControlTube::Device(t) => control_tubes.push(TaggedControlTube::Device(t)),
             AnyControlTube::Disk(t) => disk_host_tubes.push(t),
             AnyControlTube::Fs(t) => control_tubes.push(TaggedControlTube::Fs(t)),
             #[cfg(feature = "gpu")]

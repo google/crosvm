@@ -36,14 +36,14 @@ use sync::Mutex;
 use vfio_sys::vfio::VFIO_PCI_ACPI_NTFY_IRQ_INDEX;
 use vfio_sys::*;
 use vm_control::api::VmMemoryClient;
+use vm_control::DeviceControlRequest;
+use vm_control::DeviceControlResponse;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
 use vm_control::PciId;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRegionId;
 use vm_control::VmMemorySource;
-use vm_control::VmRequest;
-use vm_control::VmResponse;
 
 use crate::pci::acpi::DeviceVcfgRegister;
 use crate::pci::acpi::DsmMethod;
@@ -583,9 +583,10 @@ impl VfioPciWorker {
                             hp_interrupt: false,
                         };
 
-                        let request = VmRequest::HotPlugVfioCommand { device, add: false };
+                        let request =
+                            DeviceControlRequest::HotPlugVfioCommand { device, add: false };
                         if self.vm_socket.send(&request).is_ok() {
-                            if let Err(e) = self.vm_socket.recv::<VmResponse>() {
+                            if let Err(e) = self.vm_socket.recv::<DeviceControlResponse>() {
                                 error!("{} failed to remove vfio_device: {}", self.name.clone(), e);
                             } else {
                                 break 'wait;
@@ -598,10 +599,13 @@ impl VfioPciWorker {
                         if *is_in_low_power.lock() {
                             if let Some(pm_cap) = &self.pm_cap {
                                 if pm_cap.lock().should_trigger_pme() {
-                                    let request =
-                                        VmRequest::PciPme(self.address.pme_requester_id());
+                                    let request = DeviceControlRequest::PciPme(
+                                        self.address.pme_requester_id(),
+                                    );
                                     if self.vm_socket.send(&request).is_ok() {
-                                        if let Err(e) = self.vm_socket.recv::<VmResponse>() {
+                                        if let Err(e) =
+                                            self.vm_socket.recv::<DeviceControlResponse>()
+                                        {
                                             error!(
                                                 "{} failed to send PME: {}",
                                                 self.name.clone(),
@@ -617,12 +621,12 @@ impl VfioPciWorker {
                         if let Some(gpe) = gpe {
                             if let Ok(val) = base::EventExt::read_count(&acpi_notify_evt) {
                                 notification_val.lock().push(val as u32);
-                                let request = VmRequest::Gpe {
+                                let request = DeviceControlRequest::Gpe {
                                     gpe,
                                     clear_evt: None,
                                 };
                                 if self.vm_socket.send(&request).is_ok() {
-                                    if let Err(e) = self.vm_socket.recv::<VmResponse>() {
+                                    if let Err(e) = self.vm_socket.recv::<DeviceControlResponse>() {
                                         error!("{} failed to send GPE: {}", self.name.clone(), e);
                                     }
                                 }

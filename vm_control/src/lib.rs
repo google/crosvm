@@ -1575,6 +1575,88 @@ pub struct HotPlugDeviceInfo {
     pub hp_interrupt: bool,
 }
 
+/// A request from a device to the main process to perform some operation on the VM.
+#[derive(Serialize, Deserialize, Debug)]
+pub enum DeviceControlRequest {
+    /// Inject a general-purpose event. If `clear_evt` is provided, when the irq associated
+    /// with the GPE is resampled, it will be re-asserted as long as `clear_evt` is not
+    /// signaled.
+    Gpe { gpe: u32, clear_evt: Option<Event> },
+    /// Inject a PCI PME.
+    PciPme(u16),
+    /// Command to add/remove multiple vfio-pci devices.
+    HotPlugVfioCommand {
+        device: HotPlugDeviceInfo,
+        add: bool,
+    },
+}
+
+/// Response to a `DeviceControlRequest`.
+#[derive(Serialize, Deserialize, Debug)]
+#[must_use]
+pub enum DeviceControlResponse {
+    Ok,
+    Err(SysError),
+}
+
+impl Display for DeviceControlResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DeviceControlResponse::Ok => write!(f, "ok"),
+            DeviceControlResponse::Err(e) => write!(f, "error: {e}"),
+        }
+    }
+}
+
+impl From<DeviceControlResponse> for VmResponse {
+    fn from(response: DeviceControlResponse) -> Self {
+        match response {
+            DeviceControlResponse::Ok => VmResponse::Ok,
+            DeviceControlResponse::Err(e) => VmResponse::Err(e),
+        }
+    }
+}
+
+impl DeviceControlRequest {
+    /// Executes this request on the given VM power management resource.
+    pub fn execute(
+        &self,
+        pm: &mut Option<Arc<Mutex<dyn PmResource + Send>>>,
+    ) -> DeviceControlResponse {
+        match self {
+            DeviceControlRequest::Gpe { gpe, clear_evt } => {
+                if let Some(pm) = pm.as_ref() {
+                    match clear_evt.as_ref().map(|e| e.try_clone()).transpose() {
+                        Ok(clear_evt) => {
+                            pm.lock().gpe_evt(*gpe, clear_evt);
+                            DeviceControlResponse::Ok
+                        }
+                        Err(err) => {
+                            error!("Error cloning clear_evt: {:?}", err);
+                            DeviceControlResponse::Err(SysError::new(EIO))
+                        }
+                    }
+                } else {
+                    error!("{:#?} not supported", *self);
+                    DeviceControlResponse::Err(SysError::new(ENOTSUP))
+                }
+            }
+            DeviceControlRequest::PciPme(requester_id) => {
+                if let Some(pm) = pm.as_ref() {
+                    pm.lock().pme_evt(*requester_id);
+                    DeviceControlResponse::Ok
+                } else {
+                    error!("{:#?} not supported", *self);
+                    DeviceControlResponse::Err(SysError::new(ENOTSUP))
+                }
+            }
+            DeviceControlRequest::HotPlugVfioCommand { .. } => {
+                panic!("HotPlugVfioCommand should be handled by the platform run loop");
+            }
+        }
+    }
+}
+
 /// Message for communicating a suspend or resume to the virtio-pvclock device.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PvClockCommand {
@@ -1622,12 +1704,8 @@ pub enum VmRequest {
     Swap(SwapCommand),
     /// Resume the VM's VCPUs that were previously suspended.
     ResumeVcpus,
-    /// Inject a general-purpose event. If `clear_evt` is provided, when the irq associated
-    /// with the GPE is resampled, it will be re-asserted as long as `clear_evt` is not
-    /// signaled.
-    Gpe { gpe: u32, clear_evt: Option<Event> },
-    /// Inject a PCI PME
-    PciPme(u16),
+    /// Command to control devices.
+    DeviceControl(DeviceControlRequest),
     /// Make the VM's RT VCPU real-time.
     MakeRT,
     /// Command for balloon driver.
@@ -1648,11 +1726,6 @@ pub enum VmRequest {
     /// Command to control snd devices
     #[cfg(feature = "audio")]
     SndCommand(SndControlCommand),
-    /// Command to add/remove multiple vfio-pci devices
-    HotPlugVfioCommand {
-        device: HotPlugDeviceInfo,
-        add: bool,
-    },
     /// Command to add/remove network tap device as virtio-pci device
     #[cfg(feature = "pci-hotplug")]
     HotPlugNetCommand(NetControlCommand),
@@ -2248,32 +2321,7 @@ impl VmRequest {
                 kick_vcpus(VcpuControl::RunState(VmRunMode::Running));
                 VmResponse::Ok
             }
-            VmRequest::Gpe { gpe, clear_evt } => {
-                if let Some(pm) = pm.as_ref() {
-                    match clear_evt.as_ref().map(|e| e.try_clone()).transpose() {
-                        Ok(clear_evt) => {
-                            pm.lock().gpe_evt(*gpe, clear_evt);
-                            VmResponse::Ok
-                        }
-                        Err(err) => {
-                            error!("Error cloning clear_evt: {:?}", err);
-                            VmResponse::Err(SysError::new(EIO))
-                        }
-                    }
-                } else {
-                    error!("{:#?} not supported", *self);
-                    VmResponse::Err(SysError::new(ENOTSUP))
-                }
-            }
-            VmRequest::PciPme(requester_id) => {
-                if let Some(pm) = pm.as_ref() {
-                    pm.lock().pme_evt(*requester_id);
-                    VmResponse::Ok
-                } else {
-                    error!("{:#?} not supported", *self);
-                    VmResponse::Err(SysError::new(ENOTSUP))
-                }
-            }
+            VmRequest::DeviceControl(req) => req.execute(pm).into(),
             VmRequest::MakeRT => {
                 kick_vcpus(VcpuControl::MakeRT);
                 VmResponse::Ok
@@ -2377,7 +2425,6 @@ impl VmRequest {
                     VmResponse::Ok
                 }
             },
-            VmRequest::HotPlugVfioCommand { device: _, add: _ } => VmResponse::Ok,
             #[cfg(feature = "pci-hotplug")]
             VmRequest::HotPlugNetCommand(ref _net_cmd) => {
                 VmResponse::ErrString("hot plug not supported".to_owned())
@@ -3014,5 +3061,46 @@ mod tests {
             serde_json::to_vec(&flat_source).expect("should serialize to json successfully");
         serde_json::from_slice::<VmMemoryResponseError>(&serialized_bytes)
             .expect_err("deserialize with 0 error messages should fail");
+    }
+
+    #[test]
+    fn test_device_control_request_serde() {
+        let req = DeviceControlRequest::Gpe {
+            gpe: 5,
+            clear_evt: None,
+        };
+        let bytes = serde_json::to_vec(&req).unwrap();
+        let deserialized: DeviceControlRequest = serde_json::from_slice(&bytes).unwrap();
+        match deserialized {
+            DeviceControlRequest::Gpe { gpe, clear_evt } => {
+                assert_eq!(gpe, 5);
+                assert!(clear_evt.is_none());
+            }
+            _ => panic!("unexpected request variant"),
+        }
+
+        let resp = DeviceControlResponse::Ok;
+        let bytes = serde_json::to_vec(&resp).unwrap();
+        let deserialized: DeviceControlResponse = serde_json::from_slice(&bytes).unwrap();
+        match deserialized {
+            DeviceControlResponse::Ok => {}
+            _ => panic!("unexpected response variant"),
+        }
+
+        let vm_req = VmRequest::DeviceControl(DeviceControlRequest::Gpe {
+            gpe: 5,
+            clear_evt: None,
+        });
+        let bytes = serde_json::to_vec(&vm_req).unwrap();
+        let deserialized: VmRequest = serde_json::from_slice(&bytes).unwrap();
+        match deserialized {
+            VmRequest::DeviceControl(DeviceControlRequest::Gpe { gpe, clear_evt }) => {
+                assert_eq!(gpe, 5);
+                assert!(clear_evt.is_none());
+            }
+            _ => panic!("unexpected request variant"),
+        }
+        // Ensure that VmRequest cannot be deserialized as DeviceControlRequest directly.
+        assert!(serde_json::from_slice::<DeviceControlRequest>(&bytes).is_err());
     }
 }

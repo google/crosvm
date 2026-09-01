@@ -28,12 +28,12 @@ use serde::Serialize;
 use snapshot::AnySnapshot;
 use sync::Mutex;
 use thiserror::Error;
+use vm_control::DeviceControlRequest;
+use vm_control::DeviceControlResponse;
 use vm_control::DeviceId;
 use vm_control::PlatformDeviceId;
 use vm_control::PmResource;
 use vm_control::PmeNotify;
-use vm_control::VmRequest;
-use vm_control::VmResponse;
 
 use crate::pci::pm::PmConfig;
 use crate::BusAccessInfo;
@@ -716,13 +716,13 @@ impl PmWakeupEvent {
         if self.pm_config.lock().should_trigger_pme() {
             let event = Event::new().context("failed to create clear event")?;
             let tube = self.vm_control_tube.lock();
-            tube.send(&VmRequest::Gpe {
+            tube.send(&DeviceControlRequest::Gpe {
                 gpe: PM_WAKEUP_GPIO,
                 clear_evt: Some(event.try_clone().context("failed to clone clear event")?),
             })
             .context("failed to send pme")?;
-            match tube.recv::<VmResponse>() {
-                Ok(VmResponse::Ok) => Ok(Some(event)),
+            match tube.recv::<DeviceControlResponse>() {
+                Ok(DeviceControlResponse::Ok) => Ok(Some(event)),
                 e => bail!("pme failure {:?}", e),
             }
         } else {
