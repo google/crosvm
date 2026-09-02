@@ -69,6 +69,7 @@ use zerocopy::IntoBytes;
 
 pub use self::protocol::virtio_gpu_config;
 pub use self::protocol::VIRTIO_GPU_F_CONTEXT_INIT;
+pub use self::protocol::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
 pub use self::protocol::VIRTIO_GPU_F_EDID;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_BLOB;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_UUID;
@@ -242,6 +243,7 @@ fn build(
     external_blob: bool,
     fixed_blob_mapping: bool,
     #[cfg(windows)] wndproc_thread: &mut Option<WindowProcedureThread>,
+    udmabuf: bool,
     #[cfg(windows)] gpu_display_wait_descriptor_ctrl_wr: SendTube,
     snapshot_scratch_directory: Option<PathBuf>,
 ) -> Option<VirtioGpu> {
@@ -279,6 +281,7 @@ fn build(
         mapper,
         external_blob,
         fixed_blob_mapping,
+        udmabuf,
         snapshot_scratch_directory,
     )
 }
@@ -973,6 +976,7 @@ impl Worker {
         event_devices: Vec<EventDevice>,
         external_blob: bool,
         fixed_blob_mapping: bool,
+        udmabuf: bool,
         request_receiver: mpsc::Receiver<WorkerRequest>,
         response_sender: mpsc::Sender<anyhow::Result<WorkerResponse>>,
         exit_evt_wrtube: SendTube,
@@ -1009,6 +1013,7 @@ impl Worker {
             fixed_blob_mapping,
             #[cfg(windows)]
             &mut wndproc_thread,
+            udmabuf,
             #[cfg(windows)]
             gpu_display_wait_descriptor_ctrl_wr,
             snapshot_scratch_directory,
@@ -1441,6 +1446,7 @@ pub struct Gpu {
     #[cfg(windows)]
     wndproc_thread: Option<WindowProcedureThread>,
     base_features: u64,
+    udmabuf: bool,
     rutabaga_server_descriptor: Option<SafeDescriptor>,
     #[cfg(windows)]
     /// Because the Windows GpuDisplay can't expose an epollfd, it has to inform the GPU worker
@@ -1521,6 +1527,7 @@ impl Gpu {
             #[cfg(windows)]
             wndproc_thread: Some(wndproc_thread),
             base_features,
+            udmabuf: gpu_parameters.udmabuf,
             rutabaga_server_descriptor,
             #[cfg(windows)]
             gpu_display_wait_descriptor_ctrl_wr,
@@ -1567,6 +1574,7 @@ impl Gpu {
             self.fixed_blob_mapping,
             #[cfg(windows)]
             &mut self.wndproc_thread,
+            self.udmabuf,
             #[cfg(windows)]
             self.gpu_display_wait_descriptor_ctrl_wr
                 .try_clone()
@@ -1616,6 +1624,7 @@ impl Gpu {
         let event_devices = self.event_devices.take().expect("missing event_devices");
         let external_blob = self.external_blob;
         let fixed_blob_mapping = self.fixed_blob_mapping;
+        let udmabuf = self.udmabuf;
         let snapshot_scratch_directory = self.snapshot_scratch_directory.clone();
 
         #[cfg(windows)]
@@ -1669,6 +1678,7 @@ impl Gpu {
                 event_devices,
                 external_blob,
                 fixed_blob_mapping,
+                udmabuf,
                 worker_request_receiver,
                 worker_response_sender,
                 exit_evt_wrtube,
@@ -1805,6 +1815,10 @@ impl VirtioDevice for Gpu {
             virtio_gpu_features |= 1 << VIRTIO_GPU_F_VIRGL
                 | 1 << VIRTIO_GPU_F_RESOURCE_UUID
                 | 1 << VIRTIO_GPU_F_CONTEXT_INIT;
+
+            if self.udmabuf {
+                virtio_gpu_features |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
+            }
         }
 
         self.base_features | virtio_gpu_features

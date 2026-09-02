@@ -117,6 +117,15 @@ pub mod gpu {
     pub const VIRTIO_GPU_F_RESOURCE_UUID: u32 = 2;
     pub const VIRTIO_GPU_F_RESOURCE_BLOB: u32 = 3;
     pub const VIRTIO_GPU_F_CONTEXT_INIT: u32 = 4;
+    pub const VIRTIO_GPU_F_BLOB_ALIGNMENT: u32 = 5;
+    // The following capabilities are not upstreamed.
+    //
+    // F_CREATE_GUEST_HANDLE is useful for zero-copy memory mappings on certain hypervisors
+    // that are designed around static allocation of guest memory such as Xen.
+    //
+    // Please see https://github.com/magma-gpu/rutabaga_gfx/issues/66 for a discussion and
+    // tracking bug.
+    pub const VIRTIO_GPU_F_CREATE_GUEST_HANDLE: u32 = 16;
 
     pub const VIRTIO_GPU_SHM_ID_HOST_VISIBLE: u8 = 0x0001;
 
