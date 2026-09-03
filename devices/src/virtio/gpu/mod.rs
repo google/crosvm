@@ -11,6 +11,7 @@ mod virtio_gpu;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Read;
+use std::mem::size_of;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -452,8 +453,9 @@ impl Frontend {
             }
             GpuCommand::ResourceAttachBacking(info) => {
                 let available_bytes = reader.available_bytes();
-                if available_bytes != 0 {
-                    let entry_count = info.nr_entries.to_native() as usize;
+                let entry_count = info.nr_entries.to_native() as usize;
+                let max_entries = available_bytes / size_of::<virtio_gpu_mem_entry>();
+                if available_bytes != 0 && entry_count <= max_entries {
                     let mut vecs = Vec::with_capacity(entry_count);
                     for _ in 0..entry_count {
                         match reader.read_obj::<virtio_gpu_mem_entry>() {
@@ -572,8 +574,11 @@ impl Frontend {
                     .transfer_read(ctx_id, resource_id, transfer, None)
             }
             GpuCommand::CmdSubmit3d(info) => {
-                if reader.available_bytes() != 0 {
-                    let cmd_size = info.size.to_native() as usize;
+                let cmd_size = info.size.to_native() as usize;
+                if cmd_size > reader.available_bytes() {
+                    return Err(GpuResponse::ErrInvalidParameter);
+                }
+                if cmd_size != 0 {
                     let mut cmd_buf = vec![0; cmd_size];
                     let ctx_id = info.hdr.ctx_id.to_native();
 
@@ -600,12 +605,13 @@ impl Frontend {
                     size: info.size.to_native(),
                 };
 
-                let entry_count = info.nr_entries.to_native();
-                if reader.available_bytes() == 0 && entry_count > 0 {
+                let entry_count = info.nr_entries.to_native() as usize;
+                let max_entries = reader.available_bytes() / size_of::<virtio_gpu_mem_entry>();
+                if entry_count > max_entries {
                     return Err(GpuResponse::ErrUnspec);
                 }
 
-                let mut vecs = Vec::with_capacity(entry_count as usize);
+                let mut vecs = Vec::with_capacity(entry_count);
                 for _ in 0..entry_count {
                     match reader.read_obj::<virtio_gpu_mem_entry>() {
                         Ok(entry) => {

@@ -1586,14 +1586,23 @@ impl VirtioGpu {
 #[cfg(all(test, unix))]
 mod tests {
     use base::SharedMemory;
+    use cros_async::MemRegion;
     use rutabaga_gfx::RutabagaBuilder;
     use rutabaga_gfx::RutabagaComponentType;
     use rutabaga_gfx::RutabagaFenceHandler;
     use rutabaga_gfx::RUTABAGA_CAPSET_CROSS_DOMAIN;
+    use smallvec::smallvec;
 
     use super::*;
+    use crate::virtio::gpu::protocol::virtio_gpu_cmd_submit;
+    use crate::virtio::gpu::protocol::virtio_gpu_resource_attach_backing;
+    use crate::virtio::gpu::protocol::virtio_gpu_resource_create_blob;
+    use crate::virtio::gpu::protocol::GpuCommand;
+    use crate::virtio::gpu::FenceState;
+    use crate::virtio::gpu::Frontend;
     use crate::virtio::gpu::VIRTIO_GPU_BLOB_FLAG_USE_SHAREABLE;
     use crate::virtio::gpu::VIRTIO_GPU_BLOB_MEM_GUEST;
+    use crate::virtio::Reader;
 
     fn new_test_virtio_gpu() -> VirtioGpu {
         let display = GpuDisplay::open_stub().unwrap();
@@ -1815,5 +1824,85 @@ mod tests {
             .borrow_mut()
             .flip_to(surface_id_2, import_id_2, None, None, None)
             .is_err());
+    }
+
+    fn create_test_frontend() -> Frontend {
+        Frontend::new(
+            new_test_virtio_gpu(),
+            Arc::new(Mutex::new(FenceState::default())),
+        )
+    }
+
+    fn create_test_reader(mem: &GuestMemory) -> Reader {
+        Reader::new_from_regions(mem, smallvec![MemRegion { offset: 0, len: 16 }])
+    }
+
+    #[test]
+    fn process_gpu_command_resource_attach_backing_oversized() {
+        let mut frontend = create_test_frontend();
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut reader = create_test_reader(&mem);
+        let cmd = GpuCommand::ResourceAttachBacking(virtio_gpu_resource_attach_backing {
+            nr_entries: u32::MAX.into(),
+            ..Default::default()
+        });
+        let res = frontend.process_gpu_command(&mem, cmd, &mut reader);
+        assert!(matches!(res, Err(GpuResponse::ErrUnspec)));
+    }
+
+    #[test]
+    fn process_gpu_command_cmd_submit_3d_oversized() {
+        let mut frontend = create_test_frontend();
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut reader = create_test_reader(&mem);
+        let cmd = GpuCommand::CmdSubmit3d(virtio_gpu_cmd_submit {
+            size: u32::MAX.into(),
+            ..Default::default()
+        });
+        let res = frontend.process_gpu_command(&mem, cmd, &mut reader);
+        assert!(matches!(res, Err(GpuResponse::ErrInvalidParameter)));
+    }
+
+    #[test]
+    fn process_gpu_command_cmd_submit_3d_empty_reader_nonzero_size() {
+        let mut frontend = create_test_frontend();
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut reader = Reader::new_from_regions(&mem, smallvec![]);
+        let cmd = GpuCommand::CmdSubmit3d(virtio_gpu_cmd_submit {
+            size: 16.into(),
+            ..Default::default()
+        });
+        let res = frontend.process_gpu_command(&mem, cmd, &mut reader);
+        assert!(matches!(res, Err(GpuResponse::ErrInvalidParameter)));
+    }
+
+    #[test]
+    fn process_gpu_command_cmd_submit_3d_zero_size() {
+        let mut frontend = create_test_frontend();
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        for mut reader in [
+            Reader::new_from_regions(&mem, smallvec![]),
+            create_test_reader(&mem),
+        ] {
+            let cmd = GpuCommand::CmdSubmit3d(virtio_gpu_cmd_submit {
+                size: 0.into(),
+                ..Default::default()
+            });
+            let res = frontend.process_gpu_command(&mem, cmd, &mut reader);
+            assert!(matches!(res, Ok(GpuResponse::OkNoData)));
+        }
+    }
+
+    #[test]
+    fn process_gpu_command_resource_create_blob_oversized() {
+        let mut frontend = create_test_frontend();
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut reader = create_test_reader(&mem);
+        let cmd = GpuCommand::ResourceCreateBlob(virtio_gpu_resource_create_blob {
+            nr_entries: u32::MAX.into(),
+            ..Default::default()
+        });
+        let res = frontend.process_gpu_command(&mem, cmd, &mut reader);
+        assert!(matches!(res, Err(GpuResponse::ErrUnspec)));
     }
 }
