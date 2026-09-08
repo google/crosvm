@@ -125,6 +125,9 @@ pub mod gpu {
     //
     // Please see https://github.com/magma-gpu/rutabaga_gfx/issues/66 for a discussion and
     // tracking bug.
+    //
+    // Also, see the following link for the virtio proposal and a link to kernel driver patches:
+    // https://lore.kernel.org/virtio-comment/20260903021442.423274-1-val@invisiblethingslab.com/T/
     pub const VIRTIO_GPU_F_CREATE_GUEST_HANDLE: u32 = 16;
 
     pub const VIRTIO_GPU_SHM_ID_HOST_VISIBLE: u8 = 0x0001;
