@@ -45,7 +45,7 @@ pub trait VhostUserConnectionTrait {
     /// front-end side disconnects or an error occurs.
     fn run_req_handler<'e>(
         self,
-        handler: Box<dyn vmm_vhost::Backend>,
+        handler: Box<dyn vmm_vhost::Backend + 'e>,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>;
 
@@ -55,7 +55,7 @@ pub trait VhostUserConnectionTrait {
     /// This is a legacy way to run devices - prefer `run_device`.
     fn run_backend<'e>(
         self,
-        backend: impl VhostUserDevice + 'static,
+        backend: impl VhostUserDevice + 'e,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>
     where

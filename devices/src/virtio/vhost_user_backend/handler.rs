@@ -211,6 +211,130 @@ pub trait VhostUserDevice {
     }
 }
 
+impl<T: VhostUserDevice + ?Sized> VhostUserDevice for &mut T {
+    fn max_queue_num(&self) -> usize {
+        (**self).max_queue_num()
+    }
+
+    fn features(&self) -> u64 {
+        (**self).features()
+    }
+
+    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
+        (**self).ack_features(value)
+    }
+
+    fn protocol_features(&self) -> VhostUserProtocolFeatures {
+        (**self).protocol_features()
+    }
+
+    fn read_config(&self, offset: u64, dst: &mut [u8]) {
+        (**self).read_config(offset, dst)
+    }
+
+    fn write_config(&self, offset: u64, data: &[u8]) {
+        (**self).write_config(offset, data)
+    }
+
+    fn start_queue(&mut self, idx: usize, queue: Queue, mem: GuestMemory) -> anyhow::Result<()> {
+        (**self).start_queue(idx, queue, mem)
+    }
+
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
+        (**self).stop_queue(idx)
+    }
+
+    fn reset(&mut self) {
+        (**self).reset()
+    }
+
+    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
+        (**self).get_shared_memory_region()
+    }
+
+    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
+        (**self).set_backend_req_connection(conn)
+    }
+
+    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
+        (**self).enter_suspended_state()
+    }
+
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        (**self).snapshot()
+    }
+
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        (**self).restore(data)
+    }
+
+    fn unmap_guest_memory_on_fork(&self) -> bool {
+        (**self).unmap_guest_memory_on_fork()
+    }
+}
+
+impl<T: VhostUserDevice + ?Sized> VhostUserDevice for Box<T> {
+    fn max_queue_num(&self) -> usize {
+        (**self).max_queue_num()
+    }
+
+    fn features(&self) -> u64 {
+        (**self).features()
+    }
+
+    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
+        (**self).ack_features(value)
+    }
+
+    fn protocol_features(&self) -> VhostUserProtocolFeatures {
+        (**self).protocol_features()
+    }
+
+    fn read_config(&self, offset: u64, dst: &mut [u8]) {
+        (**self).read_config(offset, dst)
+    }
+
+    fn write_config(&self, offset: u64, data: &[u8]) {
+        (**self).write_config(offset, data)
+    }
+
+    fn start_queue(&mut self, idx: usize, queue: Queue, mem: GuestMemory) -> anyhow::Result<()> {
+        (**self).start_queue(idx, queue, mem)
+    }
+
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
+        (**self).stop_queue(idx)
+    }
+
+    fn reset(&mut self) {
+        (**self).reset()
+    }
+
+    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
+        (**self).get_shared_memory_region()
+    }
+
+    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
+        (**self).set_backend_req_connection(conn)
+    }
+
+    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
+        (**self).enter_suspended_state()
+    }
+
+    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
+        (**self).snapshot()
+    }
+
+    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
+        (**self).restore(data)
+    }
+
+    fn unmap_guest_memory_on_fork(&self) -> bool {
+        (**self).unmap_guest_memory_on_fork()
+    }
+}
+
 /// A virtio ring entry.
 struct Vring {
     // The queue config. This doesn't get mutated by the queue workers.
@@ -1159,6 +1283,17 @@ mod tests {
     #[test]
     fn test_vhost_user_lifecycle() {
         test_vhost_user_lifecycle_parameterized(false);
+    }
+
+    #[test]
+    fn test_vhost_user_lifecycle_by_ref() {
+        let mut backend = FakeBackend::new();
+        let expected_features = backend.features();
+        let handler = DeviceRequestHandler::new(&mut backend);
+        assert_eq!(handler.as_ref().features(), expected_features);
+        drop(handler);
+        // `backend` is not dropped when `handler` is dropped.
+        assert_eq!(backend.features(), expected_features);
     }
 
     #[test]

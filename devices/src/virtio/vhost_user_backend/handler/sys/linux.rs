@@ -33,8 +33,11 @@ where
             Ok((hdr, files)) => (hdr, files),
             Err(VhostError::ClientExit) => {
                 info!("vhost-user connection closed");
-                // Exit as the client closed the connection.
-                std::process::exit(0);
+                // Exit the handler loop. Do not call std::process::exit() here because
+                // the backend process may be serving multiple connections concurrently
+                // (e.g. multi-endpoint net devices). Devices that require fast shutdown
+                // (such as vhost-user-fs) handle this on process exit in their own process.
+                return Ok(());
             }
             Err(e) => {
                 return Err(e.into());

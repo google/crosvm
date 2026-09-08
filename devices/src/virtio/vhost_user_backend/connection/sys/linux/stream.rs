@@ -57,7 +57,7 @@ impl VhostUserStream {
 impl VhostUserConnectionTrait for VhostUserStream {
     fn run_req_handler<'e>(
         self,
-        handler: Box<dyn vmm_vhost::Backend>,
+        handler: Box<dyn vmm_vhost::Backend + 'e>,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         async { stream_run_with_handler(self.0, handler, ex).await }.boxed_local()
@@ -72,7 +72,7 @@ impl AsRawDescriptor for VhostUserStream {
 
 async fn stream_run_with_handler(
     stream: UnixStream,
-    handler: Box<dyn vmm_vhost::Backend>,
+    handler: Box<dyn vmm_vhost::Backend + '_>,
     ex: &Executor,
 ) -> anyhow::Result<()> {
     let req_handler = BackendServer::new(Connection::try_from(stream)?, handler);

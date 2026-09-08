@@ -40,7 +40,7 @@ impl AsRawDescriptor for VhostUserListener {
 /// VMM, which are dispatched to the device backend via the `VhostUserDevice` trait methods.
 async fn run_with_handler(
     mut listener: SocketListener,
-    handler: Box<dyn vmm_vhost::Backend>,
+    handler: Box<dyn vmm_vhost::Backend + '_>,
     ex: &Executor,
 ) -> anyhow::Result<()> {
     listener.set_nonblocking(true)?;
@@ -74,7 +74,7 @@ async fn run_with_handler(
 impl VhostUserConnectionTrait for VhostUserListener {
     fn run_req_handler<'e>(
         self,
-        handler: Box<dyn vmm_vhost::Backend>,
+        handler: Box<dyn vmm_vhost::Backend + 'e>,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         async { run_with_handler(self.0, handler, ex).await }.boxed_local()

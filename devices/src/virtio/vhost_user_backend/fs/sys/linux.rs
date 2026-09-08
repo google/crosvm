@@ -186,7 +186,11 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
         0 => {
             // Child process runs the device and exits, not returns.
             fs_device.start_allowlist_listener();
-            if let Err(e) = ex.run_until(conn.run_backend(fs_device, &ex)) {
+            // Pass `&mut *fs_device` by reference so `fs_device` is not dropped inside
+            // `run_backend`. Calling `std::process::exit()` below terminates the process
+            // immediately without running destructors of local variables on the stack,
+            // avoiding slow PassthroughFs destructors (b/440937769).
+            if let Err(e) = ex.run_until(conn.run_backend(&mut fs_device, &ex)) {
                 error!("Error in vhost-user-fs device: {:#}", e);
                 std::process::exit(1);
             }

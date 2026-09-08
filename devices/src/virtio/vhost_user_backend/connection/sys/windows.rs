@@ -20,7 +20,7 @@ pub struct VhostUserStream;
 impl VhostUserConnectionTrait for VhostUserListener {
     fn run_req_handler<'e>(
         self,
-        _handler: Box<dyn vmm_vhost::Backend>,
+        _handler: Box<dyn vmm_vhost::Backend + 'e>,
         _ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         todo!()
@@ -30,7 +30,7 @@ impl VhostUserConnectionTrait for VhostUserListener {
 impl VhostUserConnectionTrait for VhostUserStream {
     fn run_req_handler<'e>(
         self,
-        _handler: Box<dyn vmm_vhost::Backend>,
+        _handler: Box<dyn vmm_vhost::Backend + 'e>,
         _ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         todo!()

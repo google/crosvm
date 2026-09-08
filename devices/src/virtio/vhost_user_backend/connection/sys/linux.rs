@@ -64,7 +64,7 @@ impl BackendConnection {
 
     pub fn run_backend<'e>(
         self,
-        backend: impl VhostUserDevice + 'static,
+        backend: impl VhostUserDevice + 'e,
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         match self {

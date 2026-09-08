@@ -78,9 +78,9 @@ pub trait Backend {
     fn get_shmem_config(&mut self) -> Result<Vec<SharedMemoryRegion>>;
 }
 
-impl<T> Backend for T
+impl<'a, T> Backend for T
 where
-    T: AsMut<dyn Backend>,
+    T: AsMut<dyn Backend + 'a>,
 {
     fn set_owner(&mut self) -> Result<()> {
         self.as_mut().set_owner()
