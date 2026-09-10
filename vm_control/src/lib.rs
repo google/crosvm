@@ -58,6 +58,7 @@ use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::bail;
@@ -253,6 +254,61 @@ pub enum FsAllowlistResponse {
     Ok,
     Err(String),
 }
+
+/// Wire protocol request for virtio-snd host audio permission delegation.
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum AudioPermissionRequest {
+    /// Audio capture stream starting; request host permission.
+    Check = 1,
+}
+
+impl AudioPermissionRequest {
+    pub const fn to_wire(self) -> u8 {
+        self as u8
+    }
+}
+
+impl TryFrom<u8> for AudioPermissionRequest {
+    type Error = u8;
+
+    fn try_from(val: u8) -> StdResult<Self, Self::Error> {
+        match val {
+            1 => Ok(Self::Check),
+            unknown => Err(unknown),
+        }
+    }
+}
+
+/// Wire protocol response for virtio-snd host audio permission delegation.
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum AudioPermissionResponse {
+    /// Permission granted by the user or host policy.
+    Granted = 1,
+    /// Permission denied by the user, host policy, or client disconnect.
+    Denied = 2,
+}
+
+impl AudioPermissionResponse {
+    pub const fn to_wire(self) -> u8 {
+        self as u8
+    }
+}
+
+impl TryFrom<u8> for AudioPermissionResponse {
+    type Error = u8;
+
+    fn try_from(val: u8) -> StdResult<Self, Self::Error> {
+        match val {
+            1 => Ok(Self::Granted),
+            2 => Ok(Self::Denied),
+            unknown => Err(unknown),
+        }
+    }
+}
+
+pub const AUDIO_PERM_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Net control commands for adding and removing tap devices.
 #[cfg(feature = "pci-hotplug")]
@@ -3102,5 +3158,31 @@ mod tests {
         }
         // Ensure that VmRequest cannot be deserialized as DeviceControlRequest directly.
         assert!(serde_json::from_slice::<DeviceControlRequest>(&bytes).is_err());
+    }
+
+    #[test]
+    fn test_audio_permission_wire_protocol() {
+        // Request wire conversions
+        assert_eq!(AudioPermissionRequest::Check.to_wire(), 1u8);
+        assert_eq!(
+            AudioPermissionRequest::try_from(1u8),
+            Ok(AudioPermissionRequest::Check)
+        );
+        assert_eq!(AudioPermissionRequest::try_from(0u8), Err(0u8));
+        assert_eq!(AudioPermissionRequest::try_from(255u8), Err(255u8));
+
+        // Response wire conversions
+        assert_eq!(AudioPermissionResponse::Granted.to_wire(), 1u8);
+        assert_eq!(AudioPermissionResponse::Denied.to_wire(), 2u8);
+        assert_eq!(
+            AudioPermissionResponse::try_from(1u8),
+            Ok(AudioPermissionResponse::Granted)
+        );
+        assert_eq!(
+            AudioPermissionResponse::try_from(2u8),
+            Ok(AudioPermissionResponse::Denied)
+        );
+        assert_eq!(AudioPermissionResponse::try_from(0u8), Err(0u8));
+        assert_eq!(AudioPermissionResponse::try_from(3u8), Err(3u8));
     }
 }
