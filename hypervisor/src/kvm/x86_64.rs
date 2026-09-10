@@ -1650,7 +1650,7 @@ impl From<&kvm_vcpu_events> for VcpuEvents {
         };
 
         let nmi = VcpuNmiState {
-            injected: ve.interrupt.injected != 0,
+            injected: ve.nmi.injected != 0,
             pending: if ve.flags & KVM_VCPUEVENT_VALID_NMI_PENDING != 0 {
                 Some(ve.nmi.pending != 0)
             } else {
