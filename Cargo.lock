@@ -90,6 +90,7 @@ dependencies = [
  "async-trait",
  "audio_streams",
  "base",
+ "futures",
  "thiserror 1.0.38",
 ]
 
