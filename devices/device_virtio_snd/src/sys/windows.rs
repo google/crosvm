@@ -183,6 +183,14 @@ impl CaptureBufferReader for WinBufferReader {
     ) -> Result<AsyncCaptureBuffer, BoxError> {
         self.async_stream.next_capture_buffer(ex).await
     }
+
+    fn start(&mut self) -> Result<(), BoxError> {
+        self.async_stream.start()
+    }
+
+    fn stop(&mut self) -> Result<(), BoxError> {
+        self.async_stream.stop()
+    }
 }
 
 pub(crate) struct WinBufferWriter {

@@ -244,6 +244,14 @@ impl CaptureBufferReader for UnixBufferReader {
             .await
             .map_err(Error::FetchBuffer)?)
     }
+
+    fn start(&mut self) -> Result<(), BoxError> {
+        self.async_stream.start()
+    }
+
+    fn stop(&mut self) -> Result<(), BoxError> {
+        self.async_stream.stop()
+    }
 }
 
 pub(crate) struct UnixBufferWriter {

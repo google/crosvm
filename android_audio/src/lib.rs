@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(any(target_os = "android", feature = "libaaudio_stub"))]
+
 #[cfg(feature = "libaaudio_stub")]
 mod libaaudio_stub;
 
@@ -45,6 +47,8 @@ pub enum AAudioError {
     StreamOpen,
     #[error("Failed to start stream")]
     StreamStart,
+    #[error("Failed to stop stream")]
+    StreamStop,
     #[error("Failed to delete stream builder")]
     StreamBuilderDelete,
 }
@@ -84,6 +88,7 @@ extern "C" {
     ) -> AaudioResultT;
     fn AAudioStream_getBufferSizeInFrames(stream: *mut AAudioStream) -> i32;
     fn AAudioStream_requestStart(stream: *mut AAudioStream) -> AaudioResultT;
+    fn AAudioStream_requestStop(stream: *mut AAudioStream) -> AaudioResultT;
     fn AAudioStream_read(
         stream: *mut AAudioStream,
         buffer: *mut c_void,
@@ -224,6 +229,12 @@ impl AudioStream {
             aaudio_buffer_size,
         })
     }
+
+    fn reset_capture_timing(&mut self) {
+        self.read_count = 0;
+        self.start_time = None;
+        self.total_frames = 0;
+    }
 }
 
 impl PlaybackBufferStream for AudioStream {
@@ -271,6 +282,31 @@ impl CaptureBufferStream for AudioStream {
 
 #[async_trait(?Send)]
 impl AsyncCaptureBufferStream for AudioStream {
+    fn start(&mut self) -> Result<(), BoxError> {
+        // SAFETY:
+        // Interfacing with the AAudio C API. Assumes correct linking
+        // and `stream_ptr` is valid and properly initialized.
+        let res = unsafe { AAudioStream_requestStart(self.buffer_drop.stream.stream_ptr) };
+        if res != AAUDIO_OK {
+            return Err(Box::new(AAudioError::StreamStart));
+        }
+        self.reset_capture_timing();
+        Ok(())
+    }
+
+    fn stop(&mut self) -> Result<(), BoxError> {
+        // SAFETY:
+        // Interfacing with the AAudio C API. Assumes correct linking
+        // and `stream_ptr` is valid and properly initialized.
+        let res = unsafe { AAudioStream_requestStop(self.buffer_drop.stream.stream_ptr) };
+        if res != AAUDIO_OK {
+            warn!("AAudio stream stop failed: {res}");
+            return Err(Box::new(AAudioError::StreamStop));
+        }
+        self.reset_capture_timing();
+        Ok(())
+    }
+
     async fn next_capture_buffer<'a>(
         &'a mut self,
         ex: &dyn AudioStreamsExecutor,
@@ -335,16 +371,18 @@ impl AsyncCaptureBufferStream for AudioStream {
 
 impl Drop for AAudioStreamPtr {
     fn drop(&mut self) {
-        // SAFETY:
-        // Interfacing with the AAudio C API. Assumes correct linking
-        // and `stream_ptr` are valid and properly initialized.
-        if unsafe { AAudioStream_close(self.stream_ptr) } != AAUDIO_OK {
-            warn!("AAudio stream close failed.");
+        if !self.stream_ptr.is_null() {
+            // SAFETY:
+            // Interfacing with the AAudio C API. Assumes correct linking
+            // and `stream_ptr` are valid and properly initialized.
+            if unsafe { AAudioStream_close(self.stream_ptr) } != AAUDIO_OK {
+                warn!("AAudio stream close failed.");
+            }
         }
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct AndroidAudioStreamSource;
 
 impl StreamSource for AndroidAudioStreamSource {
@@ -414,12 +452,12 @@ impl StreamSource for AndroidAudioStreamSource {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AndroidAudioStreamSourceGenerator;
 
 impl AndroidAudioStreamSourceGenerator {
     pub fn new() -> Self {
-        AndroidAudioStreamSourceGenerator {}
+        AndroidAudioStreamSourceGenerator
     }
 }
 

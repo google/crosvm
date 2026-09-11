@@ -99,11 +99,16 @@ extern "C" fn AAudioStream_write(
     _buffer: *const c_void,
     _num_frames: i32,
     _timeout_nanoseconds: i64,
-) {
+) -> AaudioResultT {
     unimplemented!();
 }
 
 #[no_mangle]
-extern "C" fn AAudioStream_close(_stream: *mut AAudioStream) {
+extern "C" fn AAudioStream_requestStop(_stream: *mut AAudioStream) -> AaudioResultT {
+    unimplemented!();
+}
+
+#[no_mangle]
+extern "C" fn AAudioStream_close(_stream: *mut AAudioStream) -> AaudioResultT {
     unimplemented!();
 }

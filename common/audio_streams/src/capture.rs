@@ -78,6 +78,25 @@ pub trait AsyncCaptureBufferStream: Send {
         &'a mut self,
         _ex: &dyn AudioStreamsExecutor,
     ) -> Result<AsyncCaptureBuffer<'a>, BoxError>;
+
+    /// Starts the capture stream.
+    ///
+    /// For stream implementations that require explicit lifecycle management
+    /// or authorization (e.g. AAudio on Android), this method is called to
+    /// initiate the stream. It must return promptly and must not wait for
+    /// external events (such as a user permission prompt), because no capture
+    /// periods are produced while it runs. Default implementation is a no-op.
+    fn start(&mut self) -> Result<(), BoxError> {
+        Ok(())
+    }
+
+    /// Stops the capture stream.
+    ///
+    /// Like `start()`, it must return promptly. Default implementation is a
+    /// no-op.
+    fn stop(&mut self) -> Result<(), BoxError> {
+        Ok(())
+    }
 }
 
 #[async_trait(?Send)]
@@ -87,6 +106,14 @@ impl<S: AsyncCaptureBufferStream + ?Sized> AsyncCaptureBufferStream for &mut S {
         ex: &dyn AudioStreamsExecutor,
     ) -> Result<AsyncCaptureBuffer<'a>, BoxError> {
         (**self).next_capture_buffer(ex).await
+    }
+
+    fn start(&mut self) -> Result<(), BoxError> {
+        (**self).start()
+    }
+
+    fn stop(&mut self) -> Result<(), BoxError> {
+        (**self).stop()
     }
 }
 
@@ -474,5 +501,20 @@ mod tests {
 
         let ex = TestExecutor {};
         this_test(&ex).now_or_never();
+    }
+
+    #[test]
+    fn async_capture_stream_default_start_stop() {
+        let ex = TestExecutor {};
+        let mut server = NoopStreamSource::new();
+        let (_, mut stream) = server
+            .new_async_capture_stream(2, SampleFormat::S16LE, 48000, 480, &[], &ex)
+            .unwrap();
+        assert!(stream.start().is_ok());
+        assert!(stream.stop().is_ok());
+
+        let trait_obj: &mut dyn AsyncCaptureBufferStream = &mut *stream;
+        assert!(trait_obj.start().is_ok());
+        assert!(trait_obj.stop().is_ok());
     }
 }

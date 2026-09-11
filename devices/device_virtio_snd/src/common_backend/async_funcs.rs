@@ -58,6 +58,20 @@ pub trait CaptureBufferReader {
         &mut self,
         ex: &Executor,
     ) -> Result<AsyncCaptureBuffer, BoxError>;
+
+    /// Starts the underlying capture stream. Default implementation is a no-op.
+    ///
+    /// Must return promptly; see `AsyncCaptureBufferStream::start()`.
+    fn start(&mut self) -> Result<(), BoxError> {
+        Ok(())
+    }
+
+    /// Stops the underlying capture stream. Default implementation is a no-op.
+    ///
+    /// Must return promptly; see `AsyncCaptureBufferStream::stop()`.
+    fn stop(&mut self) -> Result<(), BoxError> {
+        Ok(())
+    }
 }
 
 /// Trait to wrap system specific helpers for writing to endpoint playback buffers.
@@ -313,6 +327,44 @@ async fn drain_desc_receiver(
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CaptureStreamState {
+    Stopped,
+    Started,
+    StartFailed,
+}
+
+fn update_capture_stream_state(
+    buffer_reader: &mut dyn CaptureBufferReader,
+    stream_state: &mut CaptureStreamState,
+    status: WorkerStatus,
+    card_index: usize,
+) {
+    match status {
+        WorkerStatus::Running if *stream_state == CaptureStreamState::Stopped => {
+            match buffer_reader.start() {
+                Ok(()) => *stream_state = CaptureStreamState::Started,
+                Err(e) => {
+                    error!(
+                        "[Card {}] Failed to start capture stream: {}",
+                        card_index, e
+                    );
+                    *stream_state = CaptureStreamState::StartFailed;
+                }
+            }
+        }
+        WorkerStatus::Pause | WorkerStatus::Quit => {
+            if *stream_state == CaptureStreamState::Started {
+                if let Err(e) = buffer_reader.stop() {
+                    error!("[Card {}] Failed to stop capture stream: {}", card_index, e);
+                }
+            }
+            *stream_state = CaptureStreamState::Stopped;
+        }
+        _ => {}
+    }
+}
+
 /// Start a pcm worker that receives descriptors containing PCM frames (audio data) from the tx/rx
 /// queue, and forward them to CRAS. One pcm worker per stream.
 ///
@@ -461,65 +513,111 @@ async fn pcm_worker_loop(
                 },
             }
         },
-        DirectionalStream::Input(period_bytes, mut buffer_reader) => loop {
-            let next_buf = buffer_reader.get_next_capture_period(&ex).fuse();
-            pin_mut!(next_buf);
-
-            let src_buf = select! {
-                _ = on_release => {
-                    drain_desc_receiver(desc_receiver, sender).await?;
-                    break Ok(());
-                },
-                buf = next_buf => buf.map_err(Error::FetchBuffer)?,
-            };
-
-            let worker_status = status_mutex.lock().await;
-            match *worker_status {
-                WorkerStatus::Quit => {
-                    drain_desc_receiver(desc_receiver, sender).await?;
-                    if let Err(e) = read_data(src_buf, None, period_bytes).await {
-                        error!(
-                            "[Card {}] Error on read_data after worker quit: {}",
-                            card_index, e
-                        )
+        DirectionalStream::Input(period_bytes, mut buffer_reader) => {
+            let mut stream_state = CaptureStreamState::Stopped;
+            let res = async {
+                loop {
+                    let current_status = *status_mutex.lock().await;
+                    update_capture_stream_state(
+                        buffer_reader.as_mut(),
+                        &mut stream_state,
+                        current_status,
+                        card_index,
+                    );
+                    if current_status == WorkerStatus::Quit {
+                        drain_desc_receiver(desc_receiver, sender).await?;
+                        break Ok(());
                     }
-                    break Ok(());
-                }
-                WorkerStatus::Pause => {
-                    read_data(src_buf, None, period_bytes).await?;
-                }
-                WorkerStatus::Running => match desc_receiver.try_next() {
-                    Err(e) => {
-                        error!(
-                            "[Card {}] Overrun. No new DescriptorChain while running: {}",
-                            card_index, e
-                        );
-                        read_data(src_buf, None, period_bytes).await?;
-                    }
-                    Ok(None) => {
-                        error!("[Card {}] Unreachable. status should be Quit when the channel is closed", card_index);
-                        read_data(src_buf, None, period_bytes).await?;
-                        return Err(Error::InvalidPCMWorkerState);
-                    }
-                    Ok(Some(mut desc_chain)) => {
-                        let writer = if muted.load(Ordering::Relaxed) {
-                            None
-                        } else {
-                            Some(&mut desc_chain.writer)
+                    if current_status == WorkerStatus::Pause {
+                        let sleep_fut = TimerAsync::sleep(&ex, period_dur).fuse();
+                        pin_mut!(sleep_fut);
+                        select! {
+                            _ = on_release => {
+                                drain_desc_receiver(desc_receiver, sender).await?;
+                                break Ok(());
+                            },
+                            res = sleep_fut => {
+                                if let Err(e) = res {
+                                    error!(
+                                        "[Card {}] Error on sleep while capture stream paused: {}",
+                                        card_index, e
+                                    );
+                                }
+                                continue;
+                            },
                         };
-                        let status = read_data(src_buf, writer, period_bytes).await.into();
-                        sender
-                            .send(PcmResponse {
-                                desc_chain,
-                                status,
-                                done: None,
-                            })
-                            .await
-                            .map_err(Error::MpscSend)?;
                     }
-                },
+
+                    let next_buf = buffer_reader.get_next_capture_period(&ex).fuse();
+                    pin_mut!(next_buf);
+
+                    let src_buf = select! {
+                        _ = on_release => {
+                            drain_desc_receiver(desc_receiver, sender).await?;
+                            break Ok(());
+                        },
+                        buf = next_buf => buf.map_err(Error::FetchBuffer)?,
+                    };
+
+                    let worker_status = *status_mutex.lock().await;
+                    match worker_status {
+                        WorkerStatus::Quit => {
+                            drain_desc_receiver(desc_receiver, sender).await?;
+                            if let Err(e) = read_data(src_buf, None, period_bytes).await {
+                                error!(
+                                    "[Card {}] Error on read_data after worker quit: {}",
+                                    card_index, e
+                                )
+                            }
+                            break Ok(());
+                        }
+                        WorkerStatus::Pause => {
+                            read_data(src_buf, None, period_bytes).await?;
+                        }
+                        WorkerStatus::Running => match desc_receiver.try_next() {
+                            Err(e) => {
+                                error!(
+                                    "[Card {}] Overrun. No new DescriptorChain while running: {}",
+                                    card_index, e
+                                );
+                                read_data(src_buf, None, period_bytes).await?;
+                            }
+                            Ok(None) => {
+                                error!("[Card {}] Unreachable. status should be Quit when the channel is closed", card_index);
+                                read_data(src_buf, None, period_bytes).await?;
+                                return Err(Error::InvalidPCMWorkerState);
+                            }
+                            Ok(Some(mut desc_chain)) => {
+                                let writer = if muted.load(Ordering::Relaxed) {
+                                    None
+                                } else {
+                                    Some(&mut desc_chain.writer)
+                                };
+                                let status = read_data(src_buf, writer, period_bytes).await.into();
+                                sender
+                                    .send(PcmResponse {
+                                        desc_chain,
+                                        status,
+                                        done: None,
+                                    })
+                                    .await
+                                    .map_err(Error::MpscSend)?;
+                            }
+                        },
+                    }
+                }
             }
-        },
+            .await;
+
+            update_capture_stream_state(
+                buffer_reader.as_mut(),
+                &mut stream_state,
+                WorkerStatus::Quit,
+                card_index,
+            );
+
+            res
+        }
     }
 }
 
