@@ -79,6 +79,14 @@ cache. This should only be used with raw disk images, not qcow2 or other formats
 option may need to be adjusted to ensure that I/O is sufficiently aligned for the host block device
 and filesystem requirements.
 
+### Do not cache
+
+- Syntax: `dontcache=(true|false)`
+- Default: `dontcache=false`
+
+The `dontcache` option enables the Linux `FOP_DONTCACHE` flag on the I/O requests so that they won't
+contaminate the page cache. Requires kernel 6.14 or later.
+
 ### Block size
 
 - Syntax: `block_size=BYTES`

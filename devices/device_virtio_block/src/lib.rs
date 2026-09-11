@@ -90,6 +90,7 @@ fn deserialize_disk_id<'de, D: Deserializer<'de>>(
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
+// LINT.IfChange
 pub struct DiskOption {
     pub path: PathBuf,
     #[serde(default, rename = "ro")]
@@ -148,6 +149,7 @@ pub struct DiskOption {
     #[serde(default)]
     pub dontcache: bool,
 }
+// LINT.ThenChange(/src/crosvm/cmdline.rs)
 
 impl Default for DiskOption {
     fn default() -> Self {
