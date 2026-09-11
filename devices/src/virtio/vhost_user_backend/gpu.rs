@@ -96,10 +96,19 @@ struct GpuBackend {
     platform_worker_tx: futures::channel::mpsc::UnboundedSender<TaskHandle<()>>,
     platform_worker_rx: futures::channel::mpsc::UnboundedReceiver<TaskHandle<()>>,
     shmem_mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
+    /// Frontend state shared with the GPU control socket handlers, which live for the lifetime
+    /// of the process. It is `None` while the device is stopped, suspended or reset.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    gpu_control_state: sys::linux::SharedGpuControlState,
 }
 
 impl GpuBackend {
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
+        // Drop the frontend state so that it can be destroyed along with the workers. The GPU
+        // control socket handlers outlive them and report ENODEV until the device starts again.
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        self.gpu_control_state.borrow_mut().take();
+
         self.ex
             .run_until(async {
                 while let Some(Some(handle)) = self.platform_worker_rx.next().now_or_never() {

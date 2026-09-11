@@ -130,7 +130,11 @@ pub fn create_gpu_device(
     ];
 
     #[cfg(feature = "android_display")]
-    if let Some(service_name) = &cfg.android_display_service {
+    if let Some(service_name) = cfg
+        .android_display_service
+        .as_ref()
+        .or(gpu_params.android_display_service.as_ref())
+    {
         display_backends.insert(0, virtio::DisplayBackend::Android(service_name.to_string()));
     }
 

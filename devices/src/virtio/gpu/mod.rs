@@ -1582,7 +1582,7 @@ impl Gpu {
             self.snapshot_scratch_directory.clone(),
         )?;
 
-        for event_device in self.event_devices.take().expect("missing event_devices") {
+        for event_device in self.event_devices.take().unwrap_or_default() {
             virtio_gpu
                 .import_event_device(event_device)
                 // We lost the `EventDevice`, so fail hard.

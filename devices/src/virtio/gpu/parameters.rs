@@ -93,6 +93,8 @@ pub struct GpuParameters {
     // When running with device sandboxing, the path of a directory available for
     // scratch space.
     pub snapshot_scratch_path: Option<PathBuf>,
+    #[cfg(feature = "android_display")]
+    pub android_display_service: Option<String>,
 }
 
 impl Default for GpuParameters {
@@ -122,6 +124,8 @@ impl Default for GpuParameters {
             allow_implicit_render_server_exec: false,
             renderer_features: None,
             snapshot_scratch_path: None,
+            #[cfg(feature = "android_display")]
+            android_display_service: None,
         }
     }
 }
