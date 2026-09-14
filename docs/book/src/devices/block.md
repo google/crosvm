@@ -108,6 +108,13 @@ The Linux virtio-block driver exposes the disk identifer in a `sysfs` file named
 example path looks like `/sys/devices/pci0000:00/0000:00:02.0/virtio1/block/vda/serial` (the PCI
 address may differ depending on which other devices are enabled).
 
+### Locking
+
+- Syntax: `lock=(true|false)`
+- Default: true
+
+Whether to lock the disk files. Uses flock on Unix and `FILE_SHARE_*` flags on Windows.
+
 ## Resizing
 
 The crosvm block device supports run-time resizing. This can be accomplished by starting crosvm with
