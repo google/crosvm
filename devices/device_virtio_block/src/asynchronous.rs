@@ -308,7 +308,7 @@ async fn handle_queue(
 ) -> Queue {
     let queue = RefCell::new(queue);
     let mut background_tasks = FuturesUnordered::new();
-    let evt_future = evt.next_val().fuse();
+    let evt_future = futures::future::Either::Left(std::future::ready(Ok(0))).fuse();
     pin_mut!(evt_future);
     loop {
         // Wait for the next signal from `evt` and process `background_tasks` in the meantime.
@@ -320,7 +320,7 @@ async fn handle_queue(
         futures::select! {
             _ = background_tasks.next() => continue,
             res = evt_future => {
-                evt_future.set(evt.next_val().fuse());
+                evt_future.set(futures::future::Either::Right(evt.next_val()).fuse());
                 if let Err(e) = res {
                     error!("Failed to read the next queue event: {:#}", e);
                     continue;
