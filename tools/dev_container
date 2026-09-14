@@ -221,10 +221,30 @@ def access_needs_supplemental_group(file_path: str, write=True):
     return True
 
 
+def podman_storage_config_path(podman: cmd) -> str:
+    """Returns the containers storage.conf path used by podman.
+
+    Podman 6 dropped Store.ConfigFile. If missing, fall back to
+    CONTAINERS_STORAGE_CONF or the default under XDG_CONFIG_HOME (or
+    ~/.config).
+    """
+    path = podman("info --format={{.Store.ConfigFile}}").stdout(check=False)
+    if path:
+        return path
+    return os.environ.get(
+        "CONTAINERS_STORAGE_CONF",
+        str(
+            Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+            / "containers"
+            / "storage.conf"
+        ),
+    )
+
+
 def validate_podman(podman: cmd):
     graph_driver_name = podman("info --format={{.Store.GraphDriverName}}").stdout()
-    config_file_name = podman("info --format={{.Store.ConfigFile}}").stdout()
     if graph_driver_name == "vfs":
+        config_file_name = podman_storage_config_path(podman)
         print("You are using vfs as a storage driver. This will be extremely slow.")
         print("Using the overlay driver is strongly recommended.")
         print("Note: This will delete all existing podman images and containers.")
