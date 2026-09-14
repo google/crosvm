@@ -98,6 +98,7 @@ members = [
     "vendor/generic/anti_tamper",
     "vendor/generic/crash_report",
     "vendor/generic/crypto",
+    "vendor/generic/devices",
     "vfio_sys",
     "vhost",
     "virtio_sys",
@@ -190,6 +191,7 @@ system_api = { path = "system_api" }
 tube_transporter = { path = "tube_transporter" }
 usb_sys = { path = "usb_sys" }
 usb_util = { path = "usb_util" }
+vendor_devices = { path = "vendor/generic/devices" }
 vfio_sys = { path = "vfio_sys" }
 vhost = { path = "vhost" }
 virtio_sys = { path = "virtio_sys" }
@@ -293,6 +295,9 @@ tokio = ["cros_async/tokio"]
 ## Enables USB host device passthrough via an emulated XHCI controller.
 ## USB is supported only on unix/linux. The feature is a no-op on windows.
 usb = ["devices/usb"]
+
+## Enables support for defining virtio devices as vendor crates
+vendor-devices = ["vendor_devices"]
 
 ## Enables the virtio-wl device.
 virtio_wl = ["devices/virtio_wl"]
@@ -497,6 +502,7 @@ all-default = [
     "tokio",
     "trace_marker",
     "vaapi",
+    "vendor-devices",
     "video-decoder",
     "video-encoder",
     "virgl_renderer",
@@ -631,6 +637,7 @@ acpi_tables = { workspace = true }
 vm_memory = { workspace = true }
 vmm_vhost = { workspace = true }
 uuid = { workspace = true, optional = true }
+vendor_devices = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv64 = { workspace = true }

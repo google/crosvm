@@ -73,6 +73,8 @@ use resources::AddressRange;
 use serde::Deserialize;
 #[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
+#[cfg(feature = "vendor-devices")]
+use vendor_devices::VendorDeviceModule;
 use vm_memory::FileBackedMappingParameters;
 
 use super::config::PmemOption;
@@ -2119,6 +2121,13 @@ pub struct RunCommand {
     /// move all vCPU threads to this CGroup (default: nothing moves)
     pub vcpu_cgroup_path: Option<PathBuf>,
 
+    #[cfg(feature = "vendor-devices")]
+    #[argh(option, arg_name = "DEVICE")]
+    /// enable vendor-specific virtio devices. The set of valid options is defined by the
+    /// `vendor_devices` crate compiled in this build. Generic builds do not include any
+    /// devices.
+    pub vendor_devices: Vec<VendorDeviceModule>,
+
     #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(
         option,
@@ -3300,6 +3309,12 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.virtio_device_modules
                 .push(device_virtio_rng::VirtioRngModule.into());
+        }
+
+        #[cfg(feature = "vendor-devices")]
+        {
+            cfg.virtio_device_modules
+                .extend(cmd.vendor_devices.into_iter().map(|module| module.into()));
         }
 
         // Now do validation of constructed config

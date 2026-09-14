@@ -1,0 +1,16 @@
+[package]
+name = "vendor_devices"
+authors = ["The ChromiumOS Authors"]
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+
+[dependencies]
+anyhow = { workspace = true }
+argh = { workspace = true }
+devices = { workspace = true }
+serde = { workspace = true, features = [ "derive", "rc" ] }
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+jail = { workspace = true }
+minijail = "*"

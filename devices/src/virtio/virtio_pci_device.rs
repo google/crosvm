@@ -380,7 +380,7 @@ impl VirtioPciDevice {
             .map(|&s| QueueConfig::new(s, device.features()))
             .collect();
 
-        let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
+        let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + u32::from(device.device_type()) as u16;
 
         let (pci_device_class, pci_device_subclass) = match device.device_type() {
             DeviceType::Net => (
@@ -468,6 +468,10 @@ impl VirtioPciDevice {
                 &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
             ),
             DeviceType::Pvclock => (
+                PciClassCode::BaseSystemPeripheral,
+                &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
+            ),
+            DeviceType::VendorDevice(_) => (
                 PciClassCode::BaseSystemPeripheral,
                 &PciBaseSystemPeripheralSubclass::Other as &dyn PciSubclass,
             ),
@@ -632,7 +636,7 @@ impl VirtioPciDevice {
             Some((
                 PmWakeupEvent::new(self.vm_control_tube.clone(), self.pm_config.clone()),
                 MetricEventType::VirtioWakeup {
-                    virtio_id: self.device.device_type() as u32,
+                    virtio_id: self.device.device_type().into(),
                 },
             )),
         );
@@ -1347,7 +1351,7 @@ impl Suspendable for VirtioPciDevice {
                 Some((
                     PmWakeupEvent::new(self.vm_control_tube.clone(), self.pm_config.clone()),
                     MetricEventType::VirtioWakeup {
-                        virtio_id: self.device.device_type() as u32,
+                        virtio_id: self.device.device_type().into(),
                     },
                 )),
             );

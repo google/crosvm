@@ -129,35 +129,66 @@ const VIRTIO_MSI_NO_VECTOR: u16 = 0xffff;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[repr(u32)]
 pub enum DeviceType {
-    Net = virtio_ids::VIRTIO_ID_NET,
-    Block = virtio_ids::VIRTIO_ID_BLOCK,
-    Console = virtio_ids::VIRTIO_ID_CONSOLE,
-    Rng = virtio_ids::VIRTIO_ID_RNG,
-    Balloon = virtio_ids::VIRTIO_ID_BALLOON,
-    Scsi = virtio_ids::VIRTIO_ID_SCSI,
+    Net,
+    Block,
+    Console,
+    Rng,
+    Balloon,
+    Scsi,
     #[serde(rename = "9p")]
-    P9 = virtio_ids::VIRTIO_ID_9P,
-    Gpu = virtio_ids::VIRTIO_ID_GPU,
-    Input = virtio_ids::VIRTIO_ID_INPUT,
-    Vsock = virtio_ids::VIRTIO_ID_VSOCK,
-    Iommu = virtio_ids::VIRTIO_ID_IOMMU,
-    Sound = virtio_ids::VIRTIO_ID_SOUND,
-    Fs = virtio_ids::VIRTIO_ID_FS,
-    Pmem = virtio_ids::VIRTIO_ID_PMEM,
+    P9,
+    Gpu,
+    Input,
+    Vsock,
+    Iommu,
+    Sound,
+    Fs,
+    Pmem,
     #[serde(rename = "mac80211-hwsim")]
-    Mac80211HwSim = virtio_ids::VIRTIO_ID_MAC80211_HWSIM,
-    VideoEncoder = virtio_ids::VIRTIO_ID_VIDEO_ENCODER,
-    VideoDecoder = virtio_ids::VIRTIO_ID_VIDEO_DECODER,
-    Scmi = virtio_ids::VIRTIO_ID_SCMI,
-    Wl = virtio_ids::VIRTIO_ID_WL,
-    Tpm = virtio_ids::VIRTIO_ID_TPM,
-    Pvclock = virtio_ids::VIRTIO_ID_PVCLOCK,
-    Media = virtio_ids::VIRTIO_ID_MEDIA,
+    Mac80211HwSim,
+    VideoEncoder,
+    VideoDecoder,
+    Scmi,
+    Wl,
+    Tpm,
+    Pvclock,
+    Media,
+    VendorDevice(u32),
 }
 
 impl DeviceType {
+    /// Maps a DeviceType to its virtio ID.
+    ///
+    /// DeviceType cannot be cast directly to a numeric type with 'as u32' because of VendorDevice.
+    fn virtio_id(&self) -> u32 {
+        match self {
+            DeviceType::Net => virtio_ids::VIRTIO_ID_NET,
+            DeviceType::Block => virtio_ids::VIRTIO_ID_BLOCK,
+            DeviceType::Console => virtio_ids::VIRTIO_ID_CONSOLE,
+            DeviceType::Rng => virtio_ids::VIRTIO_ID_RNG,
+            DeviceType::Balloon => virtio_ids::VIRTIO_ID_BALLOON,
+            DeviceType::Scsi => virtio_ids::VIRTIO_ID_SCSI,
+            DeviceType::P9 => virtio_ids::VIRTIO_ID_9P,
+            DeviceType::Gpu => virtio_ids::VIRTIO_ID_GPU,
+            DeviceType::Input => virtio_ids::VIRTIO_ID_INPUT,
+            DeviceType::Vsock => virtio_ids::VIRTIO_ID_VSOCK,
+            DeviceType::Iommu => virtio_ids::VIRTIO_ID_IOMMU,
+            DeviceType::Sound => virtio_ids::VIRTIO_ID_SOUND,
+            DeviceType::Fs => virtio_ids::VIRTIO_ID_FS,
+            DeviceType::Pmem => virtio_ids::VIRTIO_ID_PMEM,
+            DeviceType::Mac80211HwSim => virtio_ids::VIRTIO_ID_MAC80211_HWSIM,
+            DeviceType::VideoEncoder => virtio_ids::VIRTIO_ID_VIDEO_ENCODER,
+            DeviceType::VideoDecoder => virtio_ids::VIRTIO_ID_VIDEO_DECODER,
+            DeviceType::Scmi => virtio_ids::VIRTIO_ID_SCMI,
+            DeviceType::Wl => virtio_ids::VIRTIO_ID_WL,
+            DeviceType::Tpm => virtio_ids::VIRTIO_ID_TPM,
+            DeviceType::Pvclock => virtio_ids::VIRTIO_ID_PVCLOCK,
+            DeviceType::Media => virtio_ids::VIRTIO_ID_MEDIA,
+            DeviceType::VendorDevice(id) => *id,
+        }
+    }
+
     /// Returns the minimum number of queues that a device of the corresponding type must support.
     ///
     /// Note that this does not mean a driver must activate these queues, only that they must be
@@ -186,7 +217,14 @@ impl DeviceType {
             DeviceType::Tpm => 1,           // request queue
             DeviceType::Pvclock => 1,       // request queue
             DeviceType::Media => 2,         // commandq, eventq
+            DeviceType::VendorDevice(_) => unimplemented!("vhost-user frontend is not supported"),
         }
+    }
+}
+
+impl From<DeviceType> for u32 {
+    fn from(val: DeviceType) -> Self {
+        val.virtio_id()
     }
 }
 
@@ -216,6 +254,7 @@ impl std::fmt::Display for DeviceType {
             DeviceType::Mac80211HwSim => write!(f, "mac80211-hwsim"),
             DeviceType::Scmi => write!(f, "scmi"),
             DeviceType::Media => write!(f, "media"),
+            DeviceType::VendorDevice(id) => write!(f, "vendor-device-{}", id),
         }
     }
 }
