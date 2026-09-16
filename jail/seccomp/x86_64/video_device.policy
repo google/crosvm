@@ -55,6 +55,7 @@ sendmsg: 1
 sendto: 1
 set_robust_list: 1
 sigaltstack: 1
+time: 1
 write: 1
 writev: 1
 fcntl: 1
