@@ -26,12 +26,7 @@ const TPM_RC_INSUFFICIENT_RESPONSE: &[u8] = &[
     0x00, 0x00, 0x00, 0x9A, // TPM_RC_INSUFFICIENT
 ];
 
-// The response of TPM_RC_FAILURE
-const TPM_RC_FAILURE_RESPONSE: &[u8] = &[
-    0x80, 0x01, // TPM_ST_NO_SESSIONS
-    0x00, 0x00, 0x00, 0x0A, // Header Size = 10
-    0x00, 0x00, 0x01, 0x01, // TPM_RC_FAILURE
-];
+use crate::TPM_RC_FAILURE_RESPONSE;
 
 /// A proxy object that connects to the vtpmd on ChromeOS.
 pub struct VtpmProxy {

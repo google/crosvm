@@ -2064,6 +2064,12 @@ pub struct RunCommand {
     /// path to a socket from where to read switch input events and write status updates to
     pub switches: Vec<PathBuf>,
 
+    #[cfg(feature = "vtpm")]
+    #[argh(option, arg_name = "PATH")]
+    /// path to a swtpm (https://github.com/stefanberger/swtpm) socket.
+    /// Works on any Linux host, not just ChromeOS.
+    pub swtpm_socket: Option<PathBuf>,
+
     #[argh(option, arg_name = "TAG")]
     /// (DEPRECATED): Use --syslog-tag before "run".
     /// when logging to syslog, use the provided tag
@@ -2812,9 +2818,17 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "vtpm")]
         {
+            if cmd.vtpm_proxy.unwrap_or_default() && cmd.swtpm_socket.is_some() {
+                return Err("cannot specify both --vtpm-proxy and --swtpm-socket".to_string());
+            }
             if cmd.vtpm_proxy.unwrap_or_default() {
                 cfg.virtio_device_modules
                     .push(device_virtio_tpm::VirtioTpmModule::new().into());
+            }
+            if let Some(socket_path) = cmd.swtpm_socket {
+                cfg.virtio_device_modules.push(
+                    device_virtio_tpm::VirtioTpmModule::with_swtpm_socket(socket_path).into(),
+                );
             }
         }
 
