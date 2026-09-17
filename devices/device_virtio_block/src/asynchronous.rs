@@ -459,6 +459,11 @@ enum WorkerCmd {
         // Once the queues are stopped, a `()` value will be sent back over `response_tx`.
         response_tx: oneshot::Sender<()>,
     },
+    // Flush any in-memory disk image state to file.
+    FlushDisk {
+        // Once the disk is flushed, a `()` value will be sent back over `response_tx`.
+        response_tx: oneshot::Sender<()>,
+    },
 }
 
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
@@ -592,6 +597,13 @@ async fn run_worker(
 
                         *control_interrupt.borrow_mut() = None;
 
+                        let _ = response_tx.send(());
+                    }
+                    Some(WorkerCmd::FlushDisk{response_tx}) => {
+                        let disk = disk_state.read_lock().await;
+                        if let Err(e) = disk.disk_image.flush().await {
+                            error!("failed to flush disk image: {:#}", e);
+                        }
                         let _ = response_tx.send(());
                     }
                 }
@@ -1195,6 +1207,13 @@ impl VirtioDevice for BlockAsync {
         }
         if queues.is_empty() {
             return Ok(None); // Not activated.
+        }
+        if let Some((_, (_, worker_tx))) = self.worker_threads.iter().next() {
+            let (response_tx, response_rx) = oneshot::channel();
+            worker_tx
+                .unbounded_send(WorkerCmd::FlushDisk { response_tx })
+                .expect("worker channel closed early");
+            cros_async::block_on(async { response_rx.await.expect("response_rx closed early") });
         }
         Ok(Some(queues))
     }
