@@ -321,6 +321,7 @@ struct KvmVmCaps {
 /// A wrapper around creating and using a KVM VM.
 pub struct KvmVm {
     kvm: Kvm,
+    // Keep before guest_mem and mem_regions: the VM fd must close before memory is unmapped.
     vm: SafeDescriptor,
     guest_mem: GuestMemory,
     mem_regions: Mutex<BTreeMap<MemSlot, Box<dyn MappedRegion>>>,

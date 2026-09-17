@@ -2016,16 +2016,21 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
         }
     };
 
-    run_vm(
+    let exit_state = run_vm(
         cfg,
         components,
         &arch_memory_layout,
-        vm,
+        // Keep a reference so the VM outlives its vCPU and device fds; see drop(vm) below.
+        vm.clone(),
         irq_chip,
         ioapic_host_tube,
         #[cfg(feature = "swap")]
         swap_controller,
-    )
+    );
+    // Unmapping memory of a live VM is slow: the hypervisor has to invalidate its mappings.
+    // vCPU and device fds are closed by now, so this destroys the VM first, then unmaps its memory.
+    drop(vm);
+    exit_state
 }
 
 #[cfg(all(target_arch = "aarch64", feature = "gunyah"))]
