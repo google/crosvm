@@ -453,30 +453,49 @@ impl UringReactor {
         self.ring.lock().registered_sources.remove(source.tag);
     }
 
-    fn submit_poll(
+    // Calls `add_op` with `source` and a freshly allocated token. Manages token allocation and
+    // preserving an Arc to the BackingMemory. The ring lock is held across `add_op` ensuring
+    // the operation is registered before its completion can be reaped.
+    fn submit_op<F>(
         &self,
         source: &RegisteredSource,
-        events: base::EventType,
-    ) -> Result<WakerToken> {
+        mem: Option<Arc<dyn BackingMemory + Send + Sync>>,
+        add_op: F,
+    ) -> Result<WakerToken>
+    where
+        F: FnOnce(RawDescriptor, u64) -> std::result::Result<(), io_uring::Error>,
+    {
         let mut ring = self.ring.lock();
         let src = ring
             .registered_sources
             .get(source.tag)
             .ok_or(Error::InvalidSource)?
             .clone();
+
         let entry = ring.ops.vacant_entry();
         let next_op_token = entry.key();
-        self.ctx
-            .add_poll_fd(src.as_raw_descriptor(), events, usize_to_u64(next_op_token))
+
+        add_op(src.as_raw_descriptor(), usize_to_u64(next_op_token))
             .map_err(Error::SubmittingOp)?;
+
         entry.insert(OpStatus::Pending(OpData {
             _file: src,
-            _mem: None,
+            _mem: mem,
             waker: None,
             canceled: false,
         }));
 
         Ok(WakerToken(next_op_token))
+    }
+
+    fn submit_poll(
+        &self,
+        source: &RegisteredSource,
+        events: base::EventType,
+    ) -> Result<WakerToken> {
+        self.submit_op(source, None, |fd, token| {
+            self.ctx.add_poll_fd(fd, events, token)
+        })
     }
 
     fn submit_fallocate(
@@ -486,32 +505,9 @@ impl UringReactor {
         len: u64,
         mode: u32,
     ) -> Result<WakerToken> {
-        let mut ring = self.ring.lock();
-        let src = ring
-            .registered_sources
-            .get(source.tag)
-            .ok_or(Error::InvalidSource)?
-            .clone();
-        let entry = ring.ops.vacant_entry();
-        let next_op_token = entry.key();
-        self.ctx
-            .add_fallocate(
-                src.as_raw_descriptor(),
-                offset,
-                len,
-                mode,
-                usize_to_u64(next_op_token),
-            )
-            .map_err(Error::SubmittingOp)?;
-
-        entry.insert(OpStatus::Pending(OpData {
-            _file: src,
-            _mem: None,
-            waker: None,
-            canceled: false,
-        }));
-
-        Ok(WakerToken(next_op_token))
+        self.submit_op(source, None, |fd, token| {
+            self.ctx.add_fallocate(fd, offset, len, mode, token)
+        })
     }
 
     fn submit_cancel_async(&self, token: usize) -> Result<WakerToken> {
@@ -528,25 +524,7 @@ impl UringReactor {
     }
 
     fn submit_fsync(&self, source: &RegisteredSource) -> Result<WakerToken> {
-        let mut ring = self.ring.lock();
-        let src = ring
-            .registered_sources
-            .get(source.tag)
-            .ok_or(Error::InvalidSource)?
-            .clone();
-        let entry = ring.ops.vacant_entry();
-        let next_op_token = entry.key();
-        self.ctx
-            .add_fsync(src.as_raw_descriptor(), usize_to_u64(next_op_token))
-            .map_err(Error::SubmittingOp)?;
-        entry.insert(OpStatus::Pending(OpData {
-            _file: src,
-            _mem: None,
-            waker: None,
-            canceled: false,
-        }));
-
-        Ok(WakerToken(next_op_token))
+        self.submit_op(source, None, |fd, token| self.ctx.add_fsync(fd, token))
     }
 
     fn submit_read_to_vectored(
@@ -570,39 +548,13 @@ impl UringReactor {
             .collect::<Result<Vec<_>>>()?;
         let iovecs = Pin::from(iovecs.into_boxed_slice());
 
-        let mut ring = self.ring.lock();
-        let src = ring
-            .registered_sources
-            .get(source.tag)
-            .ok_or(Error::InvalidSource)?
-            .clone();
-
-        let entry = ring.ops.vacant_entry();
-        let next_op_token = entry.key();
-
-        // SAFETY:
-        // Safe because all the addresses are within the Memory that an Arc is kept for the
-        // duration to ensure the memory is valid while the kernel accesses it.
-        // Tested by `dont_drop_backing_mem_read` unit test.
-        unsafe {
-            self.ctx
-                .add_readv(
-                    iovecs,
-                    src.as_raw_descriptor(),
-                    offset,
-                    usize_to_u64(next_op_token),
-                )
-                .map_err(Error::SubmittingOp)?;
-        }
-
-        entry.insert(OpStatus::Pending(OpData {
-            _file: src,
-            _mem: Some(mem),
-            waker: None,
-            canceled: false,
-        }));
-
-        Ok(WakerToken(next_op_token))
+        self.submit_op(source, Some(mem), |fd, token| {
+            // SAFETY:
+            // Safe because all the addresses are within the Memory that an Arc is kept for the
+            // duration to ensure the memory is valid while the kernel accesses it.
+            // Tested by `dont_drop_backing_mem_read` unit test.
+            unsafe { self.ctx.add_readv(iovecs, fd, offset, token) }
+        })
     }
 
     fn submit_write_from_vectored(
@@ -626,39 +578,13 @@ impl UringReactor {
             .collect::<Result<Vec<_>>>()?;
         let iovecs = Pin::from(iovecs.into_boxed_slice());
 
-        let mut ring = self.ring.lock();
-        let src = ring
-            .registered_sources
-            .get(source.tag)
-            .ok_or(Error::InvalidSource)?
-            .clone();
-
-        let entry = ring.ops.vacant_entry();
-        let next_op_token = entry.key();
-
-        // SAFETY:
-        // Safe because all the addresses are within the Memory that an Arc is kept for the
-        // duration to ensure the memory is valid while the kernel accesses it.
-        // Tested by `dont_drop_backing_mem_write` unit test.
-        unsafe {
-            self.ctx
-                .add_writev(
-                    iovecs,
-                    src.as_raw_descriptor(),
-                    offset,
-                    usize_to_u64(next_op_token),
-                )
-                .map_err(Error::SubmittingOp)?;
-        }
-
-        entry.insert(OpStatus::Pending(OpData {
-            _file: src,
-            _mem: Some(mem),
-            waker: None,
-            canceled: false,
-        }));
-
-        Ok(WakerToken(next_op_token))
+        self.submit_op(source, Some(mem), |fd, token| {
+            // SAFETY:
+            // Safe because all the addresses are within the Memory that an Arc is kept for the
+            // duration to ensure the memory is valid while the kernel accesses it.
+            // Tested by `dont_drop_backing_mem_write` unit test.
+            unsafe { self.ctx.add_writev(iovecs, fd, offset, token) }
+        })
     }
 }
 
