@@ -193,6 +193,57 @@ fn readv_vec() {
 }
 
 #[test]
+fn read_write_single_buffer() {
+    const TEST_DATA: &[u8; 4] = b"foo!";
+
+    let uring = URingContext::new(16, None).unwrap();
+    let mut f = create_test_file(0);
+
+    // `IORING_OP_WRITE` takes the buffer address and length directly in the sqe.
+    // SAFETY:
+    // Safe because the `wait` call waits until the kernel is done reading `TEST_DATA`.
+    unsafe {
+        uring
+            .add_write(
+                TEST_DATA.as_ptr(),
+                TEST_DATA.len() as u32,
+                f.as_raw_fd(),
+                Some(0),
+                55,
+            )
+            .unwrap();
+    }
+    let (user_data, res) = uring.wait().unwrap().next().unwrap();
+    assert_eq!(user_data, 55);
+    assert_eq!(res.unwrap(), TEST_DATA.len() as u32);
+
+    let mut written = vec![];
+    f.seek(SeekFrom::Start(0)).unwrap();
+    f.read_to_end(&mut written).unwrap();
+    assert_eq!(written.as_slice(), TEST_DATA);
+
+    // `IORING_OP_READ` reads it back into a single buffer.
+    let mut buf = [0u8; 4];
+    // SAFETY:
+    // Safe because the `wait` call waits until the kernel is done mutating `buf`.
+    unsafe {
+        uring
+            .add_read(
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+                f.as_raw_fd(),
+                Some(0),
+                56,
+            )
+            .unwrap();
+    }
+    let (user_data, res) = uring.wait().unwrap().next().unwrap();
+    assert_eq!(user_data, 56);
+    assert_eq!(res.unwrap(), buf.len() as u32);
+    assert_eq!(&buf, TEST_DATA);
+}
+
+#[test]
 fn write_one_block() {
     let uring = URingContext::new(16, None).unwrap();
     let mut buf = [0u8; 4096];
@@ -824,5 +875,57 @@ fn restrict_ops() {
         result_f.as_slice(),
         &[0, 0, 0, 0],
         "file should not be written and should stay empty"
+    );
+}
+
+#[test]
+fn restrict_read_is_distinct_from_readv() {
+    const TEST_DATA: &[u8; 4] = b"foo!";
+
+    // Allow only the `Read` operation. `Readv` is a separate opcode and must stay blocked.
+    let mut restriction = URingAllowlist::new();
+    restriction.allow_submit_operation(io_uring::URingOperation::Read);
+
+    let uring = URingContext::new(16, Some(&restriction)).unwrap();
+
+    let mut f = create_test_file(4);
+    f.write_all(TEST_DATA).unwrap();
+
+    let mut buf = [0u8; 4];
+    // SAFETY:
+    // Safe because the `wait` call waits until the kernel is done mutating `buf`.
+    unsafe {
+        uring
+            .add_read(
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+                f.as_raw_fd(),
+                Some(0),
+                0,
+            )
+            .unwrap();
+    }
+    let result = uring.wait().unwrap().next().unwrap();
+    assert!(result.1.is_ok(), "uring read should succeed");
+    assert_eq!(&buf, TEST_DATA, "file should be read to buf");
+
+    // SAFETY:
+    // Safe because the `wait` call waits until the kernel is done mutating `buf`.
+    unsafe {
+        add_one_read(
+            &uring,
+            buf.as_mut_ptr(),
+            buf.len(),
+            f.as_raw_fd(),
+            Some(0),
+            1,
+        )
+        .unwrap();
+    }
+    let result = uring.wait().unwrap().next().unwrap();
+    assert_eq!(
+        result.1.unwrap_err().raw_os_error(),
+        Some(EACCES),
+        "uring readv should be denied"
     );
 }

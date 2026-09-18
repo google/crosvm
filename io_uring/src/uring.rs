@@ -444,6 +444,33 @@ impl URingContext {
         Ok(())
     }
 
+    /// Asynchronously writes `len` bytes to `fd` from the buffer at `ptr`.
+    /// # Safety
+    /// `add_write` will read the memory pointed to by `ptr`. This is only safe if the caller
+    /// guarantees there are no mutable references to that memory and that the memory lives until
+    /// the transaction is complete and that completion has been returned from the `wait` function.
+    /// Ensure that the fd remains open until the op completes as well.
+    pub unsafe fn add_write(
+        &self,
+        ptr: *const u8,
+        len: u32,
+        fd: RawFd,
+        offset: Option<u64>,
+        user_data: UserData,
+    ) -> Result<()> {
+        self.submit_ring.lock().prep_next_sqe(|sqe| {
+            sqe.opcode = io_uring_op_IORING_OP_WRITE as u8;
+            sqe.set_addr(ptr as u64);
+            sqe.len = len;
+            sqe.set_off(file_offset_to_raw_offset(offset));
+            sqe.set_buf_index(0);
+            sqe.ioprio = 0;
+            sqe.user_data = user_data;
+            sqe.flags = 0;
+            sqe.fd = fd;
+        })
+    }
+
     /// # Safety
     /// See 'readv' but accepts an iterator instead of a vector if there isn't already a vector in
     /// existence.
@@ -501,6 +528,33 @@ impl URingContext {
         })?;
         self.complete_ring.add_op_data(user_data, iovecs);
         Ok(())
+    }
+
+    /// Asynchronously reads `len` bytes from `fd` into the buffer at `ptr`.
+    /// # Safety
+    /// `add_read` will write to the memory pointed to by `ptr`. This is only safe if the caller
+    /// guarantees there are no other references to that memory and that the memory lives until the
+    /// transaction is complete and that completion has been returned from the `wait` function.
+    /// Ensure that the fd remains open until the op completes as well.
+    pub unsafe fn add_read(
+        &self,
+        ptr: *mut u8,
+        len: u32,
+        fd: RawFd,
+        offset: Option<u64>,
+        user_data: UserData,
+    ) -> Result<()> {
+        self.submit_ring.lock().prep_next_sqe(|sqe| {
+            sqe.opcode = io_uring_op_IORING_OP_READ as u8;
+            sqe.set_addr(ptr as u64);
+            sqe.len = len;
+            sqe.set_off(file_offset_to_raw_offset(offset));
+            sqe.set_buf_index(0);
+            sqe.ioprio = 0;
+            sqe.user_data = user_data;
+            sqe.flags = 0;
+            sqe.fd = fd;
+        })
     }
 
     /// Add a no-op operation that doesn't perform any IO. Useful for testing the performance of the
