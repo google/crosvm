@@ -334,6 +334,8 @@ impl UringReactor {
         let ops = [
             URingOperation::Writev,
             URingOperation::Readv,
+            URingOperation::Write,
+            URingOperation::Read,
             URingOperation::Nop,
             URingOperation::Fsync,
             URingOperation::Fallocate,
@@ -534,8 +536,33 @@ impl UringReactor {
         offset: Option<u64>,
         addrs: impl IntoIterator<Item = MemRegion>,
     ) -> Result<WakerToken> {
-        let iovecs = addrs
+        let mut addrs = addrs.into_iter().peekable();
+        let first = addrs.next();
+
+        // A single region can be described by the queue entry itself, so `IORING_OP_READ` doesn't
+        // need an iovec array.
+        if let (Some(region), None) = (first, addrs.peek()) {
+            let (ptr, size) = {
+                let vslice = mem
+                    .get_volatile_slice(region)
+                    .map_err(|_| Error::InvalidOffset)?;
+                (vslice.as_mut_ptr(), vslice.size())
+            };
+            // The SQE holds the length in a 32-bit field; anything larger needs readv.
+            if let Ok(len) = u32::try_from(size) {
+                return self.submit_op(source, Some(mem), |fd, token| {
+                    // SAFETY:
+                    // Safe because the address is within the Memory that an Arc is kept for the
+                    // duration to ensure the memory is valid while the kernel accesses it.
+                    // Tested by `dont_drop_backing_mem_read` unit test.
+                    unsafe { self.ctx.add_read(ptr, len, fd, offset, token) }
+                });
+            }
+        }
+
+        let iovecs = first
             .into_iter()
+            .chain(addrs)
             .map(|mem_range| {
                 let vslice = mem
                     .get_volatile_slice(mem_range)
@@ -564,8 +591,33 @@ impl UringReactor {
         offset: Option<u64>,
         addrs: impl IntoIterator<Item = MemRegion>,
     ) -> Result<WakerToken> {
-        let iovecs = addrs
+        let mut addrs = addrs.into_iter().peekable();
+        let first = addrs.next();
+
+        // A single region can be described by the queue entry itself, so `IORING_OP_WRITE` doesn't
+        // need an iovec array.
+        if let (Some(region), None) = (first, addrs.peek()) {
+            let (ptr, size) = {
+                let vslice = mem
+                    .get_volatile_slice(region)
+                    .map_err(|_| Error::InvalidOffset)?;
+                (vslice.as_ptr(), vslice.size())
+            };
+            // The SQE holds the length in a 32-bit field; anything larger needs writev.
+            if let Ok(len) = u32::try_from(size) {
+                return self.submit_op(source, Some(mem), |fd, token| {
+                    // SAFETY:
+                    // Safe because the address is within the Memory that an Arc is kept for the
+                    // duration to ensure the memory is valid while the kernel accesses it.
+                    // Tested by `dont_drop_backing_mem_write` unit test.
+                    unsafe { self.ctx.add_write(ptr, len, fd, offset, token) }
+                });
+            }
+        }
+
+        let iovecs = first
             .into_iter()
+            .chain(addrs)
             .map(|mem_range| {
                 let vslice = mem
                     .get_volatile_slice(mem_range)

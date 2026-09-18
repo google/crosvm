@@ -326,6 +326,77 @@ mod tests {
         ex.run_until(go(&ex)).unwrap();
     }
 
+    // Single-region ops use `IORING_OP_READ`/`IORING_OP_WRITE` while multi-region ops use
+    // readv/writev; both must move the same bytes to the same places.
+    #[test]
+    fn single_and_multi_region_io() {
+        if !is_uring_stable() {
+            return;
+        }
+
+        const EXPECTED: &[u8; 24] = b"0123456789abcdef89ab0123";
+
+        async fn go(ex: &Arc<RawExecutor<UringReactor>>, f: File) {
+            let source = UringSource::new(f, ex).unwrap();
+
+            let src = Arc::new(VecIoWrapper::from(b"0123456789abcdef".to_vec()));
+            let written = source
+                .write_from_mem(
+                    Some(0),
+                    Arc::<VecIoWrapper>::clone(&src),
+                    [MemRegion { offset: 0, len: 16 }],
+                    Default::default(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(written, 16);
+
+            // Append "89ab0123" from two disjoint regions of the same buffer.
+            let written = source
+                .write_from_mem(
+                    Some(16),
+                    Arc::<VecIoWrapper>::clone(&src),
+                    [
+                        MemRegion { offset: 8, len: 4 },
+                        MemRegion { offset: 0, len: 4 },
+                    ],
+                    Default::default(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(written, 8);
+
+            for regions in [
+                vec![MemRegion { offset: 0, len: 24 }],
+                vec![
+                    MemRegion { offset: 0, len: 10 },
+                    MemRegion {
+                        offset: 10,
+                        len: 14,
+                    },
+                ],
+            ] {
+                let dst = Arc::new(VecIoWrapper::from(vec![0u8; EXPECTED.len()]));
+                let read = source
+                    .read_to_mem(
+                        Some(0),
+                        Arc::<VecIoWrapper>::clone(&dst),
+                        regions,
+                        Default::default(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(read, EXPECTED.len());
+                let dst = Arc::try_unwrap(dst).unwrap_or_else(|_| panic!("too many refs on dst"));
+                assert_eq!(Vec::<u8>::from(dst), EXPECTED);
+            }
+        }
+
+        let f = tempfile::tempfile().unwrap();
+        let ex = RawExecutor::<UringReactor>::new().unwrap();
+        ex.run_until(go(&ex, f)).unwrap();
+    }
+
     #[test]
     fn wait_read() {
         if !is_uring_stable() {
