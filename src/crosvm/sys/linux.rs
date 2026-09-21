@@ -4498,18 +4498,23 @@ fn run_control(
                             continue;
                         }
 
-                        // Ignore clean exits of non-tracked child processes when running without
-                        // sandboxing. The virtio gpu process launches a render server for
-                        // pass-through graphics. Host GPU drivers have been observed to fork
-                        // child processes that exit cleanly which should not be considered a
-                        // crash. When running with sandboxing, this should be handled by the
-                        // device's process handler.
+                        // Ignore exits of non-tracked child processes when running without
+                        // sandboxing. Host graphics driver libraries (such as Mesa RADV for
+                        // AMD or Iris for Intel) frequently fork auxiliary helper processes for
+                        // hardware capability probing, feature detection, or shader disk cache
+                        // setup. Such probe subprocesses often return a non-zero status when a
+                        // feature check returns false.
                         if cfg.jail_config.is_none()
                             && !linux.pid_debug_label_map.contains_key(&pid)
                             && siginfo.ssi_signo == libc::SIGCHLD as u32
                             && siginfo.ssi_code == libc::CLD_EXITED
-                            && siginfo.ssi_status == 0
                         {
+                            if siginfo.ssi_status != 0 {
+                                warn!(
+                                    "untracked child {pid_label} exited with status {}, ignoring",
+                                    siginfo.ssi_status
+                                );
+                            }
                             continue;
                         }
 
