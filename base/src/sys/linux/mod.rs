@@ -680,10 +680,6 @@ fn read_sysfs_cpu_info_in_dir(cpu_dir: &str, cpu_id: usize, property: &str) -> R
 }
 
 /// Queries the property of a specified CPU sysfs node.
-fn parse_sysfs_cpu_info_vec(cpu_id: usize, property: &str) -> Result<Vec<u32>> {
-    parse_sysfs_cpu_info_vec_in_dir(CPU_DIR, cpu_id, property)
-}
-
 fn parse_sysfs_cpu_info_vec_in_dir(
     cpu_dir: &str,
     cpu_id: usize,
@@ -697,7 +693,22 @@ fn parse_sysfs_cpu_info_vec_in_dir(
 
 /// Returns a list of supported frequencies in kHz for a given logical core.
 pub fn logical_core_frequencies_khz(cpu_id: usize) -> Result<Vec<u32>> {
-    parse_sysfs_cpu_info_vec(cpu_id, "cpufreq/scaling_available_frequencies")
+    logical_core_frequencies_khz_in_dir(CPU_DIR, cpu_id)
+}
+
+fn logical_core_frequencies_khz_in_dir(cpu_dir: &str, cpu_id: usize) -> Result<Vec<u32>> {
+    let mut freqs =
+        parse_sysfs_cpu_info_vec_in_dir(cpu_dir, cpu_id, "cpufreq/scaling_available_frequencies")?;
+    if let Ok(boost_freqs) =
+        parse_sysfs_cpu_info_vec_in_dir(cpu_dir, cpu_id, "cpufreq/scaling_boost_frequencies")
+    {
+        for freq in boost_freqs {
+            if !freqs.contains(&freq) {
+                freqs.push(freq);
+            }
+        }
+    }
+    Ok(freqs)
 }
 
 /// Queries the property of a specified CPU sysfs node.
@@ -1055,5 +1066,26 @@ mod tests {
         let err =
             parse_sysfs_cpu_info_vec_in_dir(cpu_dir.to_str().unwrap(), cpu, property).unwrap_err();
         assert_eq!(err, Error::new(libc::ENOENT));
+    }
+
+    #[test]
+    fn test_logical_core_frequencies_khz_with_boost() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let cpu_dir = root.join("sys/devices/system/cpu");
+        let cpu = 0;
+        create_temp_file(
+            &root.join("sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies"),
+            "1000 2000",
+        );
+        create_temp_file(
+            &root.join("sys/devices/system/cpu/cpu0/cpufreq/scaling_boost_frequencies"),
+            "2500 3000",
+        );
+
+        assert_eq!(
+            logical_core_frequencies_khz_in_dir(cpu_dir.to_str().unwrap(), cpu).unwrap(),
+            vec![1000, 2000, 2500, 3000]
+        );
     }
 }
