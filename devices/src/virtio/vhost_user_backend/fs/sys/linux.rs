@@ -24,6 +24,7 @@ use minijail::Minijail;
 
 use crate::virtio::vhost_user_backend::fs::FsBackend;
 use crate::virtio::vhost_user_backend::fs::Options;
+use crate::virtio::vhost_user_backend::handler::DeviceRequestHandler;
 use crate::virtio::vhost_user_backend::BackendConnection;
 
 fn default_uidmap() -> String {
@@ -186,11 +187,11 @@ pub fn start_device(mut opts: Options) -> anyhow::Result<()> {
         0 => {
             // Child process runs the device and exits, not returns.
             fs_device.start_allowlist_listener();
-            // Pass `&mut *fs_device` by reference so `fs_device` is not dropped inside
-            // `run_backend`. Calling `std::process::exit()` below terminates the process
-            // immediately without running destructors of local variables on the stack,
-            // avoiding slow PassthroughFs destructors (b/440937769).
-            if let Err(e) = ex.run_until(conn.run_backend(&mut fs_device, &ex)) {
+            // `PassthroughFs` and `GuestMemory` destructors are slow (b/440937769), so call
+            // `exit()` before dropping `DeviceRequestHandler` to ensure the device and its
+            // workers aren't stopped.
+            let mut handler = DeviceRequestHandler::new(fs_device);
+            if let Err(e) = ex.run_until(conn.run_req_handler(&mut handler, &ex)) {
                 error!("Error in vhost-user-fs device: {:#}", e);
                 std::process::exit(1);
             }

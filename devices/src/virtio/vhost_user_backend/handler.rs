@@ -211,130 +211,6 @@ pub trait VhostUserDevice {
     }
 }
 
-impl<T: VhostUserDevice + ?Sized> VhostUserDevice for &mut T {
-    fn max_queue_num(&self) -> usize {
-        (**self).max_queue_num()
-    }
-
-    fn features(&self) -> u64 {
-        (**self).features()
-    }
-
-    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        (**self).ack_features(value)
-    }
-
-    fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        (**self).protocol_features()
-    }
-
-    fn read_config(&self, offset: u64, dst: &mut [u8]) {
-        (**self).read_config(offset, dst)
-    }
-
-    fn write_config(&self, offset: u64, data: &[u8]) {
-        (**self).write_config(offset, data)
-    }
-
-    fn start_queue(&mut self, idx: usize, queue: Queue, mem: GuestMemory) -> anyhow::Result<()> {
-        (**self).start_queue(idx, queue, mem)
-    }
-
-    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
-        (**self).stop_queue(idx)
-    }
-
-    fn reset(&mut self) {
-        (**self).reset()
-    }
-
-    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
-        (**self).get_shared_memory_region()
-    }
-
-    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
-        (**self).set_backend_req_connection(conn)
-    }
-
-    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
-        (**self).enter_suspended_state()
-    }
-
-    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
-        (**self).snapshot()
-    }
-
-    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
-        (**self).restore(data)
-    }
-
-    fn unmap_guest_memory_on_fork(&self) -> bool {
-        (**self).unmap_guest_memory_on_fork()
-    }
-}
-
-impl<T: VhostUserDevice + ?Sized> VhostUserDevice for Box<T> {
-    fn max_queue_num(&self) -> usize {
-        (**self).max_queue_num()
-    }
-
-    fn features(&self) -> u64 {
-        (**self).features()
-    }
-
-    fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {
-        (**self).ack_features(value)
-    }
-
-    fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        (**self).protocol_features()
-    }
-
-    fn read_config(&self, offset: u64, dst: &mut [u8]) {
-        (**self).read_config(offset, dst)
-    }
-
-    fn write_config(&self, offset: u64, data: &[u8]) {
-        (**self).write_config(offset, data)
-    }
-
-    fn start_queue(&mut self, idx: usize, queue: Queue, mem: GuestMemory) -> anyhow::Result<()> {
-        (**self).start_queue(idx, queue, mem)
-    }
-
-    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
-        (**self).stop_queue(idx)
-    }
-
-    fn reset(&mut self) {
-        (**self).reset()
-    }
-
-    fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {
-        (**self).get_shared_memory_region()
-    }
-
-    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
-        (**self).set_backend_req_connection(conn)
-    }
-
-    fn enter_suspended_state(&mut self) -> anyhow::Result<()> {
-        (**self).enter_suspended_state()
-    }
-
-    fn snapshot(&mut self) -> anyhow::Result<AnySnapshot> {
-        (**self).snapshot()
-    }
-
-    fn restore(&mut self, data: AnySnapshot) -> anyhow::Result<()> {
-        (**self).restore(data)
-    }
-
-    fn unmap_guest_memory_on_fork(&self) -> bool {
-        (**self).unmap_guest_memory_on_fork()
-    }
-}
-
 /// A virtio ring entry.
 struct Vring {
     // The queue config. This doesn't get mutated by the queue workers.
@@ -1287,13 +1163,71 @@ mod tests {
 
     #[test]
     fn test_vhost_user_lifecycle_by_ref() {
-        let mut backend = FakeBackend::new();
-        let expected_features = backend.features();
-        let handler = DeviceRequestHandler::new(&mut backend);
-        assert_eq!(handler.as_ref().features(), expected_features);
-        drop(handler);
-        // `backend` is not dropped when `handler` is dropped.
-        assert_eq!(backend.features(), expected_features);
+        const QUEUES_NUM: usize = 2;
+        const BASE_FEATURES: u64 = 1 << VIRTIO_RING_F_EVENT_IDX;
+
+        let (client_connection, server_connection) = vmm_vhost::Connection::pair().unwrap();
+        let (shutdown_tx, shutdown_rx) = channel();
+        let (vm_evt_wrtube, _vm_evt_rdtube) = base::Tube::directional_pair().unwrap();
+        let vmm_thread = std::thread::spawn(move || {
+            let mut vmm_device = VhostUserFrontend::new(
+                DeviceType::Console,
+                BASE_FEATURES,
+                client_connection,
+                vm_evt_wrtube,
+                None,
+                None,
+                /* is_remote_backend= */ true,
+            )
+            .unwrap();
+
+            vmm_device.ack_features(BASE_FEATURES);
+
+            let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
+            let interrupt = Interrupt::new_for_test_with_msix();
+            vmm_device
+                .activate(
+                    mem.clone(),
+                    interrupt.clone(),
+                    create_queues(QUEUES_NUM, &mem, &interrupt),
+                )
+                .unwrap();
+
+            shutdown_rx.recv().unwrap();
+        });
+
+        let mut handler = DeviceRequestHandler::new(FakeBackend::new());
+        let mut req_handler = BackendServer::new(
+            server_connection,
+            &mut handler as &mut dyn vmm_vhost::Backend,
+        );
+
+        // VhostUserFrontend::new()
+        handle_request(&mut req_handler, FrontendReq::SET_OWNER).unwrap();
+        handle_request(&mut req_handler, FrontendReq::GET_FEATURES).unwrap();
+        handle_request(&mut req_handler, FrontendReq::GET_PROTOCOL_FEATURES).unwrap();
+        handle_request(&mut req_handler, FrontendReq::SET_PROTOCOL_FEATURES).unwrap();
+
+        // VhostUserFrontend::activate()
+        handle_request(&mut req_handler, FrontendReq::SET_FEATURES).unwrap();
+        handle_request(&mut req_handler, FrontendReq::SET_MEM_TABLE).unwrap();
+        for _ in 0..QUEUES_NUM {
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_NUM).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_ADDR).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_BASE).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_CALL).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_KICK).unwrap();
+            handle_request(&mut req_handler, FrontendReq::SET_VRING_ENABLE).unwrap();
+        }
+
+        drop(req_handler);
+        // `handler` is not dropped when `req_handler` is dropped, so its queues remain active
+        // and `GuestMemory` is not dropped.
+        assert!(!handler.all_queues_stopped());
+        assert!(handler.mem.is_some());
+
+        shutdown_tx.send(()).unwrap();
+        vmm_thread.join().unwrap();
     }
 
     #[test]

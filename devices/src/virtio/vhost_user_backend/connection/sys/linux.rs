@@ -62,6 +62,17 @@ impl BackendConnection {
         }
     }
 
+    pub fn run_req_handler<'e>(
+        self,
+        handler: &'e mut (dyn vmm_vhost::Backend + 'e),
+        ex: &'e Executor,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
+        match self {
+            BackendConnection::Listener(listener) => listener.run_req_handler(handler, ex),
+            BackendConnection::Stream(stream) => stream.run_req_handler(handler, ex),
+        }
+    }
+
     pub fn run_backend<'e>(
         self,
         backend: impl VhostUserDevice + 'e,

@@ -8,6 +8,7 @@ use std::pin::Pin;
 
 use cros_async::Executor;
 use futures::Future;
+use futures::FutureExt;
 
 use crate::virtio::vhost_user_backend::handler::DeviceRequestHandler;
 use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
@@ -45,7 +46,7 @@ pub trait VhostUserConnectionTrait {
     /// front-end side disconnects or an error occurs.
     fn run_req_handler<'e>(
         self,
-        handler: Box<dyn vmm_vhost::Backend + 'e>,
+        handler: &'e mut (dyn vmm_vhost::Backend + 'e),
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>;
 
@@ -59,9 +60,13 @@ pub trait VhostUserConnectionTrait {
         ex: &'e Executor,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>
     where
-        Self: Sized,
+        Self: Sized + 'e,
     {
-        self.run_req_handler(Box::new(DeviceRequestHandler::new(backend)), ex)
+        async move {
+            let mut handler = DeviceRequestHandler::new(backend);
+            self.run_req_handler(&mut handler, ex).await
+        }
+        .boxed_local()
     }
 
     /// Start processing requests for a `VhostUserDevice` on `connection`. Returns when the
@@ -70,6 +75,7 @@ pub trait VhostUserConnectionTrait {
     where
         Self: Sized,
     {
-        ex.run_until(self.run_req_handler(device.build(&ex).unwrap(), &ex))?
+        let mut handler = device.build(&ex).unwrap();
+        ex.run_until(self.run_req_handler(handler.as_mut(), &ex))?
     }
 }
