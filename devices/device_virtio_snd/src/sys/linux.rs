@@ -101,7 +101,8 @@ pub(crate) fn create_aaudio_stream_source_generators(
     let mut generators: Vec<Box<dyn StreamSourceGenerator>> =
         Vec::with_capacity(snd_data.pcm_info_len());
     for pcm_info in snd_data.pcm_info_iter() {
-        assert_eq!(pcm_info.features, 0); // Should be 0. Android audio backend does not support any features.
+        assert_eq!(pcm_info.features, 0); // Should be 0. Android audio backend does not support any
+                                          // features.
         generators.push(Box::new(AndroidAudioStreamSourceGenerator::new()));
     }
     generators

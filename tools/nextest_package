@@ -203,7 +203,7 @@ def main():
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--timing-info", action="store_true")
     parser.add_argument("--bin", "-b", nargs="+")
-    (args, nextest_list_args) = parser.parse_known_args()
+    args, nextest_list_args = parser.parse_known_args()
     chdir(CROSVM_ROOT)
 
     # Determine output archive / directory

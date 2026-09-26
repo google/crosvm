@@ -226,7 +226,8 @@ fn populate_detailed_timing_descriptor(edid_block: &mut [u8], info: &DisplayInfo
     let width_lsb: u8 = (info.width() & 0b11111111) as u8; // least sig 8 bits
     let width_msb: u8 = ((info.width() >> 8) & 0b00001111) as u8; // most sig 4 bits
 
-    let horizontal_blanking_lsb: u8 = (info.horizontal_blanking & 0b11111111) as u8; // least sig 8 bits
+    let horizontal_blanking_lsb: u8 = (info.horizontal_blanking & 0b11111111) as u8; // least sig 8
+                                                                                     // bits
     let horizontal_blanking_msb: u8 = ((info.horizontal_blanking >> 8) & 0b00001111) as u8; // most sig 4 bits
 
     let vertical_blanking_lsb: u8 = (info.vertical_blanking & 0b11111111) as u8; // least sig 8 bits
@@ -251,9 +252,11 @@ fn populate_detailed_timing_descriptor(edid_block: &mut [u8], info: &DisplayInfo
     edid_block[7] = vertical_blanking_msb | (vertical_active_msb << 4);
 
     let horizontal_front_lsb: u8 = (info.horizontal_front & 0b11111111) as u8; // least sig 8 bits
-    let horizontal_front_msb: u8 = ((info.horizontal_front >> 8) & 0b00000011) as u8; // most sig 2 bits
+    let horizontal_front_msb: u8 = ((info.horizontal_front >> 8) & 0b00000011) as u8; // most sig 2
+                                                                                      // bits
     let horizontal_sync_lsb: u8 = (info.horizontal_sync & 0b11111111) as u8; // least sig 8 bits
-    let horizontal_sync_msb: u8 = ((info.horizontal_sync >> 8) & 0b00000011) as u8; // most sig 2 bits
+    let horizontal_sync_msb: u8 = ((info.horizontal_sync >> 8) & 0b00000011) as u8; // most sig 2
+                                                                                    // bits
 
     let vertical_front_lsb: u8 = (info.vertical_front & 0b00001111) as u8; // least sig 4 bits
     let vertical_front_msb: u8 = ((info.vertical_front >> 4) & 0b00000011) as u8; // most sig 2 bits
@@ -275,7 +278,8 @@ fn populate_detailed_timing_descriptor(edid_block: &mut [u8], info: &DisplayInfo
     let width_millimeters_lsb: u8 = (info.width_millimeters & 0b11111111) as u8; // least sig 8 bits
     let width_millimeters_msb: u8 = ((info.width_millimeters >> 8) & 0b00001111) as u8; // most sig 4 bits
 
-    let height_millimeters_lsb: u8 = (info.height_millimeters & 0b11111111) as u8; // least sig 8 bits
+    let height_millimeters_lsb: u8 = (info.height_millimeters & 0b11111111) as u8; // least sig 8
+                                                                                   // bits
     let height_millimeters_msb: u8 = ((info.height_millimeters >> 8) & 0b00001111) as u8; // most sig 4 bits
 
     edid_block[12] = width_millimeters_lsb;

@@ -17,7 +17,6 @@ from recipe_engine.recipe_api import StepFailure
 from recipe_engine.recipe_test_api import RecipeTestApi
 from recipe_engine.recipe_test_api import TestData
 
-
 DEPS = [
     "recipe_engine/buildbucket",
     "recipe_engine/context",

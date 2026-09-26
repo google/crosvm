@@ -5792,7 +5792,8 @@ mod tests {
 
         assert_eq!(get_representative_pcpu(0, &vcpu_affinity), 4);
         assert_eq!(get_representative_pcpu(1, &vcpu_affinity), 6);
-        assert_eq!(get_representative_pcpu(2, &vcpu_affinity), 2); // Fallback to vcpu_id on missing vCPU
+        assert_eq!(get_representative_pcpu(2, &vcpu_affinity), 2); // Fallback to vcpu_id on missing
+                                                                   // vCPU
 
         let global_affinity = Some(VcpuAffinity::Global(arch::CpuSet::new(vec![7, 8])));
         assert_eq!(get_representative_pcpu(0, &global_affinity), 7);

@@ -349,8 +349,11 @@ def main(argv: List[str]):
 
     if args.self_test:
         TestDevContainer.docker = docker
+        TestDevContainer.docker_args = docker_args
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestDevContainer)
-        unittest.TextTestRunner().run(suite)
+        res = unittest.TextTestRunner().run(suite)
+        if not res.wasSuccessful():
+            sys.exit(1)
         return
 
     if args.stop:

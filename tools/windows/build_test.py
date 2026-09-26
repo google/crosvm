@@ -255,7 +255,7 @@ def build_or_test(
 
     copy_dlls(os.getcwd(), target_dirs, kind)
 
-    (test_modules_parallel, test_modules_serial) = get_test_modules(skip_file_name)
+    test_modules_parallel, test_modules_serial = get_test_modules(skip_file_name)
     print("modules to test in parallel:\n", test_modules_parallel)
     print("modules to test serially:\n", test_modules_serial)
 

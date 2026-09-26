@@ -26,6 +26,7 @@ FROM gcr.io/crosvm-infra/crosvm_dev_base:${BASE_VERSION}
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
+    KANI_HOME=/usr/local/kani \
     PATH=/workspace/tools:/usr/local/cargo/bin:$PATH
 
 # Install pipx applications globally in /usr/local/bin

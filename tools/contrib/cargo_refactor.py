@@ -16,7 +16,6 @@ import shutil
 import subprocess
 from typing import Callable, List, Tuple, Union
 
-
 SearchPattern = Union[str, re.Pattern[str]]
 Replacement = Union[str, Callable[[re.Match[str]], str]]
 
@@ -33,7 +32,7 @@ def replace_in_file(file_path: Path, search: SearchPattern, replace: Replacement
     if isinstance(search, str):
         search = re.escape(search)
     contents = file_path.read_text()
-    (contents, count) = re.subn(search, replace, contents)
+    contents, count = re.subn(search, replace, contents)
     if count > 0:
         print(f"replacing '{search}' with '{replace}' in {file_path}")
         file_path.write_text(contents)

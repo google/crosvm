@@ -115,7 +115,8 @@ const VIRTIO_BALLOON_F_MUST_TELL_HOST: u32 = 0; // Tell before reclaiming pages
 const VIRTIO_BALLOON_F_STATS_VQ: u32 = 1; // Stats reporting enabled
 const VIRTIO_BALLOON_F_DEFLATE_ON_OOM: u32 = 2; // Deflate balloon on OOM
 const VIRTIO_BALLOON_F_PAGE_REPORTING: u32 = 5; // Page reporting virtqueue
-                                                // TODO(b/273973298): this should maybe be bit 6? to be changed later
+                                                // TODO(b/273973298): this should maybe be bit 6? to
+                                                // be changed later
 const VIRTIO_BALLOON_F_WS_REPORTING: u32 = 8; // Working Set Reporting virtqueues
 
 #[derive(Copy, Clone)]

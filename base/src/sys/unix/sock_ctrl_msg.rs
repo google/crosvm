@@ -471,7 +471,8 @@ unsafe impl AsIobuf for VolatileSlice<'_> {
 }
 
 #[cfg(test)]
-#[cfg(any(target_os = "android", target_os = "linux"))] // TODO: eliminate Linux-specific EventExt usage
+#[cfg(any(target_os = "android", target_os = "linux"))] // TODO: eliminate Linux-specific EventExt
+                                                        // usage
 mod tests {
     use std::io::Write;
     use std::mem::size_of;

@@ -85,5 +85,5 @@ def run_commands(
 if __name__ == "__main__":
     import doctest
 
-    (failures, num_tests) = doctest.testmod(optionflags=doctest.ELLIPSIS)
+    failures, num_tests = doctest.testmod(optionflags=doctest.ELLIPSIS)
     sys.exit(1 if failures > 0 else 0)

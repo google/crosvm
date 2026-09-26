@@ -99,7 +99,11 @@ def check_rust_format(context: CheckContext):
 
 def check_cargo_doc(_: CheckContext):
     "Runs cargo-doc and verifies that no warnings are emitted."
-    return cmd("./tools/cargo-doc").with_env("RUSTDOCFLAGS", "-D warnings").with_color_flag()
+    return (
+        cmd("./tools/cargo-doc")
+        .with_env("RUSTDOCFLAGS", "-D warnings --check-cfg=cfg(kani)")
+        .with_color_flag()
+    )
 
 
 def check_doc_tests(_: CheckContext):

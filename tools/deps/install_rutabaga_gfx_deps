@@ -11,7 +11,7 @@ set -ex -o pipefail
 # for x86_64 and aarch64.
 
 sudo apt-get update --allow-releaseinfo-change
-sudo apt-get install --yes --no-install-recommends g++-aarch64-linux-gnu python3-yaml mesa-common-dev
+sudo apt-get install --yes --no-install-recommends binutils binutils-aarch64-linux-gnu binutils-riscv64-linux-gnu g++-aarch64-linux-gnu python3-yaml mesa-common-dev
 
 DEPS_DIR=$(mktemp -d)
 cd "${DEPS_DIR}"
@@ -43,11 +43,11 @@ git clone https://github.com/google/gfxstream
 cd gfxstream
 git checkout 2ac507720389a84485bfcdac9ff744d92cb0260a
 # x86_64
-meson setup build --prefix="${COMMON_PREFIX}" --libdir="${X86_64_LIBDIR}"
+meson setup build --prefix="${COMMON_PREFIX}" --libdir="${X86_64_LIBDIR}" -Dc_args="-fno-math-errno" -Dcpp_args="-fno-math-errno"
 ninja -C build
 sudo ninja -C build install
 # aarch64
-env PKG_CONFIG_PATH="${AARCH64_LIBDIR}/pkgconfig" meson setup build-arm64 --cross-file aarch64 --prefix="${COMMON_PREFIX}" --libdir="${AARCH64_LIBDIR}"
+env PKG_CONFIG_PATH="${AARCH64_LIBDIR}/pkgconfig" meson setup build-arm64 --cross-file aarch64 --prefix="${COMMON_PREFIX}" --libdir="${AARCH64_LIBDIR}" -Dc_args="-fno-math-errno" -Dcpp_args="-fno-math-errno"
 ninja -C build-arm64
 sudo ninja -C build-arm64 install
 cd ..

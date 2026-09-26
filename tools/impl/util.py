@@ -202,7 +202,7 @@ def aosp_repo_root():
 def sudo_is_passwordless():
     # Run with --askpass but no askpass set, succeeds only if passwordless sudo
     # is available.
-    (ret, _) = subprocess.getstatusoutput("SUDO_ASKPASS=false sudo --askpass true")
+    ret, _ = subprocess.getstatusoutput("SUDO_ASKPASS=false sudo --askpass true")
     return ret == 0
 
 
