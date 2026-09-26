@@ -114,7 +114,7 @@ impl Iterator for MemRegionIter<'_> {
 
             // Adjust the current region and reset `self.skip_bytes` to 0 to fully consume it.
             let mut region = MemRegion {
-                offset: first.offset + self.skip_bytes as u64,
+                offset: first.offset.saturating_add(self.skip_bytes as u64),
                 len: first.len - self.skip_bytes,
             };
             self.skip_bytes = 0;
@@ -456,5 +456,45 @@ mod tests {
         assert_eq!(iter.next(), Some(MemRegion { offset: 17, len: 4 }));
         assert_eq!(iter.next(), Some(MemRegion { offset: 24, len: 9 }));
         assert_eq!(iter.next(), None);
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Proves that chained `skip_bytes` and `take_bytes` preserve non-increasing remaining bounds
+    /// and never panic or overflow for any `MemRegion` and `usize` inputs (including `u64::MAX` /
+    /// `usize::MAX`).
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn proof_mem_region_iter_chained_subslicing_no_panic() {
+        let regions = [
+            MemRegion {
+                offset: kani::any(),
+                len: kani::any(),
+            },
+            MemRegion {
+                offset: kani::any(),
+                len: kani::any(),
+            },
+        ];
+        let skip1: usize = kani::any();
+        let take1: usize = kani::any();
+        let skip2: usize = kani::any();
+        let take2: usize = kani::any();
+
+        let mut iter = MemRegionIter::new(&regions)
+            .skip_bytes(skip1)
+            .take_bytes(take1)
+            .skip_bytes(skip2)
+            .take_bytes(take2);
+
+        let mut total: u128 = 0;
+        while let Some(reg) = iter.next() {
+            assert!(reg.len > 0);
+            total += reg.len as u128;
+        }
+        assert!(total <= (take1.saturating_sub(skip2).min(take2)) as u128);
     }
 }
