@@ -321,6 +321,13 @@ impl<'a> VolatileSlice<'a> {
         // Round down by 16
         let aligned_tail_addr = tail_addr & !MASK_4BIT;
 
+        if aligned_head_addr > aligned_tail_addr {
+            // The slice does not cross a 16-byte aligned boundary; check only [head_addr,
+            // tail_addr).
+            // SAFETY: The range [head_addr, tail_addr) is within VolatileSlice.
+            return unsafe { is_all_zero_naive(head_addr, tail_addr) };
+        }
+
         // Check 16 bytes at once. The addresses should be 16 bytes aligned for better performance.
         if (aligned_head_addr..aligned_tail_addr).step_by(16).any(
             |aligned_addr|
@@ -649,5 +656,105 @@ mod tests {
         assert_eq!(slice.write(&[1, 2, 3, 4]).unwrap(), 0);
         assert_eq!(slice.write(&[5, 6, 7, 8]).unwrap(), 0);
         assert_eq!(slice.write(&[]).unwrap(), 0);
+    }
+
+    #[test]
+    fn is_all_zero_sub_16bytes_unaligned() {
+        let a = VecMem::new(64);
+        // Set all bytes to non-zero, then zero only a 4-byte unaligned subslice [3..7].
+        a.get_slice(0, 64).unwrap().write_bytes(0xFF);
+        let slice = a.get_slice(3, 4).unwrap();
+        slice.write_bytes(0);
+        assert!(slice.is_all_zero());
+
+        // An empty unaligned slice inside non-zero memory must also be all-zero.
+        let empty_slice = a.get_slice(3, 0).unwrap();
+        assert!(empty_slice.is_all_zero());
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[repr(align(16))]
+    struct AlignedBuf([u8; 36]);
+
+    /// Proves that `VolatileSlice::is_all_zero` never accesses memory outside `[offset, offset +
+    /// len)` and is functionally equivalent to checking whether every byte in the slice is
+    /// zero, across all possible head/tail alignments and lengths (including < 16 bytes, 0
+    /// bytes, unaligned, and multi-block).
+    #[kani::proof]
+    #[kani::unwind(38)]
+    fn proof_volatile_slice_is_all_zero() {
+        let mut aligned = AlignedBuf(kani::any());
+        let offset: usize = kani::any();
+        let len: usize = kani::any();
+        kani::assume(offset <= 36);
+        kani::assume(len <= 36 - offset);
+
+        let expected = aligned.0[offset..offset + len].iter().all(|&b| b == 0);
+        let slice = VolatileSlice::new(&mut aligned.0[offset..offset + len]);
+        assert_eq!(slice.is_all_zero(), expected);
+    }
+
+    /// Also proves memory safety when `VolatileSlice` wraps a small stack buffer whose surrounding
+    /// bytes outside the allocation are not valid to dereference.
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn proof_volatile_slice_small_allocation_memory_safety() {
+        let mut small_buf: [u8; 4] = kani::any();
+        let expected = small_buf.iter().all(|&b| b == 0);
+        let slice = VolatileSlice::new(&mut small_buf);
+        assert_eq!(slice.is_all_zero(), expected);
+    }
+
+    /// Proves safety and algebraic properties of `VolatileSlice::sub_slice` and
+    /// `VolatileSlice::offset`.
+    #[kani::proof]
+    fn proof_volatile_slice_sub_slice_and_offset() {
+        let mut buf = [0u8; 64];
+        let total_len: usize = kani::any();
+        kani::assume(total_len <= 64);
+
+        let base_slice = VolatileSlice::new(&mut buf[..total_len]);
+        let offset: usize = kani::any();
+        let count: usize = kani::any();
+
+        match base_slice.sub_slice(offset, count) {
+            Ok(sub) => {
+                assert_eq!(sub.size(), count);
+                assert!(offset
+                    .checked_add(count)
+                    .is_some_and(|end| end <= total_len));
+                assert_eq!(
+                    sub.as_ptr() as usize,
+                    (base_slice.as_ptr() as usize) + offset
+                );
+            }
+            Err(VolatileMemoryError::Overflow { .. }) => {
+                assert!(offset.checked_add(count).is_none());
+            }
+            Err(VolatileMemoryError::OutOfBounds { .. }) => {
+                assert!(offset.checked_add(count).is_some_and(|end| end > total_len));
+            }
+        }
+
+        match base_slice.offset(offset) {
+            Ok(off_slice) => {
+                assert!(offset <= total_len);
+                assert_eq!(off_slice.size(), total_len - offset);
+                assert_eq!(
+                    off_slice.as_ptr() as usize,
+                    (base_slice.as_ptr() as usize) + offset
+                );
+            }
+            Err(_) => {
+                assert!(
+                    offset > total_len
+                        || (base_slice.as_ptr() as usize).checked_add(offset).is_none()
+                );
+            }
+        }
     }
 }
