@@ -546,8 +546,8 @@ impl PipeConnection {
             // zero byte reads. These zero byte reads DO NOT signify EOF, so from the perspective
             // of std::io::Read, they cannot be reported as Ok(0). We translate them to errors.
             //
-            // Within CrosVM, this behavior is not used, but it has been implemented to avoid UB
-            // either in the future, or when talking to non CrosVM named pipes. If we need to
+            // Within crosvm, this behavior is not used, but it has been implemented to avoid UB
+            // either in the future, or when talking to non crosvm named pipes. If we need to
             // actually use/understand this error from other parts of KiwiVM (e.g. PipeConnection
             // consumers), we could use ErrorKind::Interrupted (which as of 24/11/26 is not used by
             // Rust for other purposes).

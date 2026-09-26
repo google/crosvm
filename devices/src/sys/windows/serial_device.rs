@@ -57,7 +57,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
             // discard output. If the pipe's buffer is allowed to fill, writes
             // will block, which will stall the output queue. This generally
             // points to a bug in the named pipe consumer, and if desired we
-            // could address it in CrosVM by adding a write timeout.
+            // could address it in crosvm by adding a write timeout.
             let pipe_in = named_pipes::create_server_pipe(
                 path.to_str().unwrap(),
                 &FramingMode::Byte,

@@ -2162,7 +2162,7 @@ pub struct RunCommand {
     ))]
     #[argh(switch)]
     /// expose the LOW_POWER_ENTRY/EXIT feature of VFIO platform devices to guests, if available
-    /// (EXPERIMENTAL) The host kernel may not support the API used by CrosVM
+    /// (EXPERIMENTAL) The host kernel may not support the API used by crosvm
     pub vfio_platform_pm: Option<bool>,
 
     #[cfg(any(target_os = "android", target_os = "linux"))]

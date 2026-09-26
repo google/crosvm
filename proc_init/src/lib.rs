@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 //! This crate provides functions to call very early from the entry point to customize the process
-//! for setting up Rust processes. It was built originally for CrosVM, but can be useful in other
+//! for setting up Rust processes. It was built originally for crosvm, but can be useful in other
 //! Rust products too.
 //!
 //! For example:

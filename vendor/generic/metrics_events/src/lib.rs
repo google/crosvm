@@ -8,7 +8,7 @@ use serde::Serialize;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MetricEventType {
     // No events should ever be added to this enum - all events defined in
-    // upstream CrosVM should be added to the metrics_event package. Downstream
+    // upstream crosvm should be added to the metrics_event package. Downstream
     // projects can replace the generic metrics_event package if they need
     // downstream only events.
 }

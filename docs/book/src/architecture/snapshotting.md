@@ -62,7 +62,7 @@ events map to the right GSIs in the hypervisor.
 
 #### MSIs
 
-These are much simpler, because of how MSIs are implemented in CrosVM. In `MsixConfig`, we save the
+These are much simpler, because of how MSIs are implemented in crosvm. In `MsixConfig`, we save the
 MSI routing information for every IRQ. At restore time, we just register these MSIs with the
 hypervisor using the exact same mechanism that would be invoked on device activation (albeit
 bypassing GSI allocation since we know from the saved state exactly which GSI must be used).

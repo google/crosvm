@@ -295,10 +295,10 @@ pub trait Vm: Send + Sync {
     /// Events from virtio-balloon that affect the state for guest memory and host memory.
     fn handle_balloon_event(&self, event: BalloonEvent) -> Result<()>;
 
-    /// Registers with the hypervisor for CrosVM to handle any guest hypercall in the range.
+    /// Registers with the hypervisor for crosvm to handle any guest hypercall in the range.
     fn enable_hypercalls(&self, nr: u64, count: usize) -> Result<()>;
 
-    /// Registers with the hypervisor for CrosVM to handle the guest hypercall.
+    /// Registers with the hypervisor for crosvm to handle the guest hypercall.
     fn enable_hypercall(&self, nr: u64) -> Result<()> {
         self.enable_hypercalls(nr, 1)
     }
@@ -323,7 +323,7 @@ pub struct IoParams<'a> {
     pub operation: IoOperation<'a>,
 }
 
-/// Architecture-agnostic wrapper for any hypercall ABI between CrosVM and the guest.
+/// Architecture-agnostic wrapper for any hypercall ABI between crosvm and the guest.
 #[derive(Debug)]
 pub struct HypercallAbi {
     hypercall_id: usize,

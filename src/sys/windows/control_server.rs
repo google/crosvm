@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Implements the CrosVM control socket on Windows. Unlike on unix, this is a bit involved because
+//! Implements the crosvm control socket on Windows. Unlike on unix, this is a bit involved because
 //! we can't process the raw named pipe in line inside `run_control` (named pipes aren't directly
 //! waitable). In theory, AF_UNIX can be made waitable, but AF_UNIX is very slow, and we already
 //! have significant prior art for using named pipes in a waitable fashion (`base::StreamChannel`).

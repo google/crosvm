@@ -875,7 +875,7 @@ impl Suspendable for PciConfigMmio {
     }
 }
 
-/// Inspired by PCI configuration space, CrosVM provides 2048 dword virtual registers (8KiB in
+/// Inspired by PCI configuration space, crosvm provides 2048 dword virtual registers (8KiB in
 /// total) for each PCI device. The guest can use these registers to exchange device-specific
 /// information with crosvm. The first 4kB is trapped by crosvm and crosvm supplies these
 /// register's emulation. The second 4KB is mapped into guest directly as shared memory, so

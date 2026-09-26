@@ -1,7 +1,7 @@
 # Interrupts (x86_64)
 
 Interrupts are how devices request service from the guest drivers. This page explores the details of
-interrupt routing from the perspective of CrosVM.
+interrupt routing from the perspective of crosvm.
 
 ## Critical acronyms
 
@@ -20,9 +20,9 @@ This subject area uses *a lot* of acronyms:
 
 ## Interrupts come in two flavors
 
-Interrupts on `x86_64` in CrosVM come in two primary flavors: legacy and MSI-X. In this document,
+Interrupts on `x86_64` in crosvm come in two primary flavors: legacy and MSI-X. In this document,
 MSI is used to refer to the concept of message signaled interrupts, but it always refers to
-interrupts sent via MSI-X because that is what CrosVM uses.
+interrupts sent via MSI-X because that is what crosvm uses.
 
 ### Legacy interrupts (INTx)
 
@@ -50,9 +50,9 @@ devices. Broadcast is required because interrupt lines can be routed through the
 cascade before they reach the CPU, broadcast to both PICs (and attached devices) is the only way to
 ensure EOI reaches the device that was serviced.
 
-#### EOI in CrosVM
+#### EOI in crosvm
 
-When the guest's ISR completes and signals EOI, the CrosVM irqchip implementation is responsible for
+When the guest's ISR completes and signals EOI, the crosvm irqchip implementation is responsible for
 propagating EOI to the device backends. EOI is delivered to the devices via their
 [resample event](https://crosvm.dev/doc/devices/struct.IrqLevelEvent.html). Devices are then
 responsible for listening to that resample event, and checking their internal state to see if they
@@ -73,7 +73,7 @@ for the EOI event, and the irqchip will not signal it.
 
 After very early boot, the PIC is switched off and legacy interrupts somewhat cease to be legacy.
 Instead of being handled by the PIC, legacy interrupts are handled by the IOAPIC, and all the IOAPIC
-does is convert them into MSIs; in other words, from the perspective of CrosVM & the guest VCPUs,
+does is convert them into MSIs; in other words, from the perspective of crosvm & the guest VCPUs,
 after early boot, every interrupt is a MSI.
 
 ## Interrupt handling irqchip specifics
@@ -90,7 +90,7 @@ three choices for implementing an irqchip:
   commonly used.
 
 Below, we describe the rough flow for interrupts in virtio devices for each of the chip types. We
-limit ourselves to virtio devices becauseas these are the performance critical devices in CrosVM.
+limit ourselves to virtio devices becauseas these are the performance critical devices in crosvm.
 
 ### Kernel mode IRQ chip (w/ irqfd support)
 
@@ -116,12 +116,12 @@ This is the same as the kernel mode case.
 #### MSIs
 
 1. Device wants service, so it signals an `Event` object.
-1. The `Event`object is attached to the IrqChip in CrosVM. An interrupt handling thread wakes up
+1. The `Event`object is attached to the IrqChip in crosvm. An interrupt handling thread wakes up
    from the `Event` signal.
 1. The IrqChip resets the `Event`.
 1. The IrqChip asserts the interrupt to the LAPIC in the kernel via an ioctl (or equivalent).
 1. The LAPIC interrupts the VCPU, which jumps to the kernel’s ISR (interrupt service routine).
-1. The ISR runs, and on completion sends EOI (end of interrupt). In CrosVM, this is called the
+1. The ISR runs, and on completion sends EOI (end of interrupt). In crosvm, this is called the
    [resample event](https://crosvm.dev/doc/devices/struct.IrqLevelEvent.html).
 1. EOI is sent.
 

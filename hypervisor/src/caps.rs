@@ -30,7 +30,7 @@ pub enum HypervisorCap {
     // of the main memory region in the device tree.
     StaticSwiotlbAllocationRequired,
     /// Some hypervisors (presently: Gunyah) will configure initial boot-time registers
-    /// for vCPUs without need for CrosVM to specify.
+    /// for vCPUs without need for crosvm to specify.
     ///
     /// If this capability is declared, then crosvm will not try to initialize vcpu
     /// registers when creating the VM.

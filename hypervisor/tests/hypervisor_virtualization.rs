@@ -3083,7 +3083,7 @@ fn test_mmx_state_is_preserved_by_hypervisor() {
 
             // mm0 MUST NOT have the guest's sentinel value. If it somehow does, the hypervisor
             // didn't save the guest's FPU/MMX state / restore the host's state before exiting to
-            // CrosVM.
+            // crosvm.
             //
             // Note: MMX is ubiquitous on x86_64, so we don't check for support on the host (the
             // guest checks, so unless the guest's support is software implemented, it's highly
@@ -3159,7 +3159,7 @@ fn test_avx_state_is_preserved_by_hypervisor() {
         // Here's the actual test (finally). Since AVX is a little tricky to follow, here's what
         // the test does:
         //      1. We load 0x1337FFFF into ymm1 via xmm0.
-        //      2. We perform port IO to exit out to CrosVM (our vmexit handler below).
+        //      2. We perform port IO to exit out to crosvm (our vmexit handler below).
         //      3. The vmexit handler makes sure ymm1 does NOT contain 0x1337FFFF.
         //      4. We return to this program. Then we dump the value of ymm1 into ebx. The exit
         //         register matcher verifies that 0x1337FFFF is in ebx. This means the hypervisor
@@ -3223,7 +3223,7 @@ fn test_avx_state_is_preserved_by_hypervisor() {
 
             // ymm1 MUST NOT have the guest's sentinel value. If it somehow does, the hypervisor
             // didn't save the guest's AVX state / restore the host's state before exiting to
-            // CrosVM.
+            // crosvm.
             //
             // Note: AVX is ubiquitous on x86_64, so we don't check for support on the host (the
             // guest checks, so unless the guest's support is software implemented, it's highly

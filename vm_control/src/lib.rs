@@ -2578,7 +2578,7 @@ fn do_snapshot(
     // serviced on the requested iteration. Note that in the legacy case, this
     // ensures at least two iterations.
     //
-    // Note: within CrosVM, *all* interrupts are eventually converted into the
+    // Note: within crosvm, *all* interrupts are eventually converted into the
     // same mechanicism that MSIs use. This is why we say "underlying" MSI for
     // a legacy IRQ.
     {

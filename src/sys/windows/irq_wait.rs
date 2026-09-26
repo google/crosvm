@@ -162,7 +162,7 @@ impl IrqWaitWorker {
                                     break 'poll;
                                 }
                                 IrqHandlerRequest::AddIrqControlTubes(_tubes) => {
-                                    panic!("CrosVM on Windows does not support adding devices on the fly yet.");
+                                    panic!("crosvm on Windows does not support adding devices on the fly yet.");
                                 }
                                 IrqHandlerRequest::WakeAndNotifyIteration => {
                                     for child_control_tube in child_control_tubes.iter() {

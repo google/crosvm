@@ -75,7 +75,7 @@ impl SmcccTrng {
     const FID_TRNG_RND64: u32 = 0xC400_0053;
 
     const VERSION: (u16, u16) = (1, 0);
-    /// CrosVM SMCCC TRNG back-end UUID.
+    /// crosvm SMCCC TRNG back-end UUID.
     ///
     /// Equivalent to `Uuid::new_v8(*b"SMCCCTRNG-CrosVM")`.
     const UUID: Uuid = uuid!("534d4343-4354-824e-872d-43726f73564d");
