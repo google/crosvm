@@ -611,7 +611,7 @@ fn stat<F: AsRawDescriptor + ?Sized>(f: &F) -> io::Result<libc::stat64> {
 
 fn validate_path_component(name: &CStr) -> io::Result<()> {
     let bytes = name.to_bytes();
-    if bytes == b".." || (bytes.contains(&b'/') && bytes != b"/") {
+    if bytes == b".." || bytes.contains(&b'/') {
         return Err(io::Error::from_raw_os_error(libc::EINVAL));
     }
     Ok(())
@@ -4045,7 +4045,7 @@ mod tests {
     fn lookup(fs: &PassthroughFs, path: &Path) -> io::Result<Inode> {
         let mut inode = 1;
         let ctx = get_context();
-        for name in path.iter() {
+        for name in path.iter().filter(|&name| name != "/") {
             let name = CString::new(name.to_str().unwrap()).unwrap();
             let ent = match fs.lookup(ctx, inode, &name) {
                 Ok(ent) => ent,
@@ -4064,7 +4064,7 @@ mod tests {
         let mut inode = 1;
         let ctx = get_context();
         let mut entry = Entry::new_negative(Duration::from_secs(10));
-        for name in path.iter() {
+        for name in path.iter().filter(|&name| name != "/") {
             let name = CString::new(name.to_str().unwrap()).unwrap();
             entry = match fs.lookup(ctx, inode, &name) {
                 Ok(ent) => ent,
@@ -4126,7 +4126,7 @@ mod tests {
         let mut inode = 1;
         let ctx = get_context();
 
-        let path_vec: Vec<_> = path.iter().collect();
+        let path_vec: Vec<_> = path.iter().filter(|&name| name != "/").collect();
         let vec_len = path_vec.len();
 
         // Do lookup before util (vec_len-1)-th pathname, this operation is to simulate
@@ -5354,6 +5354,28 @@ mod tests {
         let dotdot = c"..";
         let res = fs.lookup(ctx, 1, dotdot);
         assert!(res.is_err(), "Lookup .. should be blocked!");
+    }
+
+    #[test]
+    fn test_lookup_slash_escape() {
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+        let temp_dir = TempDir::new().unwrap();
+        let root_path = temp_dir.path().join("root");
+        std::fs::create_dir(&root_path).unwrap();
+
+        let cfg = Config {
+            ..Default::default()
+        };
+        let mut fs = PassthroughFs::new("tag", cfg).unwrap();
+        fs.set_root_dir(root_path.to_str().unwrap().to_string())
+            .unwrap();
+        fs.init(FsOptions::empty()).unwrap();
+        let ctx = get_context();
+
+        let slash = c"/";
+        let res = fs.lookup(ctx, 1, slash);
+        assert!(res.is_err(), "Lookup / should be blocked!");
     }
 
     #[test]

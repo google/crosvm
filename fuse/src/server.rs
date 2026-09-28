@@ -1884,7 +1884,7 @@ fn bytes_to_cstr(buf: &[u8]) -> Result<&CStr> {
 
 fn is_safe_name(name: &CStr) -> bool {
     let bytes = name.to_bytes();
-    if bytes == b".." || (bytes.contains(&b'/') && bytes != b"/") {
+    if bytes == b".." || bytes.contains(&b'/') {
         return false;
     }
     true
@@ -2225,5 +2225,25 @@ mod verification {
                 assert!(res.is_none());
             }
         }
+    }
+
+    #[test]
+    fn test_bytes_to_path_component() {
+        assert_eq!(
+            bytes_to_path_component(b"valid.txt\0").unwrap(),
+            c"valid.txt"
+        );
+        assert!(matches!(
+            bytes_to_path_component(b"..\0"),
+            Err(Error::DecodeMessage(e)) if e.raw_os_error() == Some(libc::EINVAL)
+        ));
+        assert!(matches!(
+            bytes_to_path_component(b"/\0"),
+            Err(Error::DecodeMessage(e)) if e.raw_os_error() == Some(libc::EINVAL)
+        ));
+        assert!(matches!(
+            bytes_to_path_component(b"a/b\0"),
+            Err(Error::DecodeMessage(e)) if e.raw_os_error() == Some(libc::EINVAL)
+        ));
     }
 }
