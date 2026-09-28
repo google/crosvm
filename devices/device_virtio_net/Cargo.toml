@@ -5,6 +5,9 @@ authors = ["The ChromiumOS Authors"]
 license = "BSD-3-Clause"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [features]
 pci-hotplug = ["devices/pci-hotplug"]
 slirp = ["net_util/slirp"]

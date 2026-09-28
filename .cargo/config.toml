@@ -4,7 +4,6 @@
 # https://github.com/rust-lang/cargo/issues/5034
 [build]
 rustflags = [
-    "--check-cfg=cfg(kani)",
     "-Dclippy::undocumented_unsafe_blocks",
     # We don't care about these lints. Okay to remain suppressed globally.
     "-Aclippy::bool_assert_comparison",
@@ -23,9 +22,6 @@ rustflags = [
     "-Aclippy::uninlined_format_args",
     "-Aclippy::unreadable_literal",
     "-Aclippy::useless_transmute",
-]
-rustdocflags = [
-    "--check-cfg=cfg(kani)",
 ]
 
 [env]

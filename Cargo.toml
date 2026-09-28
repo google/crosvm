@@ -6,6 +6,9 @@ edition = "2021"
 license = "BSD-3-Clause"
 default-run = "crosvm"
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "crosvm"
 path = "src/main.rs"
@@ -120,6 +123,9 @@ exclude = [
     # This crate depends on optional features and is compiled via dependencies when enabled.
     "media/libvda",
 ]
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [workspace.dependencies]
 # Workspace members
