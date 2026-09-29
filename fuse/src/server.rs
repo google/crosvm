@@ -2000,6 +2000,7 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
     }
 
     let mut cur_secctx_pos = size_of::<SecctxHeader>();
+    let mut selinux_value = None;
     for _ in 0..secctx_header.nr_secctx {
         // `SecctxHeader.size` denotes the total size for the `SecctxHeader`, each of the
         // `nr_secctx` `Secctx` structs along with the corresponding context name and value,
@@ -2017,18 +2018,11 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
         cur_secctx_pos += size_of::<Secctx>();
 
         // Extended attribute names and values are not path components, so we use `bytes_to_cstr`.
-        let secctx_data = &buf[cur_secctx_pos..]
+        let mut secctx_data = buf[cur_secctx_pos..]
             .split_inclusive(|&c| c == b'\0')
-            .take(2)
-            .map(bytes_to_cstr)
-            .collect::<Result<Vec<&CStr>>>()?;
-
-        if secctx_data.len() != 2 {
-            return Err(Error::MissingParameter);
-        }
-
-        let name = secctx_data[0];
-        let value = secctx_data[1];
+            .map(bytes_to_cstr);
+        let name = secctx_data.next().ok_or(Error::MissingParameter)??;
+        let value = secctx_data.next().ok_or(Error::MissingParameter)??;
 
         cur_secctx_pos += name.to_bytes_with_nul().len() + value.to_bytes_with_nul().len();
         if cur_secctx_pos > secctx_header.size as usize {
@@ -2041,8 +2035,8 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
             return Err(Error::InvalidHeaderLength);
         }
 
-        if name.to_bytes_with_nul() == SELINUX_XATTR_CSTR {
-            return Ok(Some(value));
+        if selinux_value.is_none() && name.to_bytes_with_nul() == SELINUX_XATTR_CSTR {
+            selinux_value = Some(value);
         }
     }
 
@@ -2056,10 +2050,10 @@ fn parse_selinux_xattr(buf: &[u8]) -> Result<Option<&CStr>> {
         return Err(Error::InvalidHeaderLength);
     }
 
-    // None of the `nr_secctx` attributes we parsed had a `name` matching `SELINUX_XATTR_CSTR`.
-    // Return `Ok(None)` to indicate that the security context data block was valid but there was no
-    // specified selinux label attached to this request.
-    Ok(None)
+    // If none of the `nr_secctx` attributes we parsed had a `name` matching `SELINUX_XATTR_CSTR`,
+    // this returns `Ok(None)` to indicate that the security context data block was valid but there
+    // was no specified selinux label attached to this request.
+    Ok(selinux_value)
 }
 
 #[cfg(test)]
@@ -2161,7 +2155,7 @@ mod tests {
     fn parse_selinux_xattr_too_short() {
         // Test that parse_selinux_xattr will return an `Error::InvalidHeaderLength` when
         // the total size in the `SecctxHeader` does not encompass the entirety of the
-        // associated data.
+        // associated data, regardless of whether `security.selinux` appears first or last.
         let foo_value = c"user_foo:object_foo:foo_type:s0";
         let sec_value = c"user_u:object_r:security_type:s0";
         let v = create_secctx(
@@ -2174,5 +2168,62 @@ mod tests {
 
         let res = parse_selinux_xattr(&v);
         assert!(matches!(res, Err(Error::InvalidHeaderLength)));
+
+        let v_selinux_first = create_secctx(
+            &[
+                (SELINUX_XATTR_CSTR, sec_value.to_bytes_with_nul()),
+                (b"foo\0", foo_value.to_bytes_with_nul()),
+            ],
+            8,
+        );
+
+        let res = parse_selinux_xattr(&v_selinux_first);
+        assert!(matches!(res, Err(Error::InvalidHeaderLength)));
+
+        // Also verify unaligned header size with a single security.selinux entry is rejected.
+        let v_unaligned = create_secctx(&[(SELINUX_XATTR_CSTR, sec_value.to_bytes_with_nul())], 1);
+        let res = parse_selinux_xattr(&v_unaligned);
+        assert!(matches!(res, Err(Error::InvalidHeaderLength)));
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Proves that `parse_selinux_xattr` never panics on any arbitrary `SecctxHeader`/`Secctx`
+    /// input buffer and strictly enforces the 8-byte alignment and `MAX_NR_SECCTX` invariants.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn verify_parse_selinux_xattr() {
+        let buf: [u8; 18] = kani::any();
+        let len: usize = kani::any();
+        kani::assume(len <= buf.len());
+        let slice = &buf[..len];
+
+        // An 18-byte buffer can hold at most 1 valid `Secctx` entry (8-byte `SecctxHeader` +
+        // 10-byte minimum `Secctx` entry). Constraining `nr_secctx` away from 3..=MAX_NR_SECCTX
+        // bounds CBMC loop unwinding while still covering 0, 1, 2 (truncated 2nd entry), and
+        // > MAX_NR_SECCTX.
+        if slice.len() >= size_of::<SecctxHeader>() {
+            let (hdr, _) = SecctxHeader::read_from_prefix(slice).unwrap();
+            kani::assume(hdr.nr_secctx <= 2 || hdr.nr_secctx > MAX_NR_SECCTX);
+        }
+
+        if let Ok(res) = parse_selinux_xattr(slice) {
+            if slice.len() >= size_of::<SecctxHeader>() {
+                let (hdr, _) = SecctxHeader::read_from_prefix(slice).unwrap();
+                if hdr.nr_secctx <= MAX_NR_SECCTX {
+                    assert_eq!(hdr.size % 8, 0);
+                    assert!(hdr.size as usize >= size_of::<SecctxHeader>());
+                    assert!(hdr.size as usize <= slice.len().next_multiple_of(8));
+                } else {
+                    assert!(res.is_none());
+                }
+            } else {
+                assert!(slice.is_empty());
+                assert!(res.is_none());
+            }
+        }
     }
 }
