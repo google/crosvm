@@ -16,13 +16,19 @@ use crate::AaudioFormatT;
 use crate::AaudioResultT;
 
 #[no_mangle]
-extern "C" fn AAudio_createStreamBuilder(_builder: *mut *mut AAudioStreamBuilder) -> AaudioResultT {
-    unimplemented!();
+extern "C" fn AAudio_createStreamBuilder(builder: *mut *mut AAudioStreamBuilder) -> AaudioResultT {
+    if !builder.is_null() {
+        // SAFETY: `builder` is a valid out-pointer provided by the caller in tests.
+        unsafe {
+            *builder = std::ptr::NonNull::<AAudioStreamBuilder>::dangling().as_ptr();
+        }
+    }
+    0
 }
 
 #[no_mangle]
 extern "C" fn AAudioStreamBuilder_delete(_builder: *mut AAudioStreamBuilder) -> AaudioResultT {
-    unimplemented!();
+    0
 }
 
 #[no_mangle]
@@ -30,7 +36,6 @@ extern "C" fn AAudioStreamBuilder_setBufferCapacityInFrames(
     _builder: *mut AAudioStreamBuilder,
     _num_frames: i32,
 ) {
-    unimplemented!();
 }
 
 #[no_mangle]
@@ -38,7 +43,6 @@ extern "C" fn AAudioStreamBuilder_setDirection(
     _builder: *mut AAudioStreamBuilder,
     _direction: u32,
 ) {
-    unimplemented!();
 }
 
 #[no_mangle]
@@ -46,7 +50,6 @@ extern "C" fn AAudioStreamBuilder_setFormat(
     _builder: *mut AAudioStreamBuilder,
     _format: AaudioFormatT,
 ) {
-    unimplemented!();
 }
 
 #[no_mangle]
@@ -54,7 +57,6 @@ extern "C" fn AAudioStreamBuilder_setSampleRate(
     _builder: *mut AAudioStreamBuilder,
     _sample_rate: i32,
 ) {
-    unimplemented!();
 }
 
 #[no_mangle]
@@ -62,53 +64,58 @@ extern "C" fn AAudioStreamBuilder_setChannelCount(
     _builder: *mut AAudioStreamBuilder,
     _channel_count: i32,
 ) {
-    unimplemented!();
 }
 
 #[no_mangle]
 extern "C" fn AAudioStreamBuilder_openStream(
     _builder: *mut AAudioStreamBuilder,
-    _stream: *mut *mut AAudioStream,
+    stream: *mut *mut AAudioStream,
 ) -> AaudioResultT {
-    unimplemented!();
+    if !stream.is_null() {
+        // SAFETY: `stream` is a valid out-pointer provided by the caller in tests.
+        unsafe {
+            *stream = std::ptr::NonNull::<AAudioStream>::dangling().as_ptr();
+        }
+    }
+    0
 }
 
 #[no_mangle]
 extern "C" fn AAudioStream_getBufferSizeInFrames(_stream: *mut AAudioStream) -> i32 {
-    unimplemented!();
+    960
 }
 
 #[no_mangle]
 extern "C" fn AAudioStream_requestStart(_stream: *mut AAudioStream) -> AaudioResultT {
-    unimplemented!();
+    0
 }
 
 #[no_mangle]
 extern "C" fn AAudioStream_read(
     _stream: *mut AAudioStream,
     _buffer: *mut c_void,
-    _num_frames: i32,
+    num_frames: i32,
     _timeout_nanoseconds: i64,
 ) -> AaudioResultT {
-    unimplemented!();
+    num_frames
 }
 
 #[no_mangle]
 extern "C" fn AAudioStream_write(
     _stream: *mut AAudioStream,
     _buffer: *const c_void,
-    _num_frames: i32,
+    num_frames: i32,
     _timeout_nanoseconds: i64,
 ) -> AaudioResultT {
-    unimplemented!();
+    num_frames
 }
 
 #[no_mangle]
 extern "C" fn AAudioStream_requestStop(_stream: *mut AAudioStream) -> AaudioResultT {
-    unimplemented!();
+    0
 }
 
 #[no_mangle]
 extern "C" fn AAudioStream_close(_stream: *mut AAudioStream) -> AaudioResultT {
-    unimplemented!();
+    0
 }

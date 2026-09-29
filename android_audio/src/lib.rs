@@ -49,8 +49,6 @@ pub enum AAudioError {
     StreamOpen,
     #[error("Failed to start stream")]
     StreamStart,
-    #[error("Failed to stop stream")]
-    StreamStop,
     #[error("Failed to delete stream builder")]
     StreamBuilderDelete,
     #[error("Unsupported sample format: {0}")]
@@ -407,32 +405,41 @@ impl CaptureBufferStream for AudioStream {
 #[async_trait(?Send)]
 impl AsyncCaptureBufferStream for AudioStream {
     fn start(&mut self) -> Result<(), BoxError> {
+        // stop() always closes the stream, and opening it also starts it, so there is nothing to
+        // restart here.
         if self.buffer_drop.stream.stream_ptr.is_null() {
             self.open_capture_stream()?;
-        } else {
-            // SAFETY:
-            // Interfacing with the AAudio C API. Assumes correct linking
-            // and `stream_ptr` is valid and properly initialized.
-            let res = unsafe { AAudioStream_requestStart(self.buffer_drop.stream.stream_ptr) };
-            if res != AAUDIO_OK {
-                return Err(Box::new(AAudioError::StreamStart));
-            }
         }
         self.reset_capture_timing();
         Ok(())
     }
 
     fn stop(&mut self) -> Result<(), BoxError> {
-        if !self.buffer_drop.stream.stream_ptr.is_null() {
+        // Close rather than only stop the stream: a stopped stream keeps its AudioRecord client
+        // registered in AudioFlinger, which keeps the microphone and its privacy indicator on.
+        // Nullify `stream_ptr` so `Drop for AAudioStreamPtr` does not double-close the stream;
+        // the next start() reopens it.
+        let stream_ptr = std::mem::replace(
+            &mut self.buffer_drop.stream.stream_ptr,
+            std::ptr::null_mut(),
+        );
+        if !stream_ptr.is_null() {
             // SAFETY:
             // Interfacing with the AAudio C API. Assumes correct linking
             // and `stream_ptr` is valid and properly initialized.
-            let res = unsafe { AAudioStream_requestStop(self.buffer_drop.stream.stream_ptr) };
-            if res != AAUDIO_OK {
-                warn!("AAudio stream stop failed: {res}");
-                return Err(Box::new(AAudioError::StreamStop));
+            let stop_res = unsafe { AAudioStream_requestStop(stream_ptr) };
+            if stop_res != AAUDIO_OK {
+                warn!("AAudio stream requestStop failed: {stop_res}");
+            }
+            // SAFETY:
+            // Interfacing with the AAudio C API. Assumes correct linking
+            // and `stream_ptr` is valid and properly initialized.
+            let close_res = unsafe { AAudioStream_close(stream_ptr) };
+            if close_res != AAUDIO_OK {
+                warn!("AAudio stream close failed: {close_res}");
             }
         }
+        self.aaudio_buffer_size = 0;
         self.reset_capture_timing();
         Ok(())
     }
@@ -858,5 +865,31 @@ mod tests {
                 assert!(AudioStream::new(2, format, 48000, 480, direction).is_err());
             }
         }
+    }
+
+    #[test]
+    fn test_capture_stream_stop_closes_and_start_reopens() {
+        let mut stream = new_unstarted_capture_stream();
+
+        assert!(stream.start().is_ok());
+        assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
+        assert!(stream.aaudio_buffer_size > 0);
+
+        // Dirty the pacing state so stop() has something to reset.
+        stream.read_count = 10;
+        stream.start_time = Some(Instant::now());
+        stream.total_frames = 4800;
+
+        assert!(stream.stop().is_ok());
+        assert!(stream.buffer_drop.stream.stream_ptr.is_null());
+        assert_eq!(stream.aaudio_buffer_size, 0);
+        assert_eq!(stream.read_count, 0);
+        assert!(stream.start_time.is_none());
+        assert_eq!(stream.total_frames, 0);
+
+        // A closed stream is reopened by the next start().
+        assert!(stream.start().is_ok());
+        assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
+        assert!(stream.aaudio_buffer_size > 0);
     }
 }
