@@ -8,6 +8,8 @@
 mod libaaudio_stub;
 
 use std::os::raw::c_void;
+use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -130,6 +132,17 @@ struct AAudioStreamPtr {
 // whenever AudioStream.drop.buffer_ptr is alive.
 unsafe impl Send for AndroidAudioStreamCommit {}
 
+/// Asks the host whether the guest may capture audio. Implementations must not block: they run
+/// on the audio executor. One delegate is shared by all capture streams of a card, so streams
+/// waiting at the same time share one request and all receive its answer.
+pub trait AudioPermissionDelegate: Send + Sync {
+    /// Sends a permission request to the host unless one is already outstanding.
+    fn request_permission(&self) -> Result<(), BoxError>;
+    /// Returns the host's answer to the outstanding request, or `Poll::Pending` if it has not
+    /// answered yet.
+    fn poll_permission(&self) -> Poll<Result<bool, BoxError>>;
+}
+
 struct AudioStream {
     buffer: Box<[u8]>,
     frame_size: usize,
@@ -142,6 +155,9 @@ struct AudioStream {
     buffer_drop: AndroidAudioStreamCommit,
     read_count: i32,
     aaudio_buffer_size: usize,
+    permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
+    /// A permission request was sent and its answer has not been applied yet.
+    permission_pending: bool,
 }
 
 struct AndroidAudioStreamCommit {
@@ -247,6 +263,7 @@ impl AudioStream {
         frame_rate: u32,
         buffer_size: usize,
         direction: AndroidAudioStreamDirection,
+        permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
     ) -> Result<Self, BoxError> {
         // Reject unsupported formats up front: capture streams only open AAudio in start().
         to_aaudio_format(format)?;
@@ -283,6 +300,8 @@ impl AudioStream {
             buffer_drop,
             read_count: 0,
             aaudio_buffer_size,
+            permission_delegate,
+            permission_pending: false,
         })
     }
 
@@ -313,6 +332,32 @@ impl AudioStream {
             self.aaudio_buffer_size
         );
         Ok(())
+    }
+
+    /// Applies the host's answer to a pending permission request, if it has arrived. On grant,
+    /// opens the AAudio capture stream and resets the capture timing.
+    fn poll_permission(&mut self) {
+        if !self.permission_pending {
+            return;
+        }
+        let Some(delegate) = &self.permission_delegate else {
+            return;
+        };
+        let Poll::Ready(answer) = delegate.poll_permission() else {
+            return;
+        };
+        self.permission_pending = false;
+        match answer {
+            Ok(true) => match self.open_capture_stream() {
+                Ok(()) => {
+                    info!("Audio capture permission granted; opened capture stream");
+                    self.reset_capture_timing();
+                }
+                Err(e) => warn!("Failed to open AAudioStream after permission grant: {e}"),
+            },
+            Ok(false) => warn!("Audio capture permission denied; streaming silence."),
+            Err(e) => warn!("Audio permission check failed ({e}); streaming silence."),
+        }
     }
 
     /// Paces period production to real time. Adds `period_frames` to the running frame count and
@@ -405,16 +450,35 @@ impl CaptureBufferStream for AudioStream {
 #[async_trait(?Send)]
 impl AsyncCaptureBufferStream for AudioStream {
     fn start(&mut self) -> Result<(), BoxError> {
-        // stop() always closes the stream, and opening it also starts it, so there is nothing to
-        // restart here.
-        if self.buffer_drop.stream.stream_ptr.is_null() {
-            self.open_capture_stream()?;
-        }
         self.reset_capture_timing();
-        Ok(())
+        if !self.buffer_drop.stream.stream_ptr.is_null() {
+            // Already open and started: stop() always closes the stream, so this only happens if
+            // start() is called twice. Don't open a second stream over it.
+            return Ok(());
+        }
+        if let Some(delegate) = &self.permission_delegate {
+            // Do not wait for the answer here: holding back capture periods while the host shows
+            // its permission dialog stalls the guest hw_ptr, and ALSA hw: clients fail with
+            // -EIO. Instead next_capture_buffer() streams paced silence and polls each period.
+            info!("Capture start(): requesting host audio permission; silence until answered");
+            match delegate.request_permission() {
+                Ok(()) => {
+                    self.permission_pending = true;
+                    // Apply an immediate answer before returning.
+                    self.poll_permission();
+                }
+                Err(e) => {
+                    warn!("Failed to request audio permission ({e}); streaming silence.");
+                    self.permission_pending = false;
+                }
+            }
+            return Ok(());
+        }
+        self.open_capture_stream()
     }
 
     fn stop(&mut self) -> Result<(), BoxError> {
+        self.permission_pending = false;
         // Close rather than only stop the stream: a stopped stream keeps its AudioRecord client
         // registered in AudioFlinger, which keeps the microphone and its privacy indicator on.
         // Nullify `stream_ptr` so `Drop for AAudioStreamPtr` does not double-close the stream;
@@ -449,6 +513,10 @@ impl AsyncCaptureBufferStream for AudioStream {
         ex: &dyn AudioStreamsExecutor,
     ) -> Result<AsyncCaptureBuffer<'a>, BoxError> {
         let buffer_size = self.buffer.len() / self.frame_size;
+        // On grant this opens the stream and resets the capture timing, so this call then behaves
+        // like the first call after start(): warm-up period skipped, clock re-anchored without
+        // delay.
+        self.poll_permission();
         self.read_count += 1;
         self.pace_period(ex, buffer_size as i32, "capture").await?;
 
@@ -518,7 +586,9 @@ impl Drop for AAudioStreamPtr {
 }
 
 #[derive(Default, Clone)]
-struct AndroidAudioStreamSource;
+struct AndroidAudioStreamSource {
+    permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
+}
 
 impl StreamSource for AndroidAudioStreamSource {
     #[allow(clippy::type_complexity)]
@@ -548,6 +618,7 @@ impl StreamSource for AndroidAudioStreamSource {
             frame_rate,
             buffer_size,
             AndroidAudioStreamDirection::Output,
+            None,
         )?;
         Ok((Box::new(NoopStreamControl::new()), Box::new(audio_stream)))
     }
@@ -582,17 +653,28 @@ impl StreamSource for AndroidAudioStreamSource {
             frame_rate,
             buffer_size,
             AndroidAudioStreamDirection::Input,
+            self.permission_delegate.clone(),
         )?;
         Ok((Box::new(NoopStreamControl::new()), Box::new(audio_stream)))
     }
 }
 
 #[derive(Default, Clone)]
-pub struct AndroidAudioStreamSourceGenerator;
+pub struct AndroidAudioStreamSourceGenerator {
+    permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
+}
 
 impl AndroidAudioStreamSourceGenerator {
     pub fn new() -> Self {
-        AndroidAudioStreamSourceGenerator
+        Self::default()
+    }
+
+    /// Creates a generator whose capture streams ask `delegate` for permission before opening
+    /// the microphone.
+    pub fn with_permission_delegate(delegate: Arc<dyn AudioPermissionDelegate>) -> Self {
+        Self {
+            permission_delegate: Some(delegate),
+        }
     }
 }
 
@@ -600,13 +682,18 @@ impl AndroidAudioStreamSourceGenerator {
 /// for `AndroidAudioStreamSource`.
 impl StreamSourceGenerator for AndroidAudioStreamSourceGenerator {
     fn generate(&self) -> Result<Box<dyn StreamSource>, BoxError> {
-        Ok(Box::new(AndroidAudioStreamSource))
+        Ok(Box::new(AndroidAudioStreamSource {
+            permission_delegate: self.permission_delegate.clone(),
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::Read;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::sync::Mutex;
 
     use futures::FutureExt;
 
@@ -645,6 +732,7 @@ mod tests {
             48000,
             480,
             AndroidAudioStreamDirection::Input,
+            None,
         )
         .expect("Failed to create capture stream");
 
@@ -660,6 +748,7 @@ mod tests {
             48000,
             480,
             AndroidAudioStreamDirection::Input,
+            None,
         )
         .expect("Failed to create capture stream");
 
@@ -677,6 +766,7 @@ mod tests {
                 48000,
                 480,
                 AndroidAudioStreamDirection::Input,
+                None,
             )
             .expect("Failed to create capture stream");
 
@@ -752,6 +842,7 @@ mod tests {
             48000,
             480,
             AndroidAudioStreamDirection::Input,
+            None,
         )
         .expect("Failed to create capture stream")
     }
@@ -862,7 +953,7 @@ mod tests {
                 AndroidAudioStreamDirection::Output,
                 AndroidAudioStreamDirection::Input,
             ] {
-                assert!(AudioStream::new(2, format, 48000, 480, direction).is_err());
+                assert!(AudioStream::new(2, format, 48000, 480, direction, None).is_err());
             }
         }
     }
@@ -891,5 +982,185 @@ mod tests {
         assert!(stream.start().is_ok());
         assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
         assert!(stream.aaudio_buffer_size > 0);
+    }
+
+    struct MockPermissionDelegate {
+        answer: Mutex<Poll<Result<bool, String>>>,
+        fail_requests: bool,
+        requests: AtomicUsize,
+    }
+
+    impl MockPermissionDelegate {
+        fn new(answer: Poll<Result<bool, String>>) -> Self {
+            Self {
+                answer: Mutex::new(answer),
+                fail_requests: false,
+                requests: AtomicUsize::new(0),
+            }
+        }
+
+        fn set_answer(&self, answer: Poll<Result<bool, String>>) {
+            *self.answer.lock().unwrap() = answer;
+        }
+
+        fn requests(&self) -> usize {
+            self.requests.load(Ordering::SeqCst)
+        }
+    }
+
+    impl AudioPermissionDelegate for MockPermissionDelegate {
+        fn request_permission(&self) -> Result<(), BoxError> {
+            self.requests.fetch_add(1, Ordering::SeqCst);
+            if self.fail_requests {
+                return Err("mock request failure".into());
+            }
+            Ok(())
+        }
+
+        fn poll_permission(&self) -> Poll<Result<bool, BoxError>> {
+            self.answer
+                .lock()
+                .unwrap()
+                .clone()
+                .map(|answer| answer.map_err(BoxError::from))
+        }
+    }
+
+    fn new_capture_stream_with_delegate(delegate: &Arc<MockPermissionDelegate>) -> AudioStream {
+        AudioStream::new(
+            2,
+            SampleFormat::S16LE,
+            48000,
+            480,
+            AndroidAudioStreamDirection::Input,
+            Some(delegate.clone()),
+        )
+        .expect("Failed to create capture stream")
+    }
+
+    async fn read_period_is_silent(stream: &mut AudioStream) -> bool {
+        let mut buf = AsyncCaptureBufferStream::next_capture_buffer(stream, &TestExecutor)
+            .await
+            .expect("Failed to get capture buffer");
+        let mut out = [0xa5u8; 480 * 2 * 2];
+        assert_eq!(buf.read(&mut out).unwrap(), 480 * 2 * 2);
+        out.iter().all(|&b| b == 0)
+    }
+
+    #[test]
+    fn test_capture_permission_granted_opens_in_start() {
+        let delegate = Arc::new(MockPermissionDelegate::new(Poll::Ready(Ok(true))));
+        let mut stream = new_capture_stream_with_delegate(&delegate);
+
+        assert!(stream.start().is_ok());
+        assert!(!stream.permission_pending);
+        assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
+        assert_eq!(delegate.requests(), 1);
+    }
+
+    #[test]
+    fn test_capture_permission_pending_then_granted() {
+        async fn run_test() {
+            let delegate = Arc::new(MockPermissionDelegate::new(Poll::Pending));
+            let mut stream = new_capture_stream_with_delegate(&delegate);
+
+            assert!(stream.start().is_ok());
+            assert!(stream.permission_pending);
+            assert!(stream.buffer_drop.stream.stream_ptr.is_null());
+            assert!(read_period_is_silent(&mut stream).await);
+
+            // The grant is applied by the next period, which is the skipped warm-up period.
+            delegate.set_answer(Poll::Ready(Ok(true)));
+            assert!(read_period_is_silent(&mut stream).await);
+            assert!(!stream.permission_pending);
+            assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
+            assert_eq!(stream.read_count, 1);
+            assert_eq!(delegate.requests(), 1);
+        }
+
+        run_test().now_or_never().expect("future should be ready");
+    }
+
+    #[test]
+    fn test_capture_permission_denied_streams_silence() {
+        async fn run_test() {
+            let delegate = Arc::new(MockPermissionDelegate::new(Poll::Ready(Ok(false))));
+            let mut stream = new_capture_stream_with_delegate(&delegate);
+
+            assert!(stream.start().is_ok());
+            assert!(!stream.permission_pending);
+            assert!(stream.buffer_drop.stream.stream_ptr.is_null());
+            assert!(read_period_is_silent(&mut stream).await);
+        }
+
+        run_test().now_or_never().expect("future should be ready");
+    }
+
+    #[test]
+    fn test_capture_permission_error_denies() {
+        let answer = Poll::Ready(Err("mock poll failure".to_string()));
+        let delegate = Arc::new(MockPermissionDelegate::new(answer));
+        let mut stream = new_capture_stream_with_delegate(&delegate);
+        assert!(stream.start().is_ok());
+        assert!(!stream.permission_pending);
+        assert!(stream.buffer_drop.stream.stream_ptr.is_null());
+
+        let delegate = Arc::new(MockPermissionDelegate {
+            fail_requests: true,
+            ..MockPermissionDelegate::new(Poll::Ready(Ok(true)))
+        });
+        let mut stream = new_capture_stream_with_delegate(&delegate);
+        assert!(stream.start().is_ok());
+        assert!(!stream.permission_pending);
+        assert!(stream.buffer_drop.stream.stream_ptr.is_null());
+    }
+
+    #[test]
+    fn test_capture_permission_requested_again_after_stop() {
+        let delegate = Arc::new(MockPermissionDelegate::new(Poll::Ready(Ok(true))));
+        let mut stream = new_capture_stream_with_delegate(&delegate);
+
+        assert!(stream.start().is_ok());
+        assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
+
+        assert!(stream.stop().is_ok());
+        assert!(!stream.permission_pending);
+        assert!(stream.buffer_drop.stream.stream_ptr.is_null());
+
+        assert!(stream.start().is_ok());
+        assert_eq!(delegate.requests(), 2);
+        assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
+    }
+
+    #[test]
+    fn test_stop_while_pending_resets_state() {
+        let delegate = Arc::new(MockPermissionDelegate::new(Poll::Pending));
+        let mut stream = new_capture_stream_with_delegate(&delegate);
+
+        assert!(stream.start().is_ok());
+        assert!(stream.permission_pending);
+
+        assert!(stream.stop().is_ok());
+        assert!(!stream.permission_pending);
+        assert!(stream.buffer_drop.stream.stream_ptr.is_null());
+        assert_eq!(delegate.requests(), 1);
+    }
+
+    #[test]
+    fn test_source_generator_with_permission_delegate() {
+        let delegate = Arc::new(MockPermissionDelegate::new(Poll::Pending));
+        let generator =
+            AndroidAudioStreamSourceGenerator::with_permission_delegate(delegate.clone());
+        let mut source = generator
+            .generate()
+            .expect("Failed to generate stream source");
+        let (_control, mut stream) = source
+            .new_async_capture_stream(2, SampleFormat::S16LE, 48000, 480, &[], &TestExecutor)
+            .expect("Failed to create new async capture stream");
+
+        assert_eq!(delegate.requests(), 0);
+        assert!(stream.start().is_ok());
+        assert_eq!(delegate.requests(), 1);
+        assert!(stream.stop().is_ok());
     }
 }
