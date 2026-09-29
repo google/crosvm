@@ -53,6 +53,8 @@ pub enum AAudioError {
     StreamStop,
     #[error("Failed to delete stream builder")]
     StreamBuilderDelete,
+    #[error("Unsupported sample format: {0}")]
+    UnsupportedFormat(SampleFormat),
 }
 
 // Opaque blob
@@ -72,6 +74,19 @@ struct AAudioStreamBuilder {
 type AaudioFormatT = i32;
 type AaudioResultT = i32;
 const AAUDIO_OK: AaudioResultT = 0;
+// From Android NDK `<aaudio/AAudio.h>`:
+const AAUDIO_FORMAT_PCM_I16: AaudioFormatT = 1;
+const AAUDIO_FORMAT_PCM_I32: AaudioFormatT = 4;
+
+fn to_aaudio_format(format: SampleFormat) -> Result<AaudioFormatT, AAudioError> {
+    match format {
+        SampleFormat::S16LE => Ok(AAUDIO_FORMAT_PCM_I16),
+        SampleFormat::S32LE => Ok(AAUDIO_FORMAT_PCM_I32),
+        // AAudio has no 8-bit format, and AAUDIO_FORMAT_PCM_I32 is full scale, so S24 (24 bits in
+        // a 32-bit container) would need a shift.
+        SampleFormat::U8 | SampleFormat::S24LE => Err(AAudioError::UnsupportedFormat(format)),
+    }
+}
 
 extern "C" {
     fn AAudio_createStreamBuilder(builder: *mut *mut AAudioStreamBuilder) -> AaudioResultT;
@@ -183,6 +198,7 @@ fn create_and_open_aaudio_stream(
     buffer_size: usize,
     direction: AndroidAudioStreamDirection,
 ) -> Result<(*mut AAudioStream, usize), BoxError> {
+    let aaudio_format = to_aaudio_format(format)?;
     let mut stream_ptr: *mut AAudioStream = std::ptr::null_mut();
     let mut builder: *mut AAudioStreamBuilder = std::ptr::null_mut();
     // SAFETY:
@@ -197,7 +213,7 @@ fn create_and_open_aaudio_stream(
         }
         AAudioStreamBuilder_setDirection(builder, direction as u32);
         AAudioStreamBuilder_setBufferCapacityInFrames(builder, buffer_size as i32 * 2);
-        AAudioStreamBuilder_setFormat(builder, format as AaudioFormatT);
+        AAudioStreamBuilder_setFormat(builder, aaudio_format);
         AAudioStreamBuilder_setSampleRate(builder, frame_rate as i32);
         AAudioStreamBuilder_setChannelCount(builder, num_channels as i32);
         let res = AAudioStreamBuilder_openStream(builder, &mut stream_ptr);
@@ -234,6 +250,8 @@ impl AudioStream {
         buffer_size: usize,
         direction: AndroidAudioStreamDirection,
     ) -> Result<Self, BoxError> {
+        // Reject unsupported formats up front: capture streams only open AAudio in start().
+        to_aaudio_format(format)?;
         let frame_size = format.sample_bytes() * num_channels;
         let buffer = vec![0; buffer_size * frame_size].into_boxed_slice();
 
@@ -810,5 +828,35 @@ mod tests {
         }
 
         run_test().now_or_never().expect("future should be ready");
+    }
+
+    #[test]
+    fn test_to_aaudio_format_mapping() {
+        assert!(matches!(
+            to_aaudio_format(SampleFormat::S16LE),
+            Ok(AAUDIO_FORMAT_PCM_I16)
+        ));
+        assert!(matches!(
+            to_aaudio_format(SampleFormat::S32LE),
+            Ok(AAUDIO_FORMAT_PCM_I32)
+        ));
+        for format in [SampleFormat::U8, SampleFormat::S24LE] {
+            assert!(matches!(
+                to_aaudio_format(format),
+                Err(AAudioError::UnsupportedFormat(f)) if f == format
+            ));
+        }
+    }
+
+    #[test]
+    fn test_new_stream_rejects_unsupported_format() {
+        for format in [SampleFormat::U8, SampleFormat::S24LE] {
+            for direction in [
+                AndroidAudioStreamDirection::Output,
+                AndroidAudioStreamDirection::Input,
+            ] {
+                assert!(AudioStream::new(2, format, 48000, 480, direction).is_err());
+            }
+        }
     }
 }

@@ -192,6 +192,22 @@ const SUPPORTED_FRAME_RATES: u64 = 1 << VIRTIO_SND_PCM_RATE_8000
     | 1 << VIRTIO_SND_PCM_RATE_32000
     | 1 << VIRTIO_SND_PCM_RATE_44100
     | 1 << VIRTIO_SND_PCM_RATE_48000;
+// AAudio has no 8-bit format, and AAUDIO_FORMAT_PCM_I32 is full scale, so S24 (24 bits in a
+// 32-bit container) would need a shift. The guest converts U8/S24 instead. S32 is advertised
+// along with S16 so 24/32-bit guest audio isn't truncated to 16 bits; AAudio maps it to PCM_I32
+// and AudioFlinger converts if the device path is 16-bit.
+#[cfg(all(unix, feature = "audio_aaudio"))]
+const AAUDIO_SUPPORTED_FORMATS: u64 = 1 << VIRTIO_SND_PCM_FMT_S16 | 1 << VIRTIO_SND_PCM_FMT_S32;
+
+/// Returns the PCM formats to advertise for `backend`.
+#[cfg_attr(not(all(unix, feature = "audio_aaudio")), allow(unused_variables))]
+fn supported_formats(backend: StreamSourceBackend) -> u64 {
+    #[cfg(all(unix, feature = "audio_aaudio"))]
+    if backend == StreamSourceBackend::Sys(crate::sys::StreamSourceBackend::AAUDIO) {
+        return AAUDIO_SUPPORTED_FORMATS;
+    }
+    SUPPORTED_FORMATS
+}
 
 // Response from pcm_worker to pcm_queue
 pub struct PcmResponse {
@@ -309,6 +325,7 @@ pub fn hardcoded_snd_data(params: &Parameters) -> SndData {
     let jack_info: Vec<virtio_snd_jack_info> = Vec::new();
     let mut pcm_info: Vec<virtio_snd_pcm_info> = Vec::new();
     let mut chmap_info: Vec<virtio_snd_chmap_info> = Vec::new();
+    let formats = supported_formats(params.backend);
 
     for dev in 0..params.num_output_devices {
         for _ in 0..params.num_output_streams {
@@ -317,7 +334,7 @@ pub fn hardcoded_snd_data(params: &Parameters) -> SndData {
                     hda_fn_nid: dev.into(),
                 },
                 features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
-                formats: SUPPORTED_FORMATS.into(),
+                formats: formats.into(),
                 rates: SUPPORTED_FRAME_RATES.into(),
                 direction: VIRTIO_SND_D_OUTPUT,
                 channels_min: 1,
@@ -333,7 +350,7 @@ pub fn hardcoded_snd_data(params: &Parameters) -> SndData {
                     hda_fn_nid: dev.into(),
                 },
                 features: 0.into(), /* 1 << VIRTIO_SND_PCM_F_XXX */
-                formats: SUPPORTED_FORMATS.into(),
+                formats: formats.into(),
                 rates: SUPPORTED_FRAME_RATES.into(),
                 direction: VIRTIO_SND_D_INPUT,
                 channels_min: 1,
@@ -1015,6 +1032,38 @@ mod tests {
                 chmap_info.hdr.hda_fn_nid.to_native(),
                 expected_hda_fn_nid[i],
                 "chmap_info index {i} incorrect hda_fn_nid"
+            );
+        }
+    }
+
+    fn advertised_formats(backend: StreamSourceBackend) -> Vec<u64> {
+        let params = Parameters {
+            backend,
+            ..Default::default()
+        };
+        let snd_data = hardcoded_snd_data(&params);
+        assert!(snd_data.pcm_info_len() > 0);
+        snd_data
+            .pcm_info_iter()
+            .map(|pcm_info| pcm_info.formats.to_native())
+            .collect()
+    }
+
+    #[test]
+    fn test_null_backend_advertises_all_formats() {
+        for formats in advertised_formats(StreamSourceBackend::NULL) {
+            assert_eq!(formats, SUPPORTED_FORMATS);
+        }
+    }
+
+    #[test]
+    #[cfg(all(unix, feature = "audio_aaudio"))]
+    fn test_aaudio_advertises_s16_s32_only() {
+        let backend = StreamSourceBackend::Sys(crate::sys::StreamSourceBackend::AAUDIO);
+        for formats in advertised_formats(backend) {
+            assert_eq!(
+                formats,
+                1 << VIRTIO_SND_PCM_FMT_S16 | 1 << VIRTIO_SND_PCM_FMT_S32
             );
         }
     }
