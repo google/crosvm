@@ -96,6 +96,9 @@ pub enum Error {
     CreateWaitContext(SysError),
     #[error("Failed to create file stream source generator")]
     CreateFileStreamSourceGenerator(FileError),
+    /// The audio permission socket fd is invalid.
+    #[error("Invalid audio permission socket: {0}")]
+    PermissionSocket(io::Error),
     /// Cloning kill event failed.
     #[error("Failed to clone kill event: {0}")]
     CloneKillEvent(SysError),
@@ -284,7 +287,7 @@ fn create_stream_source_generators(
                 .map_err(Error::CreateFileStreamSourceGenerator)?
         }
         StreamSourceBackend::Sys(backend) => {
-            sys_create_stream_source_generators(backend, params, snd_data)
+            sys_create_stream_source_generators(backend, params, snd_data, keep_rds)?
         }
     };
     Ok(generators)

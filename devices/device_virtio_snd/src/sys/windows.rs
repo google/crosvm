@@ -14,6 +14,7 @@ use audio_streams::AsyncPlaybackBuffer;
 use audio_streams::AsyncPlaybackBufferStream;
 use audio_streams::BoxError;
 pub(crate) use base::set_audio_thread_priority;
+use base::RawDescriptor;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::Executor;
 use devices::virtio::Reader;
@@ -74,15 +75,19 @@ impl TryFrom<&str> for StreamSourceBackend {
     }
 }
 
+// Suppress `ptr_arg`: `_keep_rds` must remain `&mut Vec` for cross-platform signature consistency
+// with the Linux implementation where descriptors are appended.
+#[allow(clippy::ptr_arg)]
 pub(crate) fn create_stream_source_generators(
     _backend: StreamSourceBackend,
     _params: &Parameters,
     _snd_data: &SndData,
-) -> Vec<SysAudioStreamSourceGenerator> {
-    vec![
+    _keep_rds: &mut Vec<RawDescriptor>,
+) -> Result<Vec<SysAudioStreamSourceGenerator>, Error> {
+    Ok(vec![
         Box::new(WinAudioStreamSourceGenerator {}),
         Box::new(WinAudioStreamSourceGenerator {}),
-    ]
+    ])
 }
 
 impl StreamInfo {

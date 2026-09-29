@@ -120,6 +120,11 @@ pub struct Parameters {
     ///
     /// Not compatible with sandboxing.
     pub unmap_guest_memory_on_fork: bool,
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[serde(default)]
+    /// File descriptor of an inherited permission socket for audio capture authorization.
+    pub permission_socket_fd: Option<base::RawDescriptor>,
 }
 
 impl Default for Parameters {
@@ -142,6 +147,8 @@ impl Default for Parameters {
             card_index: 0,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             unmap_guest_memory_on_fork: false,
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            permission_socket_fd: None,
         }
     }
 }
@@ -551,5 +558,13 @@ mod tests {
             params.get_device_params(&pcm_info),
             Err(Error::InvalidPCMInfoDirection(2))
         );
+    }
+
+    #[test]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn parameters_permission_socket_fd() {
+        let params: Parameters =
+            serde_keyvalue::from_key_values("permission_socket_fd=42").unwrap();
+        assert_eq!(params.permission_socket_fd, Some(42));
     }
 }

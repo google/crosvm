@@ -58,7 +58,6 @@ use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::bail;
@@ -307,8 +306,6 @@ impl TryFrom<u8> for AudioPermissionResponse {
         }
     }
 }
-
-pub const AUDIO_PERM_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Net control commands for adding and removing tap devices.
 #[cfg(feature = "pci-hotplug")]
