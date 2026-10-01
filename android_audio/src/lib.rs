@@ -151,7 +151,9 @@ struct AudioStream {
     format: SampleFormat,
     next_frame: Instant,
     start_time: Option<Instant>,
-    total_frames: i32,
+    /// Frames paced since `start_time`. u64 so it can't overflow (i32 overflowed after ~12.4 h at
+    /// 48 kHz).
+    total_frames: u64,
     buffer_drop: AndroidAudioStreamCommit,
     read_count: i32,
     aaudio_buffer_size: usize,
@@ -372,7 +374,7 @@ impl AudioStream {
     async fn pace_period(
         &mut self,
         ex: &dyn AudioStreamsExecutor,
-        period_frames: i32,
+        period_frames: u64,
         label: &'static str,
     ) -> Result<(), BoxError> {
         self.total_frames += period_frames;
@@ -386,7 +388,7 @@ impl AudioStream {
                 } else {
                     let behind = now.saturating_duration_since(self.next_frame);
                     let period = Duration::from_nanos(
-                        period_frames as u64 * 1_000_000_000 / self.frame_rate as u64,
+                        period_frames * 1_000_000_000 / self.frame_rate as u64,
                     );
                     if behind > period * 2 {
                         warn!(
@@ -409,10 +411,12 @@ impl AudioStream {
                 now
             }
         };
+        // Convert whole seconds and the leftover frames separately: total_frames * 1e9 would
+        // overflow u64 after ~106 h at 48 kHz, while the leftover is always < frame_rate.
+        let rate = self.frame_rate as u64;
         self.next_frame = start_time
-            + Duration::from_nanos(
-                self.total_frames as u64 * 1_000_000_000 / self.frame_rate as u64,
-            );
+            + Duration::from_secs(self.total_frames / rate)
+            + Duration::from_nanos(self.total_frames % rate * 1_000_000_000 / rate);
         Ok(())
     }
 }
@@ -430,7 +434,7 @@ impl AsyncPlaybackBufferStream for AudioStream {
         &'a mut self,
         ex: &dyn AudioStreamsExecutor,
     ) -> Result<AsyncPlaybackBuffer<'a>, BoxError> {
-        let period_frames = (self.buffer.len() / self.frame_size) as i32;
+        let period_frames = (self.buffer.len() / self.frame_size) as u64;
         self.pace_period(ex, period_frames, "playback").await?;
         Ok(
             AsyncPlaybackBuffer::new(self.frame_size, self.buffer.as_mut(), &mut self.buffer_drop)
@@ -517,8 +521,8 @@ impl AsyncCaptureBufferStream for AudioStream {
         // like the first call after start(): warm-up period skipped, clock re-anchored without
         // delay.
         self.poll_permission();
-        self.read_count += 1;
-        self.pace_period(ex, buffer_size as i32, "capture").await?;
+        self.read_count = self.read_count.saturating_add(1);
+        self.pace_period(ex, buffer_size as u64, "capture").await?;
 
         if self.buffer_drop.stream.stream_ptr.is_null() {
             self.buffer.fill(0);
@@ -923,6 +927,40 @@ mod tests {
             );
             assert_eq!(stream.total_frames, 480);
             assert_eq!(stream.next_frame, new_start + Duration::from_millis(10));
+        }
+
+        run_test().now_or_never().expect("future should be ready");
+    }
+
+    #[test]
+    fn test_pacing_counter_does_not_overflow() {
+        async fn run_test() {
+            // Both counts are past i32::MAX (~12.4 h at 48 kHz); the second is also past where
+            // total_frames * 1e9 overflows u64 (~106 h).
+            for (frames, expected) in [
+                (48_000 * 50_000, Duration::from_secs(50_000)),
+                (
+                    48_000 * 2_000_000 + 24_000,
+                    Duration::from_secs(2_000_000) + Duration::from_millis(500),
+                ),
+            ] {
+                let mut stream = new_unstarted_capture_stream();
+                let ex = RecordingExecutor::default();
+                let start = Instant::now();
+                stream.start_time = Some(start);
+                stream.total_frames = frames - 480;
+                stream.next_frame = start + Duration::from_secs(1);
+
+                stream
+                    .pace_period(&ex, 480, "test")
+                    .await
+                    .expect("pacing failed");
+
+                assert_eq!(ex.delays.borrow().len(), 1);
+                assert_eq!(stream.start_time, Some(start));
+                assert_eq!(stream.total_frames, frames);
+                assert_eq!(stream.next_frame, start + expected);
+            }
         }
 
         run_test().now_or_never().expect("future should be ready");
