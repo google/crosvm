@@ -71,6 +71,7 @@ use crate::sys::SysDirectionOutput;
 
 pub mod async_funcs;
 pub mod stream_info;
+pub mod validation;
 
 // control + event + tx + rx queue
 pub const MAX_QUEUE_NUM: usize = 4;

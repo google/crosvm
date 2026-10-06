@@ -38,8 +38,11 @@ use futures::StreamExt;
 use thiserror::Error as ThisError;
 use vm_control::SndControlCommand;
 use vm_control::VmResponse;
+use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 
+use super::validation::validate_query_info;
+use super::validation::validate_set_params;
 use super::Error;
 use super::SndData;
 use super::WorkerStatus;
@@ -135,26 +138,6 @@ impl TryFrom<u32> for VirtioSndPcmCmd {
             VIRTIO_SND_R_PCM_RELEASE => Ok(VirtioSndPcmCmd::Release),
             VIRTIO_SND_R_PCM_SET_PARAMS => Err(VirtioSndPcmCmdError::SetParams),
             _ => Err(VirtioSndPcmCmdError::InvalidCode),
-        }
-    }
-}
-
-impl VirtioSndPcmCmd {
-    fn with_set_params_and_direction(
-        set_params: virtio_snd_pcm_set_params,
-        dir: u8,
-    ) -> VirtioSndPcmCmd {
-        let buffer_bytes: u32 = set_params.buffer_bytes.into();
-        let period_bytes: u32 = set_params.period_bytes.into();
-        VirtioSndPcmCmd::SetParams {
-            set_params: SetParams {
-                channels: set_params.channels,
-                format: from_virtio_sample_format(set_params.format).unwrap(),
-                frame_rate: from_virtio_frame_rate(set_params.rate).unwrap(),
-                buffer_bytes: buffer_bytes as usize,
-                period_bytes: period_bytes as usize,
-                dir,
-            },
         }
     }
 }
@@ -832,6 +815,39 @@ pub async fn handle_pcm_queue(
     Ok(())
 }
 
+fn write_info_reply<T: IntoBytes + Immutable>(
+    writer: &mut Writer,
+    query_info: &virtio_snd_query_info,
+    items: &[T],
+    card_index: usize,
+    what: &str,
+) -> Result<(), Error> {
+    match validate_query_info(query_info, items.len()) {
+        Ok(range) => {
+            writer
+                .write_obj(VIRTIO_SND_S_OK)
+                .map_err(Error::WriteResponse)?;
+            for item in &items[range] {
+                writer
+                    .write_all(item.as_bytes())
+                    .map_err(Error::WriteResponse)?;
+            }
+            Ok(())
+        }
+        Err(status) => {
+            error!(
+                "[Card {}] start_id({}) + count({}) must be smaller than the number of {} ({})",
+                card_index,
+                u32::from(query_info.start_id),
+                u32::from(query_info.count),
+                what,
+                items.len()
+            );
+            writer.write_obj(status).map_err(Error::WriteResponse)
+        }
+    }
+}
+
 /// Handle all the control messages from the ctrl queue.
 pub async fn handle_ctrl_queue(
     ex: &Executor,
@@ -873,180 +889,72 @@ pub async fn handle_ctrl_queue(
                 VIRTIO_SND_R_JACK_INFO => {
                     let query_info: virtio_snd_query_info =
                         reader.read_obj().map_err(Error::ReadMessage)?;
-                    let start_id: usize = u32::from(query_info.start_id) as usize;
-                    let count: usize = u32::from(query_info.count) as usize;
-                    if start_id + count > snd_data.jack_info.len() {
-                        error!(
-                            "[Card {}] start_id({}) + count({}) must be smaller than \
-                            the number of jacks ({})",
-                            card_index,
-                            start_id,
-                            count,
-                            snd_data.jack_info.len()
-                        );
-                        return writer
-                            .write_obj(VIRTIO_SND_S_BAD_MSG)
-                            .map_err(Error::WriteResponse);
-                    }
-                    // The response consists of the virtio_snd_hdr structure (contains the request
-                    // status code), followed by the device-writable information structures of the
-                    // item. Each information structure begins with the following common header
-                    writer
-                        .write_obj(VIRTIO_SND_S_OK)
-                        .map_err(Error::WriteResponse)?;
-                    for i in start_id..(start_id + count) {
-                        writer
-                            .write_all(snd_data.jack_info[i].as_bytes())
-                            .map_err(Error::WriteResponse)?;
-                    }
-                    Ok(())
+                    write_info_reply(
+                        writer,
+                        &query_info,
+                        &snd_data.jack_info,
+                        card_index,
+                        "jacks",
+                    )
                 }
                 VIRTIO_SND_R_PCM_INFO => {
                     let query_info: virtio_snd_query_info =
                         reader.read_obj().map_err(Error::ReadMessage)?;
-                    let start_id: usize = u32::from(query_info.start_id) as usize;
-                    let count: usize = u32::from(query_info.count) as usize;
-                    if start_id + count > snd_data.pcm_info.len() {
-                        error!(
-                            "[Card {}] start_id({}) + count({}) must be smaller than \
-                            the number of streams ({})",
-                            card_index,
-                            start_id,
-                            count,
-                            snd_data.pcm_info.len()
-                        );
-                        return writer
-                            .write_obj(VIRTIO_SND_S_BAD_MSG)
-                            .map_err(Error::WriteResponse);
-                    }
-                    // The response consists of the virtio_snd_hdr structure (contains the request
-                    // status code), followed by the device-writable information structures of the
-                    // item. Each information structure begins with the following common header
-                    writer
-                        .write_obj(VIRTIO_SND_S_OK)
-                        .map_err(Error::WriteResponse)?;
-                    for i in start_id..(start_id + count) {
-                        writer
-                            .write_all(snd_data.pcm_info[i].as_bytes())
-                            .map_err(Error::WriteResponse)?;
-                    }
-                    Ok(())
+                    write_info_reply(
+                        writer,
+                        &query_info,
+                        &snd_data.pcm_info,
+                        card_index,
+                        "streams",
+                    )
                 }
                 VIRTIO_SND_R_CHMAP_INFO => {
                     let query_info: virtio_snd_query_info =
                         reader.read_obj().map_err(Error::ReadMessage)?;
-                    let start_id: usize = u32::from(query_info.start_id) as usize;
-                    let count: usize = u32::from(query_info.count) as usize;
-                    if start_id + count > snd_data.chmap_info.len() {
-                        error!(
-                            "[Card {}] start_id({}) + count({}) must be smaller than \
-                            the number of chmaps ({})",
-                            card_index,
-                            start_id,
-                            count,
-                            snd_data.chmap_info.len()
-                        );
-                        return writer
-                            .write_obj(VIRTIO_SND_S_BAD_MSG)
-                            .map_err(Error::WriteResponse);
-                    }
-                    // The response consists of the virtio_snd_hdr structure (contains the request
-                    // status code), followed by the device-writable information structures of the
-                    // item. Each information structure begins with the following common header
-                    writer
-                        .write_obj(VIRTIO_SND_S_OK)
-                        .map_err(Error::WriteResponse)?;
-                    for i in start_id..(start_id + count) {
-                        writer
-                            .write_all(snd_data.chmap_info[i].as_bytes())
-                            .map_err(Error::WriteResponse)?;
-                    }
-                    Ok(())
+                    write_info_reply(
+                        writer,
+                        &query_info,
+                        &snd_data.chmap_info,
+                        card_index,
+                        "chmaps",
+                    )
                 }
                 VIRTIO_SND_R_JACK_REMAP => {
                     unreachable!("remap is unsupported");
                 }
                 VIRTIO_SND_R_PCM_SET_PARAMS => {
-                    // Raise VIRTIO_SND_S_BAD_MSG or IO error?
                     let set_params: virtio_snd_pcm_set_params =
                         reader.read_obj().map_err(Error::ReadMessage)?;
                     let stream_id: usize = u32::from(set_params.hdr.stream_id) as usize;
-                    let buffer_bytes: u32 = set_params.buffer_bytes.into();
-                    let period_bytes: u32 = set_params.period_bytes.into();
-
-                    let dir = match snd_data.pcm_info.get(stream_id) {
-                        Some(pcm_info) => {
-                            if set_params.channels < pcm_info.channels_min
-                                || set_params.channels > pcm_info.channels_max
-                            {
-                                error!(
-                                    "[Card {}] Number of channels ({}) must be between {} and {}",
-                                    card_index,
-                                    set_params.channels,
-                                    pcm_info.channels_min,
-                                    pcm_info.channels_max
-                                );
-                                return writer
-                                    .write_obj(VIRTIO_SND_S_NOT_SUPP)
-                                    .map_err(Error::WriteResponse);
-                            }
-                            if (u64::from(pcm_info.formats) & (1 << set_params.format)) == 0 {
-                                error!(
-                                    "[Card {}] PCM format {} is not supported.",
-                                    card_index, set_params.format
-                                );
-                                return writer
-                                    .write_obj(VIRTIO_SND_S_NOT_SUPP)
-                                    .map_err(Error::WriteResponse);
-                            }
-                            if (u64::from(pcm_info.rates) & (1 << set_params.rate)) == 0 {
-                                error!(
-                                    "[Card {}] PCM frame rate {} is not supported.",
-                                    card_index, set_params.rate
-                                );
-                                return writer
-                                    .write_obj(VIRTIO_SND_S_NOT_SUPP)
-                                    .map_err(Error::WriteResponse);
-                            }
-
-                            pcm_info.direction
-                        }
-                        None => {
-                            error!(
-                                "[Card {}] stream_id {} < streams {}",
-                                card_index,
-                                stream_id,
-                                snd_data.pcm_info.len()
-                            );
-                            return writer
-                                .write_obj(VIRTIO_SND_S_BAD_MSG)
-                                .map_err(Error::WriteResponse);
-                        }
-                    };
-
-                    if set_params.features != 0 {
-                        error!("[Card {}] No feature is supported", card_index);
-                        return writer
-                            .write_obj(VIRTIO_SND_S_NOT_SUPP)
-                            .map_err(Error::WriteResponse);
-                    }
-
-                    if buffer_bytes % period_bytes != 0 {
+                    let Some(pcm_info) = snd_data.pcm_info.get(stream_id) else {
                         error!(
-                            "[Card {}] buffer_bytes({}) must be dividable by period_bytes({})",
-                            card_index, buffer_bytes, period_bytes
+                            "[Card {}] stream_id {} < streams {}",
+                            card_index,
+                            stream_id,
+                            snd_data.pcm_info.len()
                         );
                         return writer
                             .write_obj(VIRTIO_SND_S_BAD_MSG)
                             .map_err(Error::WriteResponse);
-                    }
+                    };
+
+                    let set_params = match validate_set_params(&set_params, pcm_info) {
+                        Ok(params) => params,
+                        Err(status) => {
+                            error!(
+                                "[Card {}] Invalid PCM set_params for stream id={}",
+                                card_index, stream_id
+                            );
+                            return writer.write_obj(status).map_err(Error::WriteResponse);
+                        }
+                    };
 
                     process_pcm_ctrl(
                         ex,
                         &tx_send,
                         &rx_send,
                         streams,
-                        VirtioSndPcmCmd::with_set_params_and_direction(set_params, dir),
+                        VirtioSndPcmCmd::SetParams { set_params },
                         writer,
                         stream_id,
                         card_index,

@@ -35,7 +35,7 @@ use crate::sys::SysAudioStreamSource;
 use crate::sys::SysAudioStreamSourceGenerator;
 
 /// Parameters for setting parameters in StreamInfo
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SetParams {
     pub channels: u8,
     pub format: SampleFormat,
