@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(kani)");
     println!("cargo:rustc-check-cfg=cfg(zerocopy_derive_union_into_bytes)");
     println!("cargo::rustc-cfg=zerocopy_derive_union_into_bytes");
 }

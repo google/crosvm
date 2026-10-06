@@ -836,7 +836,7 @@ fn write_info_reply<T: IntoBytes + Immutable>(
         }
         Err(status) => {
             error!(
-                "[Card {}] start_id({}) + count({}) must be smaller than the number of {} ({})",
+                "[Card {}] start_id({}) + count({}) must not exceed the number of {} ({})",
                 card_index,
                 u32::from(query_info.start_id),
                 u32::from(query_info.count),
@@ -920,7 +920,10 @@ pub async fn handle_ctrl_queue(
                     )
                 }
                 VIRTIO_SND_R_JACK_REMAP => {
-                    unreachable!("remap is unsupported");
+                    // Jack remap is unsupported.
+                    writer
+                        .write_obj(VIRTIO_SND_S_NOT_SUPP)
+                        .map_err(Error::WriteResponse)
                 }
                 VIRTIO_SND_R_PCM_SET_PARAMS => {
                     let set_params: virtio_snd_pcm_set_params =
@@ -940,12 +943,14 @@ pub async fn handle_ctrl_queue(
 
                     let set_params = match validate_set_params(&set_params, pcm_info) {
                         Ok(params) => params,
-                        Err(status) => {
+                        Err(err) => {
                             error!(
-                                "[Card {}] Invalid PCM set_params for stream id={}",
-                                card_index, stream_id
+                                "[Card {}] Invalid PCM set_params for stream id={}: {}",
+                                card_index, stream_id, err
                             );
-                            return writer.write_obj(status).map_err(Error::WriteResponse);
+                            return writer
+                                .write_obj(err.status_code())
+                                .map_err(Error::WriteResponse);
                         }
                     };
 
