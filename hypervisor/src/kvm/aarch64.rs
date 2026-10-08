@@ -289,13 +289,20 @@ impl KvmVcpu {
     /// KVM.
     pub fn system_event_reset(&self, event_flags: u64) -> Result<VcpuExit> {
         if event_flags & u64::from(KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2) != 0 {
-            // Read reset_type and cookie from x1 and x2.
-            let reset_type = self.get_one_reg(VcpuRegAArch64::X(1))?;
-            let cookie = self.get_one_reg(VcpuRegAArch64::X(2))?;
-            warn!(
-                "PSCI SYSTEM_RESET2 with reset_type={:#x}, cookie={:#x}",
-                reset_type, cookie
-            );
+            // Read reset_type and cookie from x1 and x2. KVM rejects the read
+            // on a protected VM that has run, so reset without them.
+            match (
+                self.get_one_reg(VcpuRegAArch64::X(1)),
+                self.get_one_reg(VcpuRegAArch64::X(2)),
+            ) {
+                (Ok(reset_type), Ok(cookie)) => warn!(
+                    "PSCI SYSTEM_RESET2 with reset_type={:#x}, cookie={:#x}",
+                    reset_type, cookie
+                ),
+                (Err(e), _) | (_, Err(e)) => {
+                    warn!("PSCI SYSTEM_RESET2 with unknown reset_type: {}", e)
+                }
+            }
         }
         Ok(VcpuExit::SystemEventReset)
     }
