@@ -1940,6 +1940,67 @@ mod tests {
         assert_eq!(data, expected_data);
     }
 
+    /// Completes `num_requests` requests in one batch and returns how many interrupts were sent.
+    ///
+    /// The requests read zero bytes, so they all complete the first time they're polled.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn interrupts_for_batch(num_requests: u16) -> u64 {
+        const QUEUE_SIZE: u16 = 16;
+
+        let ex = Executor::new().expect("creating an executor failed");
+        let mem = GuestMemory::new(&[(GuestAddress(0), 4 * 1024 * 1024)])
+            .expect("Creating guest memory failed.");
+        add_split_reads(&mem, num_requests, 0);
+
+        let kick_evt = Event::new().unwrap();
+        let call_evt = Event::new().unwrap();
+        let interrupts = EventAsync::new(
+            call_evt.try_clone().expect("cloning call event failed"),
+            &ex,
+        )
+        .unwrap();
+        let interrupt = Interrupt::new_vhost_user(call_evt, Box::new(|| {}));
+        let queue = activate_queue(&mem, QUEUE_SIZE, 0, &kick_evt, interrupt);
+        let disk_state = Rc::new(AsyncRwLock::new(test_disk(&ex, 0x10000)));
+        let mut poll_timer = test_timer(&ex);
+        let mut irq_deadline = test_timer(&ex);
+        let (stop_tx, stop_rx) = oneshot::channel();
+        let worker = start_worker(&ex, &disk_state, queue, &kick_evt, stop_rx);
+
+        let driver = async {
+            kick_evt.signal().unwrap();
+            wait_for(&mut poll_timer, "every request to be used", || {
+                used_idx(&mem) == num_requests
+            })
+            .await;
+            // Stopping also ends the batch, so count the interrupts first. The eventfd adds up the
+            // writes, so one read gets all of them.
+            let count = wait_for_event(&interrupts, &mut irq_deadline, "an interrupt").await;
+            stop_tx.send(()).unwrap();
+            count
+        };
+
+        let (_queue, count) = ex
+            .run_until(futures::future::join(worker, driver))
+            .expect("running executor failed");
+        count
+    }
+
+    /// A batch interrupts when its first request completes and once more at its end, rather than
+    /// for every request.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[test]
+    fn batch_interrupts_for_first_completion_and_at_end() {
+        assert_eq!(interrupts_for_batch(8), 2);
+    }
+
+    /// A lone request interrupts once, not again at the end of its batch.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[test]
+    fn single_request_interrupts_once() {
+        assert_eq!(interrupts_for_batch(1), 1);
+    }
+
     #[test]
     fn reset_and_reactivate_single_worker() {
         reset_and_reactivate(false, None);
