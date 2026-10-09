@@ -52,6 +52,8 @@ use device_virtio_snd::parameters::Parameters as SndParameters;
 use device_virtio_vsock::VsockConfig;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use devices::virtio::pmem::PmemOption;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend;
 #[cfg(feature = "gpu")]
@@ -77,8 +79,6 @@ use serde_keyvalue::FromKeyValues;
 use vendor_devices::VendorDeviceModule;
 use vm_memory::FileBackedMappingParameters;
 
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use super::config::PmemOption;
 #[cfg(feature = "gpu")]
 use super::gpu_config::fixup_gpu_options;
 #[cfg(all(unix, feature = "gpu"))]
@@ -2594,8 +2594,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        {
-            cfg.pmems = cmd.pmem;
+        let pmem_devices = {
+            let mut pmem_devices = cmd.pmem;
 
             if !cmd.pmem_device.is_empty() || !cmd.rw_pmem_device.is_empty() {
                 log::warn!(
@@ -2605,20 +2605,26 @@ impl TryFrom<RunCommand> for super::config::Config {
 
             // Convert the deprecated `pmem_device` and `rw_pmem_device` into `pmem_devices`.
             for disk_option in cmd.pmem_device.into_iter() {
-                cfg.pmems.push(PmemOption {
+                pmem_devices.push(PmemOption {
                     path: disk_option.path,
                     ro: true, // read-only
                     ..PmemOption::default()
                 });
             }
             for disk_option in cmd.rw_pmem_device.into_iter() {
-                cfg.pmems.push(PmemOption {
+                pmem_devices.push(PmemOption {
                     path: disk_option.path,
                     ro: false, // writable
                     ..PmemOption::default()
                 });
             }
-        }
+
+            for pmem in &pmem_devices {
+                devices::virtio::pmem::validate_pmem(pmem)?;
+            }
+
+            pmem_devices
+        };
 
         // Find the device to use as the kernel `root=` parameter. There can only be one.
         let virtio_blk_root_devs = disks
@@ -2635,8 +2641,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             .map(|(i, s)| (format_disk_letter("/dev/sd", i), s.read_only));
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        let virtio_pmem_root_devs = cfg
-            .pmems
+        let virtio_pmem_root_devs = pmem_devices
             .iter()
             .enumerate()
             .filter(|(_, p)| p.root)
@@ -2660,6 +2665,12 @@ impl TryFrom<RunCommand> for super::config::Config {
             if root_devs.next().is_some() {
                 return Err("only one root disk can be specified".to_string());
             }
+        }
+
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        for (index, pmem_option) in pmem_devices.into_iter().enumerate() {
+            cfg.virtio_device_modules
+                .push(devices::virtio::VirtioPmemModule { pmem_option, index }.into());
         }
 
         if !cmd.scsi_block.is_empty() {

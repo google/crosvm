@@ -397,23 +397,6 @@ fn create_virtio_devices(
         }
     }
 
-    for (index, pmem_disk) in cfg.pmems.iter().enumerate() {
-        let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
-        devs.push((
-            "pmem",
-            create_pmem_device(
-                cfg.protection_type,
-                cfg.jail_config.as_ref(),
-                vm,
-                resources,
-                pmem_disk,
-                index,
-                pmem_device_tube,
-            )?,
-        ));
-    }
-
     for (index, pmem_ext2) in cfg.pmem_ext2.iter().enumerate() {
         // Prepare a `VmMemoryClient` for pmem-ext2 device to send a request for mmap() and memory
         // registeration.

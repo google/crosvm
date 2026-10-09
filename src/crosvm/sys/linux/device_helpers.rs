@@ -4,8 +4,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::convert::TryFrom;
-use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::ErrorKind;
 use std::ops::RangeInclusive;
@@ -17,13 +15,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+#[cfg(feature = "virtio_wl")]
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use arch::VirtioDeviceStub;
-use base::linux::MemfdSeals;
-use base::sys::SharedMemoryLinux;
 use base::*;
 use device_virtio_block::DiskOption;
 #[cfg(feature = "net")]
@@ -62,7 +59,6 @@ use devices::VfioDevice;
 use devices::VfioDeviceType;
 use devices::VfioPciDevice;
 use devices::VfioPlatformDevice;
-use hypervisor::MemCacheType;
 use hypervisor::ProtectionType;
 use hypervisor::Vm;
 use jail::*;
@@ -75,7 +71,6 @@ use vm_control::api::VmMemoryClient;
 use vm_control::AnyControlTube;
 use vm_memory::GuestAddress;
 
-use crate::crosvm::config::PmemOption;
 use crate::crosvm::config::VhostUserFrontendOption;
 use crate::crosvm::sys::config::PmemExt2Option;
 
@@ -959,127 +954,6 @@ pub fn create_9p_device(
     })
 }
 
-pub fn create_pmem_device(
-    protection_type: ProtectionType,
-    jail_config: Option<&JailConfig>,
-    vm: &dyn Vm,
-    resources: &mut SystemAllocator,
-    pmem: &PmemOption,
-    index: usize,
-    pmem_device_tube: Tube,
-) -> DeviceResult {
-    let (fd, disk_size) = match pmem.vma_size {
-        None => {
-            let disk_image =
-                open_file_or_duplicate(&pmem.path, OpenOptions::new().read(true).write(!pmem.ro))
-                    .with_context(|| format!("failed to load disk image {}", pmem.path.display()))?;
-            let metadata = std::fs::metadata(&pmem.path).with_context(|| {
-                format!("failed to get disk image {} metadata", pmem.path.display())
-            })?;
-            (disk_image, metadata.len())
-        }
-        Some(size) => {
-            let anon_file =
-                create_anonymous_file(&pmem.path, size).context("failed to create anon file")?;
-            (anon_file, size)
-        }
-    };
-
-    // Linux requires pmem region sizes to be 2 MiB aligned. Linux will fill any partial page
-    // at the end of an mmap'd file and won't write back beyond the actual file length, but if
-    // we just align the size of the file to 2 MiB then access beyond the last page of the
-    // mapped file will generate SIGBUS. So use a memory mapping arena that will provide
-    // padding up to 2 MiB.
-    let alignment = 2 * 1024 * 1024;
-    let arena_size = disk_size
-        .checked_next_multiple_of(alignment)
-        .ok_or_else(|| anyhow!("pmem device image too big"))?;
-
-    let protection = {
-        if pmem.ro {
-            Protection::read()
-        } else {
-            Protection::read_write()
-        }
-    };
-
-    let arena = {
-        // Conversion from u64 to usize may fail on 32bit system.
-        let arena_size = usize::try_from(arena_size).context("pmem device image too big")?;
-        let disk_size = usize::try_from(disk_size).context("pmem device image too big")?;
-
-        let mut arena =
-            MemoryMappingArena::new(arena_size).context("failed to reserve pmem memory")?;
-        arena
-            .add_fd_offset_protection(0, disk_size, &fd, 0, protection)
-            .context("failed to reserve pmem memory")?;
-
-        // If the disk is not a multiple of the page size, the OS will fill the remaining part
-        // of the page with zeroes. However, the anonymous mapping added below must start on a
-        // page boundary, so round up the size before calculating the offset of the anon region.
-        let disk_size = round_up_to_page_size(disk_size);
-
-        if arena_size > disk_size {
-            // Add an anonymous region with the same protection as the disk mapping if the arena
-            // size was aligned.
-            arena
-                .add_anon_protection(disk_size, arena_size - disk_size, protection)
-                .context("failed to reserve pmem padding")?;
-        }
-        arena
-    };
-
-    let mapping_address = GuestAddress(
-        resources
-            .allocate_mmio(
-                arena_size,
-                Alloc::PmemDevice(index),
-                format!("pmem_disk_image_{index}"),
-                AllocOptions::new()
-                // Allocate from the bottom up rather than top down to avoid exceeding PHYSMEM_END
-                // with kaslr.
-                // TODO: b/375506171: Find a proper fix.
-                .top_down(false)
-                .prefetchable(true)
-                // Linux kernel requires pmem namespaces to be 128 MiB aligned.
-                // cf. https://github.com/pmem/ndctl/issues/76
-                .align(128 * 1024 * 1024), /* 128 MiB */
-            )
-            .context("failed to allocate memory for pmem device")?,
-    );
-
-    let mem_slot = MemSlotConfig::MemSlot {
-        idx: vm
-            .add_memory_region(
-                mapping_address,
-                Box::new(arena),
-                /* read_only = */ pmem.ro,
-                /* log_dirty_pages = */ false,
-                MemCacheType::CacheCoherent,
-            )
-            .context("failed to add pmem device memory")?,
-    };
-
-    let dev = virtio::Pmem::new(
-        virtio::base_features(protection_type),
-        PmemConfig {
-            disk_image: Some(fd),
-            mapping_address,
-            mem_slot,
-            mapping_size: arena_size,
-            pmem_device_tube,
-            swap_interval: pmem.swap_interval,
-            mapping_writable: !pmem.ro,
-        },
-    )
-    .context("failed to create pmem device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        jail: simple_jail(jail_config, "pmem_device")?,
-    })
-}
-
 pub fn create_pmem_ext2_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,
@@ -1160,22 +1034,6 @@ pub fn create_pmem_ext2_device(
         dev: Box::new(dev) as Box<dyn VirtioDevice>,
         jail: Some(j),
     })
-}
-
-pub fn create_anonymous_file<P: AsRef<Path>>(path: P, size: u64) -> Result<File> {
-    let file_name = path
-        .as_ref()
-        .to_str()
-        .ok_or_else(|| Error::new(libc::EINVAL))?;
-    let mut shm = SharedMemory::new(file_name, size)?;
-    let mut seals = MemfdSeals::new();
-
-    seals.set_shrink_seal();
-    seals.set_grow_seal();
-    seals.set_seal_seal();
-    shm.add_seals(seals)?;
-
-    Ok(shm.descriptor.into())
 }
 
 pub fn create_iommu_device(

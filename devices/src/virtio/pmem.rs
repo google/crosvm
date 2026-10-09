@@ -4,18 +4,27 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io;
 use std::mem::size_of;
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
+use base::round_up_to_page_size;
+use base::sys::MemfdSeals;
+use base::sys::SharedMemoryLinux;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
+use base::MemoryMappingArena;
+use base::Protection;
 use base::RawDescriptor;
 use base::Result as SysResult;
+use base::SharedMemory;
 use base::Timer;
 use base::Tube;
 use base::TubeError;
@@ -29,9 +38,20 @@ use cros_async::TimerAsync;
 use data_model::Le32;
 use data_model::Le64;
 use futures::pin_mut;
+use hypervisor::MemCacheType;
+use hypervisor::ProtectionType;
+use hypervisor::Vm;
 use remain::sorted;
+use resources::Alloc;
+use resources::AllocOptions;
+use resources::SystemAllocator;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 use snapshot::AnySnapshot;
 use thiserror::Error;
+use vm_control::AnyControlTube;
 use vm_control::MemSlot;
 use vm_control::VmMemoryMappingRequest;
 use vm_control::VmMemoryMappingResponse;
@@ -49,6 +69,8 @@ use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
 use super::VirtioDevice;
+use crate::VirtioDeviceArgs;
+use crate::VirtioDeviceModule;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -551,5 +573,292 @@ impl VirtioDevice for Pmem {
             (snapshot.mapping_address, snapshot.mapping_size),
         );
         Ok(())
+    }
+}
+
+fn create_anonymous_file<P: AsRef<Path>>(path: P, size: u64) -> anyhow::Result<File> {
+    let file_name = path
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| base::Error::new(libc::EINVAL))?;
+    let mut shm = SharedMemory::new(file_name, size)?;
+    let mut seals = MemfdSeals::new();
+
+    seals.set_shrink_seal();
+    seals.set_grow_seal();
+    seals.set_seal_seal();
+    shm.add_seals(seals)?;
+
+    Ok(shm.descriptor.into())
+}
+
+fn create_pmem_device(
+    protection_type: ProtectionType,
+    vm: &dyn Vm,
+    resources: &mut SystemAllocator,
+    pmem: &PmemOption,
+    index: usize,
+    pmem_device_tube: Tube,
+) -> anyhow::Result<Box<dyn VirtioDevice>> {
+    let (fd, disk_size) = match pmem.vma_size {
+        None => {
+            let disk_image = base::open_file_or_duplicate(
+                &pmem.path,
+                OpenOptions::new().read(true).write(!pmem.ro),
+            )
+            .with_context(|| format!("failed to load disk image {}", pmem.path.display()))?;
+            let metadata = std::fs::metadata(&pmem.path).with_context(|| {
+                format!("failed to get disk image {} metadata", pmem.path.display())
+            })?;
+            (disk_image, metadata.len())
+        }
+        Some(size) => {
+            let anon_file =
+                create_anonymous_file(&pmem.path, size).context("failed to create anon file")?;
+            (anon_file, size)
+        }
+    };
+
+    // Linux requires pmem region sizes to be 2 MiB aligned. Linux will fill any partial page
+    // at the end of an mmap'd file and won't write back beyond the actual file length, but if
+    // we just align the size of the file to 2 MiB then access beyond the last page of the
+    // mapped file will generate SIGBUS. So use a memory mapping arena that will provide
+    // padding up to 2 MiB.
+    let alignment = 2 * 1024 * 1024;
+    let arena_size = disk_size
+        .checked_next_multiple_of(alignment)
+        .ok_or_else(|| anyhow!("pmem device image too big"))?;
+
+    let protection = {
+        if pmem.ro {
+            Protection::read()
+        } else {
+            Protection::read_write()
+        }
+    };
+
+    let arena = {
+        // Conversion from u64 to usize may fail on 32bit system.
+        let arena_size = usize::try_from(arena_size).context("pmem device image too big")?;
+        let disk_size = usize::try_from(disk_size).context("pmem device image too big")?;
+
+        let mut arena =
+            MemoryMappingArena::new(arena_size).context("failed to reserve pmem memory")?;
+        arena
+            .add_fd_offset_protection(0, disk_size, &fd, 0, protection)
+            .context("failed to reserve pmem memory")?;
+
+        // If the disk is not a multiple of the page size, the OS will fill the remaining part
+        // of the page with zeroes. However, the anonymous mapping added below must start on a
+        // page boundary, so round up the size before calculating the offset of the anon region.
+        let disk_size = round_up_to_page_size(disk_size);
+
+        if arena_size > disk_size {
+            // Add an anonymous region with the same protection as the disk mapping if the arena
+            // size was aligned.
+            arena
+                .add_anon_protection(disk_size, arena_size - disk_size, protection)
+                .context("failed to reserve pmem padding")?;
+        }
+        arena
+    };
+
+    let mapping_address = GuestAddress(
+        resources
+            .allocate_mmio(
+                arena_size,
+                Alloc::PmemDevice(index),
+                format!("pmem_disk_image_{index}"),
+                AllocOptions::new()
+                    // Allocate from the bottom up rather than top down to avoid exceeding PHYSMEM_END
+                    // with kaslr.
+                    // TODO: b/375506171: Find a proper fix.
+                    .top_down(false)
+                    .prefetchable(true)
+                    // Linux kernel requires pmem namespaces to be 128 MiB aligned.
+                    // cf. https://github.com/pmem/ndctl/issues/76
+                    .align(128 * 1024 * 1024), /* 128 MiB */
+            )
+            .context("failed to allocate memory for pmem device")?,
+    );
+
+    let mem_slot = MemSlotConfig::MemSlot {
+        idx: vm
+            .add_memory_region(
+                mapping_address,
+                Box::new(arena),
+                /* read_only = */ pmem.ro,
+                /* log_dirty_pages = */ false,
+                MemCacheType::CacheCoherent,
+            )
+            .context("failed to add pmem device memory")?,
+    };
+
+    let dev = Pmem::new(
+        crate::virtio::base_features(protection_type),
+        PmemConfig {
+            disk_image: Some(fd),
+            mapping_address,
+            mem_slot,
+            mapping_size: arena_size,
+            pmem_device_tube,
+            swap_interval: pmem.swap_interval,
+            mapping_writable: !pmem.ro,
+        },
+    )
+    .context("failed to create pmem device")?;
+
+    Ok(Box::new(dev))
+}
+
+fn deserialize_swap_interval<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<Duration>, D::Error> {
+    let ms = Option::<u64>::deserialize(deserializer)?;
+    match ms {
+        None => Ok(None),
+        Some(ms) => Ok(Some(Duration::from_millis(ms))),
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct PmemOption {
+    /// Path to the disk image.
+    pub path: PathBuf,
+    /// Whether the disk is read-only.
+    #[serde(default)]
+    pub ro: bool,
+    /// If set, add a kernel command line option making this the root device. Can only be set once.
+    #[serde(default)]
+    pub root: bool,
+    /// Experimental option to specify the size in bytes of an anonymous virtual memory area that
+    /// will be created to back this device.
+    #[serde(default)]
+    pub vma_size: Option<u64>,
+    /// Experimental option to specify interval for periodic swap out of memory mapping
+    #[serde(
+        default,
+        deserialize_with = "deserialize_swap_interval",
+        rename = "swap-interval-ms"
+    )]
+    pub swap_interval: Option<Duration>,
+}
+
+pub fn validate_pmem(pmem: &PmemOption) -> std::result::Result<(), String> {
+    if (pmem.swap_interval.is_some() && pmem.vma_size.is_none())
+        || (pmem.swap_interval.is_none() && pmem.vma_size.is_some())
+    {
+        return Err(
+            "--pmem vma-size and swap-interval parameters must be specified together".to_string(),
+        );
+    }
+
+    if pmem.ro && pmem.swap_interval.is_some() {
+        return Err(
+            "--pmem swap-interval parameter can only be set for writable pmem device".to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VirtioPmemModule {
+    pub pmem_option: PmemOption,
+    pub index: usize,
+}
+
+impl VirtioDeviceModule for VirtioPmemModule {
+    fn sort_name(&self) -> &'static str {
+        "pmem"
+    }
+
+    fn create(&self, cx: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let (pmem_host_tube, pmem_device_tube) =
+            base::Tube::pair().context("failed to create tube")?;
+        (cx.add_control_tube)(AnyControlTube::VmMsync(pmem_host_tube));
+        create_pmem_device(
+            cx.protection_type,
+            cx.vm,
+            cx.resources,
+            &self.pmem_option,
+            self.index,
+            pmem_device_tube,
+        )
+    }
+
+    fn create_jail(
+        &self,
+        jail_config: Option<&jail::JailConfig>,
+    ) -> anyhow::Result<Option<minijail::Minijail>> {
+        jail::simple_jail(jail_config, "pmem_device")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_pmem_options_missing_path() {
+        assert!(serde_keyvalue::from_key_values::<PmemOption>("")
+            .unwrap_err()
+            .to_string()
+            .contains("missing field `path`"));
+    }
+
+    #[test]
+    fn parse_pmem_options_default_values() {
+        let pmem = serde_keyvalue::from_key_values::<PmemOption>("/path/to/disk.img").unwrap();
+        assert_eq!(
+            pmem,
+            PmemOption {
+                path: "/path/to/disk.img".into(),
+                ro: false,
+                root: false,
+                vma_size: None,
+                swap_interval: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_pmem_options_virtual_swap() {
+        let pmem = serde_keyvalue::from_key_values::<PmemOption>(
+            "virtual_path,vma-size=12345,swap-interval-ms=1000",
+        )
+        .unwrap();
+        assert_eq!(
+            pmem,
+            PmemOption {
+                path: "virtual_path".into(),
+                ro: false,
+                root: false,
+                vma_size: Some(12345),
+                swap_interval: Some(Duration::new(1, 0)),
+            }
+        );
+    }
+
+    #[test]
+    fn validate_pmem_missing_virtual_swap_param() {
+        let pmem =
+            serde_keyvalue::from_key_values::<PmemOption>("virtual_path,swap-interval-ms=1000")
+                .unwrap();
+        assert!(validate_pmem(&pmem)
+            .unwrap_err()
+            .contains("vma-size and swap-interval parameters must be specified together"));
+    }
+
+    #[test]
+    fn validate_pmem_read_only_virtual_swap() {
+        let pmem = serde_keyvalue::from_key_values::<PmemOption>(
+            "virtual_path,ro=true,vma-size=12345,swap-interval-ms=1000",
+        )
+        .unwrap();
+        assert!(validate_pmem(&pmem)
+            .unwrap_err()
+            .contains("swap-interval parameter can only be set for writable pmem device"));
     }
 }

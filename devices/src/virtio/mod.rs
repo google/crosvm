@@ -88,7 +88,7 @@ pub use self::DeviceType::Pvclock;
 cfg_if::cfg_if! {
     if #[cfg(any(target_os = "android", target_os = "linux"))] {
         mod p9;
-        mod pmem;
+        pub mod pmem;
 
         #[cfg(feature = "virtio_wl")]
         pub mod wl;
@@ -96,9 +96,11 @@ cfg_if::cfg_if! {
 
         pub use self::iommu::sys::linux::vfio_wrapper;
         pub use self::p9::P9;
+        pub use self::pmem::MemSlotConfig;
         pub use self::pmem::Pmem;
         pub use self::pmem::PmemConfig;
-        pub use self::pmem::MemSlotConfig;
+        pub use self::pmem::PmemOption;
+        pub use self::pmem::VirtioPmemModule;
         #[cfg(feature = "virtio_wl")]
         pub use self::wl::Wl;
     } else if #[cfg(windows)] {

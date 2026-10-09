@@ -9,8 +9,6 @@ use std::arch::x86_64::__cpuid_count;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use std::time::Duration;
 
 use arch::set_default_serial_parameters;
 use arch::CpuSet;
@@ -195,44 +193,6 @@ pub struct MemOptions {
     /// Amount of guest memory in MiB.
     #[serde(default)]
     pub size: Option<u64>,
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-fn deserialize_swap_interval<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Duration>, D::Error> {
-    let ms = Option::<u64>::deserialize(deserializer)?;
-    match ms {
-        None => Ok(None),
-        Some(ms) => Ok(Some(Duration::from_millis(ms))),
-    }
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-#[derive(
-    Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues,
-)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct PmemOption {
-    /// Path to the diks image.
-    pub path: PathBuf,
-    /// Whether the disk is read-only.
-    #[serde(default)]
-    pub ro: bool,
-    /// If set, add a kernel command line option making this the root device. Can only be set once.
-    #[serde(default)]
-    pub root: bool,
-    /// Experimental option to specify the size in bytes of an anonymous virtual memory area that
-    /// will be created to back this device.
-    #[serde(default)]
-    pub vma_size: Option<u64>,
-    /// Experimental option to specify interval for periodic swap out of memory mapping
-    #[serde(
-        default,
-        deserialize_with = "deserialize_swap_interval",
-        rename = "swap-interval-ms"
-    )]
-    pub swap_interval: Option<Duration>,
 }
 
 #[derive(Serialize, Deserialize, FromKeyValues)]
@@ -727,8 +687,6 @@ pub struct Config {
     pub pflash_parameters: Option<PflashParameters>,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub pmem_ext2: Vec<crate::crosvm::sys::config::PmemExt2Option>,
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    pub pmems: Vec<PmemOption>,
     #[cfg(feature = "process-invariants")]
     pub process_invariants_data_handle: Option<u64>,
     #[cfg(feature = "process-invariants")]
@@ -969,8 +927,6 @@ impl Default for Config {
             pflash_parameters: None,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             pmem_ext2: Vec::new(),
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            pmems: Vec::new(),
             #[cfg(feature = "process-invariants")]
             process_invariants_data_handle: None,
             #[cfg(feature = "process-invariants")]
@@ -1249,11 +1205,6 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         validate_file_backed_mapping(mapping)?;
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    for pmem in cfg.pmems.iter() {
-        validate_pmem(pmem)?;
-    }
-
     // Validate platform specific things
     super::sys::config::validate_config(cfg)
 }
@@ -1290,25 +1241,6 @@ fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Re
     } else if aligned_address != mapping.address || aligned_size != mapping.size {
         return Err(
             "--file-backed-mapping addr and size parameters must be page size aligned".to_string(),
-        );
-    }
-
-    Ok(())
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-fn validate_pmem(pmem: &PmemOption) -> Result<(), String> {
-    if (pmem.swap_interval.is_some() && pmem.vma_size.is_none())
-        || (pmem.swap_interval.is_none() && pmem.vma_size.is_some())
-    {
-        return Err(
-            "--pmem vma-size and swap-interval parameters must be specified together".to_string(),
-        );
-    }
-
-    if pmem.ro && pmem.swap_interval.is_some() {
-        return Err(
-            "--pmem swap-interval parameter can only be set for writable pmem device".to_string(),
         );
     }
 
@@ -2443,69 +2375,6 @@ mod tests {
                 ..PciConfig::default()
             },
         );
-    }
-
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[test]
-    fn parse_pmem_options_missing_path() {
-        assert!(from_key_values::<PmemOption>("")
-            .unwrap_err()
-            .contains("missing field `path`"));
-    }
-
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[test]
-    fn parse_pmem_options_default_values() {
-        let pmem = from_key_values::<PmemOption>("/path/to/disk.img").unwrap();
-        assert_eq!(
-            pmem,
-            PmemOption {
-                path: "/path/to/disk.img".into(),
-                ro: false,
-                root: false,
-                vma_size: None,
-                swap_interval: None,
-            }
-        );
-    }
-
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[test]
-    fn parse_pmem_options_virtual_swap() {
-        let pmem =
-            from_key_values::<PmemOption>("virtual_path,vma-size=12345,swap-interval-ms=1000")
-                .unwrap();
-        assert_eq!(
-            pmem,
-            PmemOption {
-                path: "virtual_path".into(),
-                ro: false,
-                root: false,
-                vma_size: Some(12345),
-                swap_interval: Some(Duration::new(1, 0)),
-            }
-        );
-    }
-
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[test]
-    fn validate_pmem_missing_virtual_swap_param() {
-        let pmem = from_key_values::<PmemOption>("virtual_path,swap-interval-ms=1000").unwrap();
-        assert!(validate_pmem(&pmem)
-            .unwrap_err()
-            .contains("vma-size and swap-interval parameters must be specified together"));
-    }
-
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    #[test]
-    fn validate_pmem_read_only_virtual_swap() {
-        let pmem = from_key_values::<PmemOption>(
-            "virtual_path,ro=true,vma-size=12345,swap-interval-ms=1000",
-        )
-        .unwrap();
-        assert!(validate_pmem(&pmem)
-            .unwrap_err()
-            .contains("swap-interval parameter can only be set for writable pmem device"));
     }
 
     #[test]
