@@ -94,6 +94,7 @@ cfg_if::cfg_if! {
         pub mod fs;
 
         pub use self::iommu::sys::linux::vfio_wrapper;
+        pub use self::fs::VirtioFsModule;
         pub use self::p9::P9;
         #[cfg(feature = "virtio_wl")]
         pub use self::wl::Wl;

@@ -4,9 +4,11 @@
 
 use std::collections::BTreeMap;
 use std::io;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::AsRawDescriptor;
@@ -17,10 +19,13 @@ use base::WorkerThread;
 use data_model::Le32;
 use remain::sorted;
 use resources::Alloc;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use thiserror::Error;
 use virtio_sys::virtio_fs::virtio_fs_config;
 use virtio_sys::virtio_fs::VIRTIO_FS_SHMCAP_ID_CACHE;
+use vm_control::AnyControlTube;
 use vm_control::FsMappingRequest;
 use vm_control::VmResponse;
 use vm_memory::GuestMemory;
@@ -39,6 +44,8 @@ use crate::virtio::PciCapabilityType;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::virtio::VirtioPciShmCap;
+use crate::VirtioDeviceArgs;
+use crate::VirtioDeviceModule;
 
 mod allowlist;
 #[cfg(feature = "arc_quota")]
@@ -300,5 +307,61 @@ impl VirtioDevice for Fs {
             FS_BAR_SIZE,
             VIRTIO_FS_SHMCAP_ID_CACHE as u8,
         ))]
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VirtioFsModule {
+    pub src: PathBuf,
+    pub tag: String,
+    pub ugid: (Option<u32>, Option<u32>),
+    pub uid_map: String,
+    pub gid_map: String,
+    pub cfg: Config,
+}
+
+impl VirtioDeviceModule for VirtioFsModule {
+    fn sort_name(&self) -> &'static str {
+        "fs"
+    }
+
+    fn create(&self, cx: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let (host_tube, device_tube) = Tube::pair().context("failed to create tube")?;
+        (cx.add_control_tube)(AnyControlTube::Fs(host_tube));
+
+        let features = crate::virtio::base_features(cx.protection_type);
+        // TODO(chirantan): Use more than one worker once the kernel driver has been fixed to not
+        // panic when num_queues > 1.
+        let dev = Fs::new(features, &self.tag, 1, self.cfg.clone(), device_tube)
+            .context("failed to create fs device")?;
+
+        Ok(Box::new(dev))
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn create_jail(
+        &self,
+        jail_config: Option<&jail::JailConfig>,
+    ) -> anyhow::Result<Option<minijail::Minijail>> {
+        let max_open_files = base::linux::max_open_files()
+            .context("failed to get max number of open files")?
+            .rlim_max;
+        let jail = if let Some(jail_config) = jail_config {
+            let mut config = jail::SandboxConfig::new(jail_config, "fs_device");
+            config.limit_caps = false;
+            config.ugid_map = Some((&self.uid_map, &self.gid_map));
+            // We want bind mounts from the parent namespaces to propagate into the fs device's
+            // namespace.
+            config.remount_mode = Some(libc::MS_SLAVE);
+            config.run_as = if self.ugid == (None, None) {
+                jail::RunAsUser::Unspecified
+            } else {
+                jail::RunAsUser::Specified(self.ugid.0.unwrap_or(0), self.ugid.1.unwrap_or(0))
+            };
+            jail::create_sandbox_minijail(&self.src, max_open_files, &config)?
+        } else {
+            jail::create_base_minijail(&self.src, max_open_files)?
+        };
+        Ok(Some(jail))
     }
 }

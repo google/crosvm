@@ -3129,7 +3129,27 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
         {
-            cfg.shared_dirs = cmd.shared_dir;
+            for shared_dir in cmd.shared_dir {
+                use crate::crosvm::sys::config::SharedDirKind;
+                match shared_dir.kind {
+                    SharedDirKind::FS => {
+                        cfg.virtio_device_modules.push(
+                            devices::virtio::VirtioFsModule {
+                                src: shared_dir.src,
+                                tag: shared_dir.tag,
+                                ugid: shared_dir.ugid,
+                                uid_map: shared_dir.uid_map,
+                                gid_map: shared_dir.gid_map,
+                                cfg: shared_dir.fs_cfg,
+                            }
+                            .into(),
+                        );
+                    }
+                    SharedDirKind::P9 => {
+                        cfg.shared_dirs.push(shared_dir);
+                    }
+                }
+            }
 
             cfg.coiommu_param = cmd.coiommu;
 

@@ -789,29 +789,13 @@ fn create_virtio_devices(
             ugid,
             uid_map,
             gid_map,
-            fs_cfg,
+            fs_cfg: _,
             p9_cfg,
         } = shared_dir;
 
         match kind {
             SharedDirKind::FS => {
-                let (host_tube, device_tube) = Tube::pair().context("failed to create tube")?;
-                add_control_tube(AnyControlTube::Fs(host_tube));
-
-                devs.push((
-                    "fs",
-                    create_fs_device(
-                        cfg.protection_type,
-                        cfg.jail_config.as_ref(),
-                        *ugid,
-                        uid_map,
-                        gid_map,
-                        src,
-                        tag,
-                        fs_cfg.clone(),
-                        device_tube,
-                    )?,
-                ));
+                unreachable!("virtio-fs is handled via VirtioDeviceModule");
             }
             SharedDirKind::P9 => devs.push((
                 "9p",

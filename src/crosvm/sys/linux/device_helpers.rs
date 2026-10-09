@@ -863,49 +863,6 @@ pub fn create_vhost_scmi_device(
     })
 }
 
-pub fn create_fs_device(
-    protection_type: ProtectionType,
-    jail_config: Option<&JailConfig>,
-    ugid: (Option<u32>, Option<u32>),
-    uid_map: &str,
-    gid_map: &str,
-    src: &Path,
-    tag: &str,
-    fs_cfg: virtio::fs::Config,
-    device_tube: Tube,
-) -> DeviceResult {
-    let max_open_files = base::linux::max_open_files()
-        .context("failed to get max number of open files")?
-        .rlim_max;
-    let j = if let Some(jail_config) = jail_config {
-        let mut config = SandboxConfig::new(jail_config, "fs_device");
-        config.limit_caps = false;
-        config.ugid_map = Some((uid_map, gid_map));
-        // We want bind mounts from the parent namespaces to propagate into the fs device's
-        // namespace.
-        config.remount_mode = Some(libc::MS_SLAVE);
-        config.run_as = if ugid == (None, None) {
-            RunAsUser::Unspecified
-        } else {
-            RunAsUser::Specified(ugid.0.unwrap_or(0), ugid.1.unwrap_or(0))
-        };
-        create_sandbox_minijail(src, max_open_files, &config)?
-    } else {
-        create_base_minijail(src, max_open_files)?
-    };
-
-    let features = virtio::base_features(protection_type);
-    // TODO(chirantan): Use more than one worker once the kernel driver has been fixed to not panic
-    // when num_queues > 1.
-    let dev = virtio::fs::Fs::new(features, tag, 1, fs_cfg, device_tube)
-        .context("failed to create fs device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: Some(j),
-    })
-}
-
 pub fn create_9p_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,

@@ -91,6 +91,8 @@ declare_any_virtio_device_module! {
         Console(device_virtio_console::VirtioConsoleModule),
         #[cfg(any(target_os = "android", target_os = "linux"))]
         Pmem(device_virtio_pmem::VirtioPmemModule),
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        Fs(devices::virtio::VirtioFsModule),
         #[cfg(feature = "vendor-devices")]
         Vendor(vendor_devices::VendorDeviceModule),
     }
