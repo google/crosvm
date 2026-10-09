@@ -9,6 +9,7 @@ use std::arch::x86_64::__cpuid_count;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::time::Duration;
 
 use arch::set_default_serial_parameters;
@@ -60,7 +61,6 @@ pub use hypervisor::ToggleMode;
 use jail::JailConfig;
 use resources::AddressRange;
 use serde::Deserialize;
-use serde::Deserializer;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use vm_control::BatteryType;
@@ -197,7 +197,8 @@ pub struct MemOptions {
     pub size: Option<u64>,
 }
 
-fn deserialize_swap_interval<'de, D: Deserializer<'de>>(
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn deserialize_swap_interval<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Duration>, D::Error> {
     let ms = Option::<u64>::deserialize(deserializer)?;
@@ -207,6 +208,7 @@ fn deserialize_swap_interval<'de, D: Deserializer<'de>>(
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[derive(
     Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues,
 )]
@@ -725,6 +727,7 @@ pub struct Config {
     pub pflash_parameters: Option<PflashParameters>,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub pmem_ext2: Vec<crate::crosvm::sys::config::PmemExt2Option>,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     pub pmems: Vec<PmemOption>,
     #[cfg(feature = "process-invariants")]
     pub process_invariants_data_handle: Option<u64>,
@@ -966,6 +969,7 @@ impl Default for Config {
             pflash_parameters: None,
             #[cfg(any(target_os = "android", target_os = "linux"))]
             pmem_ext2: Vec::new(),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
             pmems: Vec::new(),
             #[cfg(feature = "process-invariants")]
             process_invariants_data_handle: None,
@@ -1245,6 +1249,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         validate_file_backed_mapping(mapping)?;
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     for pmem in cfg.pmems.iter() {
         validate_pmem(pmem)?;
     }
@@ -1291,6 +1296,7 @@ fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Re
     Ok(())
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn validate_pmem(pmem: &PmemOption) -> Result<(), String> {
     if (pmem.swap_interval.is_some() && pmem.vma_size.is_none())
         || (pmem.swap_interval.is_none() && pmem.vma_size.is_some())
@@ -2439,6 +2445,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn parse_pmem_options_missing_path() {
         assert!(from_key_values::<PmemOption>("")
@@ -2446,6 +2453,7 @@ mod tests {
             .contains("missing field `path`"));
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn parse_pmem_options_default_values() {
         let pmem = from_key_values::<PmemOption>("/path/to/disk.img").unwrap();
@@ -2461,6 +2469,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn parse_pmem_options_virtual_swap() {
         let pmem =
@@ -2478,6 +2487,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn validate_pmem_missing_virtual_swap_param() {
         let pmem = from_key_values::<PmemOption>("virtual_path,swap-interval-ms=1000").unwrap();
@@ -2486,6 +2496,7 @@ mod tests {
             .contains("vma-size and swap-interval parameters must be specified together"));
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[test]
     fn validate_pmem_read_only_virtual_swap() {
         let pmem = from_key_values::<PmemOption>(

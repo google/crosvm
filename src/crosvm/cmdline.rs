@@ -77,6 +77,7 @@ use serde_keyvalue::FromKeyValues;
 use vendor_devices::VendorDeviceModule;
 use vm_memory::FileBackedMappingParameters;
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use super::config::PmemOption;
 #[cfg(feature = "gpu")]
 use super::gpu_config::fixup_gpu_options;
@@ -1626,6 +1627,7 @@ pub struct RunCommand {
     /// path to empty directory to use for sandbox pivot root
     pub pivot_root: Option<PathBuf>,
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(option)]
     /// parameters for setting up a virtio-pmem device.
     /// Valid keys:
@@ -1645,6 +1647,7 @@ pub struct RunCommand {
     ///        out by crosvm
     pub pmem: Vec<PmemOption>,
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(option, arg_name = "PATH")]
     /// (DEPRECATED): Use --pmem.
     /// path to a disk image
@@ -1759,6 +1762,7 @@ pub struct RunCommand {
     /// comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)
     pub rt_cpus: Option<CpuSet>,
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     #[argh(option, arg_name = "PATH")]
     /// (DEPRECATED): Use --pmem.
     /// path to a writable disk image
@@ -2444,12 +2448,14 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(target_arch = "aarch64")]
         {
-            if cfg.mte.might_be_enabled()
-                && !(cmd.pmem.is_empty()
-                    && cmd.pmem_device.is_empty()
-                    && cmd.pstore.is_none()
-                    && cmd.rw_pmem_device.is_empty())
-            {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            let has_pmem = !cmd.pmem.is_empty()
+                || !cmd.pmem_device.is_empty()
+                || !cmd.rw_pmem_device.is_empty();
+            #[cfg(not(any(target_os = "android", target_os = "linux")))]
+            let has_pmem = false;
+
+            if cfg.mte.might_be_enabled() && (has_pmem || cmd.pstore.is_some()) {
                 return Err(
                     "MTE cannot be enabled together with --pstore or pmem flags".to_string()
                 );
@@ -2587,28 +2593,31 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
         }
 
-        cfg.pmems = cmd.pmem;
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        {
+            cfg.pmems = cmd.pmem;
 
-        if !cmd.pmem_device.is_empty() || !cmd.rw_pmem_device.is_empty() {
-            log::warn!(
-                "--pmem-device and --rw-pmem-device are deprecated. Please use --pmem instead."
-            );
-        }
+            if !cmd.pmem_device.is_empty() || !cmd.rw_pmem_device.is_empty() {
+                log::warn!(
+                    "--pmem-device and --rw-pmem-device are deprecated. Please use --pmem instead."
+                );
+            }
 
-        // Convert the deprecated `pmem_device` and `rw_pmem_device` into `pmem_devices`.
-        for disk_option in cmd.pmem_device.into_iter() {
-            cfg.pmems.push(PmemOption {
-                path: disk_option.path,
-                ro: true, // read-only
-                ..PmemOption::default()
-            });
-        }
-        for disk_option in cmd.rw_pmem_device.into_iter() {
-            cfg.pmems.push(PmemOption {
-                path: disk_option.path,
-                ro: false, // writable
-                ..PmemOption::default()
-            });
+            // Convert the deprecated `pmem_device` and `rw_pmem_device` into `pmem_devices`.
+            for disk_option in cmd.pmem_device.into_iter() {
+                cfg.pmems.push(PmemOption {
+                    path: disk_option.path,
+                    ro: true, // read-only
+                    ..PmemOption::default()
+                });
+            }
+            for disk_option in cmd.rw_pmem_device.into_iter() {
+                cfg.pmems.push(PmemOption {
+                    path: disk_option.path,
+                    ro: false, // writable
+                    ..PmemOption::default()
+                });
+            }
         }
 
         // Find the device to use as the kernel `root=` parameter. There can only be one.
@@ -2625,12 +2634,16 @@ impl TryFrom<RunCommand> for super::config::Config {
             .filter(|(_, s)| s.root)
             .map(|(i, s)| (format_disk_letter("/dev/sd", i), s.read_only));
 
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         let virtio_pmem_root_devs = cfg
             .pmems
             .iter()
             .enumerate()
             .filter(|(_, p)| p.root)
             .map(|(i, p)| (format!("/dev/pmem{i}"), p.ro));
+
+        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        let virtio_pmem_root_devs = std::iter::empty();
 
         let mut root_devs = virtio_blk_root_devs
             .chain(virtio_scsi_root_devs)
