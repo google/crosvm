@@ -863,52 +863,6 @@ pub fn create_vhost_scmi_device(
     })
 }
 
-pub fn create_9p_device(
-    protection_type: ProtectionType,
-    jail_config: Option<&JailConfig>,
-    ugid: (Option<u32>, Option<u32>),
-    uid_map: &str,
-    gid_map: &str,
-    src: &Path,
-    tag: &str,
-    mut p9_cfg: p9::Config,
-) -> DeviceResult {
-    let max_open_files = base::linux::max_open_files()
-        .context("failed to get max number of open files")?
-        .rlim_max;
-    let (jail, root) = if let Some(jail_config) = jail_config {
-        let mut config = SandboxConfig::new(jail_config, "9p_device");
-        config.limit_caps = false;
-        config.ugid_map = Some((uid_map, gid_map));
-        // We want bind mounts from the parent namespaces to propagate into the 9p server's
-        // namespace.
-        config.remount_mode = Some(libc::MS_SLAVE);
-        config.run_as = if ugid == (None, None) {
-            RunAsUser::Unspecified
-        } else {
-            RunAsUser::Specified(ugid.0.unwrap_or(0), ugid.1.unwrap_or(0))
-        };
-        let jail = create_sandbox_minijail(src, max_open_files, &config)?;
-
-        //  The shared directory becomes the root of the device's file system.
-        let root = Path::new("/");
-        (Some(jail), root)
-    } else {
-        // There's no mount namespace so we tell the server to treat the source directory as the
-        // root.
-        (None, src)
-    };
-
-    let features = virtio::base_features(protection_type);
-    p9_cfg.root = root.into();
-    let dev = virtio::P9::new(features, tag, p9_cfg).context("failed to create 9p device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail,
-    })
-}
-
 pub fn create_pmem_ext2_device(
     protection_type: ProtectionType,
     jail_config: Option<&JailConfig>,

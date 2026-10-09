@@ -206,8 +206,6 @@ use crate::crosvm::gdb::GdbStub;
 #[cfg(target_arch = "x86_64")]
 use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
-use crate::crosvm::sys::config::SharedDir;
-use crate::crosvm::sys::config::SharedDirKind;
 #[cfg(feature = "pci-hotplug")]
 use crate::crosvm::sys::linux::pci_hotplug_helpers::PciHotplugResourceCarrier;
 use crate::crosvm::sys::platform::vcpu::VcpuPidTid;
@@ -781,38 +779,6 @@ fn create_virtio_devices(
         }
     }
 
-    for shared_dir in &cfg.shared_dirs {
-        let SharedDir {
-            src,
-            tag,
-            kind,
-            ugid,
-            uid_map,
-            gid_map,
-            fs_cfg: _,
-            p9_cfg,
-        } = shared_dir;
-
-        match kind {
-            SharedDirKind::FS => {
-                unreachable!("virtio-fs is handled via VirtioDeviceModule");
-            }
-            SharedDirKind::P9 => devs.push((
-                "9p",
-                create_9p_device(
-                    cfg.protection_type,
-                    cfg.jail_config.as_ref(),
-                    *ugid,
-                    uid_map,
-                    gid_map,
-                    src,
-                    tag,
-                    p9_cfg.clone(),
-                )?,
-            )),
-        };
-    }
-
     #[cfg(feature = "audio")]
     if let Some(path) = &cfg.sound {
         devs.push((
@@ -827,6 +793,7 @@ fn create_virtio_devices(
             resources,
             add_control_tube,
             protection_type: cfg.protection_type,
+            jail_config: cfg.jail_config.as_ref(),
         };
         let dev = virtio_device_module
             .create(&mut args)

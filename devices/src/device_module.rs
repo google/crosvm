@@ -20,6 +20,8 @@ pub struct VirtioDeviceArgs<'a> {
     pub resources: &'a mut SystemAllocator,
     pub add_control_tube: &'a mut dyn FnMut(AnyControlTube),
     pub protection_type: ProtectionType,
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub jail_config: Option<&'a JailConfig>,
 }
 
 /// A module that creates a single virtio device and provides hooks to integrate it into the VMM.

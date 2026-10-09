@@ -3146,7 +3146,17 @@ impl TryFrom<RunCommand> for super::config::Config {
                         );
                     }
                     SharedDirKind::P9 => {
-                        cfg.shared_dirs.push(shared_dir);
+                        cfg.virtio_device_modules.push(
+                            devices::virtio::Virtio9pModule {
+                                src: shared_dir.src,
+                                tag: shared_dir.tag,
+                                ugid: shared_dir.ugid,
+                                uid_map: shared_dir.uid_map,
+                                gid_map: shared_dir.gid_map,
+                                p9_cfg: shared_dir.p9_cfg,
+                            }
+                            .into(),
+                        );
                     }
                 }
             }

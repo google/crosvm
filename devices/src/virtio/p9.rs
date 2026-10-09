@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use std::io;
 use std::io::Write;
 use std::mem;
+use std::path::Path;
+use std::path::PathBuf;
 use std::result;
 
 use anyhow::anyhow;
@@ -19,6 +21,8 @@ use base::RawDescriptor;
 use base::WaitContext;
 use base::WorkerThread;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
@@ -27,6 +31,8 @@ use super::queue::Queue;
 use super::DeviceType;
 use super::Interrupt;
 use super::VirtioDevice;
+use crate::device_module::VirtioDeviceArgs;
+use crate::device_module::VirtioDeviceModule;
 
 const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -211,5 +217,65 @@ impl VirtioDevice for P9 {
         }));
 
         Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Virtio9pModule {
+    pub src: PathBuf,
+    pub tag: String,
+    pub ugid: (Option<u32>, Option<u32>),
+    pub uid_map: String,
+    pub gid_map: String,
+    pub p9_cfg: p9::Config,
+}
+
+impl VirtioDeviceModule for Virtio9pModule {
+    fn sort_name(&self) -> &'static str {
+        "9p"
+    }
+
+    fn create(&self, cx: &mut VirtioDeviceArgs<'_>) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let root = if cx.jail_config.is_some() {
+            // The shared directory becomes the root of the device's file system.
+            Path::new("/")
+        } else {
+            // There's no mount namespace so we tell the server to treat the source directory as
+            // the root.
+            &self.src
+        };
+        let mut p9_cfg = self.p9_cfg.clone();
+        p9_cfg.root = root.into();
+
+        let features = crate::virtio::base_features(cx.protection_type);
+        Ok(Box::new(
+            P9::new(features, &self.tag, p9_cfg).context("failed to create 9p device")?,
+        ))
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn create_jail(
+        &self,
+        jail_config: Option<&jail::JailConfig>,
+    ) -> anyhow::Result<Option<minijail::Minijail>> {
+        let Some(jail_config) = jail_config else {
+            return Ok(None);
+        };
+        let max_open_files = base::linux::max_open_files()
+            .context("failed to get max number of open files")?
+            .rlim_max;
+        let mut config = jail::SandboxConfig::new(jail_config, "9p_device");
+        config.limit_caps = false;
+        config.ugid_map = Some((&self.uid_map, &self.gid_map));
+        // We want bind mounts from the parent namespaces to propagate into the 9p server's
+        // namespace.
+        config.remount_mode = Some(libc::MS_SLAVE);
+        config.run_as = if self.ugid == (None, None) {
+            jail::RunAsUser::Unspecified
+        } else {
+            jail::RunAsUser::Specified(self.ugid.0.unwrap_or(0), self.ugid.1.unwrap_or(0))
+        };
+        let jail = jail::create_sandbox_minijail(&self.src, max_open_files, &config)?;
+        Ok(Some(jail))
     }
 }
