@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(any(target_os = "android", target_os = "linux"))]
+
 use std::collections::BTreeMap;
 use std::io;
 use std::io::Write;
@@ -20,19 +22,18 @@ use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
 use base::WorkerThread;
+use devices::virtio::copy_config;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestMemory;
-
-use super::copy_config;
-use super::queue::Queue;
-use super::DeviceType;
-use super::Interrupt;
-use super::VirtioDevice;
-use crate::device_module::VirtioDeviceArgs;
-use crate::device_module::VirtioDeviceModule;
 
 const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -247,7 +248,7 @@ impl VirtioDeviceModule for Virtio9pModule {
         let mut p9_cfg = self.p9_cfg.clone();
         p9_cfg.root = root.into();
 
-        let features = crate::virtio::base_features(cx.protection_type);
+        let features = devices::virtio::base_features(cx.protection_type);
         Ok(Box::new(
             P9::new(features, &self.tag, p9_cfg).context("failed to create 9p device")?,
         ))

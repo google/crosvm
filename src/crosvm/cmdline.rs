@@ -3147,7 +3147,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     }
                     SharedDirKind::P9 => {
                         cfg.virtio_device_modules.push(
-                            devices::virtio::Virtio9pModule {
+                            device_virtio_9p::Virtio9pModule {
                                 src: shared_dir.src,
                                 tag: shared_dir.tag,
                                 ugid: shared_dir.ugid,

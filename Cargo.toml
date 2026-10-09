@@ -154,6 +154,7 @@ crosvm_control = { path = "crosvm_control" }
 crypto = { path = "vendor/generic/crypto", package = "crypto_generic" }
 data_model = { path = "common/data_model" }
 devices = { path = "devices" }
+device_virtio_9p = { path = "devices/device_virtio_9p" }
 device_virtio_block = { path = "devices/device_virtio_block" }
 device_virtio_console = { path = "devices/device_virtio_console" }
 device_virtio_fs = { path = "devices/device_virtio_fs" }
@@ -658,6 +659,7 @@ aarch64 = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 device_virtio_fs = { workspace = true }
+device_virtio_9p = { workspace = true }
 device_virtio_pmem = { workspace = true }
 minijail = "*" # provided by ebuild
 p9 = "0.3.1"

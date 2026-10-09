@@ -102,7 +102,6 @@ jail = { path = "../jail" }
 libcras = { version = "*", optional = true }
 minijail = "*"
 net_sys = { workspace = true }
-p9 = "0.3.1"
 usb_util = { workspace = true }
 vfio_sys = { workspace = true }
 vhost = { workspace = true }

@@ -1,0 +1,23 @@
+[package]
+name = "device_virtio_9p"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+license = "BSD-3-Clause"
+
+[dependencies]
+anyhow = { workspace = true }
+base = { workspace = true }
+devices = { workspace = true }
+hypervisor = { workspace = true }
+jail = { workspace = true }
+libc = { workspace = true }
+p9 = "0.3.1"
+remain = { workspace = true }
+serde = { workspace = true, features = [ "derive" ] }
+thiserror = { workspace = true }
+vm_memory = { workspace = true }
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+minijail = "*"
+
