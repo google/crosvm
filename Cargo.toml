@@ -157,6 +157,7 @@ devices = { path = "devices" }
 device_virtio_block = { path = "devices/device_virtio_block" }
 device_virtio_console = { path = "devices/device_virtio_console" }
 device_virtio_net = { path = "devices/device_virtio_net" }
+device_virtio_pmem = { path = "devices/device_virtio_pmem" }
 device_virtio_rng = { path = "devices/device_virtio_rng" }
 device_virtio_scsi = { path = "devices/device_virtio_scsi" }
 device_virtio_snd = { path = "devices/device_virtio_snd" }
@@ -655,6 +656,7 @@ x86_64 = { workspace = true }
 aarch64 = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+device_virtio_pmem = { workspace = true }
 minijail = "*" # provided by ebuild
 p9 = "0.3.1"
 vhost = { workspace = true, optional = true }

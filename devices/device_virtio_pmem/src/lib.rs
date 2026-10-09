@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(any(target_os = "android", target_os = "linux"))]
+
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -37,6 +39,15 @@ use cros_async::Executor;
 use cros_async::TimerAsync;
 use data_model::Le32;
 use data_model::Le64;
+use devices::virtio::async_utils;
+use devices::virtio::copy_config;
+use devices::virtio::DescriptorChain;
+use devices::virtio::DeviceType;
+use devices::virtio::Interrupt;
+use devices::virtio::Queue;
+use devices::virtio::VirtioDevice;
+use devices::VirtioDeviceArgs;
+use devices::VirtioDeviceModule;
 use futures::pin_mut;
 use hypervisor::MemCacheType;
 use hypervisor::ProtectionType;
@@ -61,16 +72,6 @@ use zerocopy::FromBytes;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
-
-use super::async_utils;
-use super::copy_config;
-use super::DescriptorChain;
-use super::DeviceType;
-use super::Interrupt;
-use super::Queue;
-use super::VirtioDevice;
-use crate::VirtioDeviceArgs;
-use crate::VirtioDeviceModule;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -695,7 +696,7 @@ fn create_pmem_device(
     };
 
     let dev = Pmem::new(
-        crate::virtio::base_features(protection_type),
+        devices::virtio::base_features(protection_type),
         PmemConfig {
             disk_image: Some(fd),
             mapping_address,

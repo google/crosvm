@@ -46,14 +46,14 @@ use device_virtio_block::DiskOption;
 use device_virtio_net::NetParameters;
 #[cfg(all(unix, feature = "net"))]
 use device_virtio_net::NetParametersMode;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use device_virtio_pmem::PmemOption;
 use device_virtio_scsi::ScsiOption;
 #[cfg(feature = "audio")]
 use device_virtio_snd::parameters::Parameters as SndParameters;
 use device_virtio_vsock::VsockConfig;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-use devices::virtio::pmem::PmemOption;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost_user_backend;
 #[cfg(feature = "gpu")]
@@ -2620,7 +2620,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
 
             for pmem in &pmem_devices {
-                devices::virtio::pmem::validate_pmem(pmem)?;
+                device_virtio_pmem::validate_pmem(pmem)?;
             }
 
             pmem_devices
@@ -2670,7 +2670,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(any(target_os = "android", target_os = "linux"))]
         for (index, pmem_option) in pmem_devices.into_iter().enumerate() {
             cfg.virtio_device_modules
-                .push(devices::virtio::VirtioPmemModule { pmem_option, index }.into());
+                .push(device_virtio_pmem::VirtioPmemModule { pmem_option, index }.into());
         }
 
         if !cmd.scsi_block.is_empty() {

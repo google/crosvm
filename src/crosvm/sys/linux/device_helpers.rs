@@ -46,8 +46,6 @@ use devices::virtio::pvclock::PvClock;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost_user_backend::VhostUserDeviceBuilder;
 use devices::virtio::vhost_user_backend::VhostUserVsockDevice;
-use devices::virtio::MemSlotConfig;
-use devices::virtio::PmemConfig;
 use devices::virtio::VhostUserFrontend;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
@@ -1007,12 +1005,12 @@ pub fn create_pmem_ext2_device(
 
     worker_process_pids.insert(ext2_proc_pid);
 
-    let dev = virtio::Pmem::new(
-        virtio::base_features(protection_type),
-        PmemConfig {
+    let dev = device_virtio_pmem::Pmem::new(
+        devices::virtio::base_features(protection_type),
+        device_virtio_pmem::PmemConfig {
             disk_image: None,
             mapping_address,
-            mem_slot: MemSlotConfig::LazyInit {
+            mem_slot: device_virtio_pmem::MemSlotConfig::LazyInit {
                 tube: mkfs_device_tube,
             },
             mapping_size,

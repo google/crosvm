@@ -1,0 +1,29 @@
+[package]
+name = "device_virtio_pmem"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+license = "BSD-3-Clause"
+
+[dependencies]
+anyhow = { workspace = true }
+base = { workspace = true }
+cros_async = { workspace = true }
+data_model = { workspace = true }
+devices = { workspace = true }
+futures = "0.3"
+hypervisor = { workspace = true }
+jail = { workspace = true }
+libc = { workspace = true }
+remain = { workspace = true }
+resources = { workspace = true }
+serde = { workspace = true, features = [ "derive", "rc" ] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
+snapshot = { workspace = true }
+thiserror = { workspace = true }
+vm_control = { workspace = true }
+vm_memory = { workspace = true }
+zerocopy = { version = "0.8.13", features = ["derive"] }
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+minijail = "*" # provided by ebuild

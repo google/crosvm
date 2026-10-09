@@ -857,6 +857,7 @@ dependencies = [
  "device_virtio_block",
  "device_virtio_console",
  "device_virtio_net",
+ "device_virtio_pmem",
  "device_virtio_rng",
  "device_virtio_scsi",
  "device_virtio_snd",
@@ -1121,6 +1122,31 @@ dependencies = [
  "vm_control",
  "vm_memory",
  "vmm_vhost",
+ "zerocopy 0.8.14",
+]
+
+[[package]]
+name = "device_virtio_pmem"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "cros_async",
+ "data_model",
+ "devices",
+ "futures",
+ "hypervisor",
+ "jail",
+ "libc",
+ "minijail",
+ "remain",
+ "resources",
+ "serde",
+ "serde_keyvalue",
+ "snapshot",
+ "thiserror 1.0.38",
+ "vm_control",
+ "vm_memory",
  "zerocopy 0.8.14",
 ]
 
