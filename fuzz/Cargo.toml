@@ -13,6 +13,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [dependencies]
 device_virtio_block = { workspace = true }
+device_virtio_fs = { workspace = true }
 devices = { workspace = true }
 disk = { workspace = true }
 fuse = { workspace = true }

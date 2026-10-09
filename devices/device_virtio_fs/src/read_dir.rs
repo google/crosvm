@@ -18,7 +18,7 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use crate::virtio::fs::allowlist::ReadDirFilter;
+use crate::allowlist::ReadDirFilter;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, FromBytes, Immutable, IntoBytes, KnownLayout)]

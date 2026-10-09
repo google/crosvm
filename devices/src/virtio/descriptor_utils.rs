@@ -513,6 +513,16 @@ impl io::Read for Reader {
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+impl fuse::Reader for Reader {}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+impl fuse::filesystem::ZeroCopyReader for Reader {
+    fn read_to(&mut self, f: &mut std::fs::File, count: usize, off: u64) -> io::Result<usize> {
+        self.read_to_at(f, count, off)
+    }
+}
+
 /// Provides high-level interface over the sequence of memory regions
 /// defined by writable descriptors in the descriptor chain.
 ///
@@ -768,6 +778,29 @@ impl io::Write for Writer {
     fn flush(&mut self) -> io::Result<()> {
         // Nothing to flush since the writes go straight into the buffer.
         Ok(())
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+impl fuse::Writer for Writer {
+    type ClosureWriter = Self;
+
+    fn write_at<F>(&mut self, offset: usize, f: F) -> io::Result<usize>
+    where
+        F: Fn(&mut Self) -> io::Result<usize>,
+    {
+        f(&mut self.split_at(offset))
+    }
+
+    fn has_sufficient_buffer(&self, size: u32) -> bool {
+        self.available_bytes() >= size as usize
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+impl fuse::filesystem::ZeroCopyWriter for Writer {
+    fn write_from(&mut self, f: &mut std::fs::File, count: usize, off: u64) -> io::Result<usize> {
+        self.write_from_at(f, count, off)
     }
 }
 

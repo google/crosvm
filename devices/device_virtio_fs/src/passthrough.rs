@@ -84,24 +84,24 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
-use crate::virtio::fs::allowlist::PathAllowlist;
+use crate::allowlist::PathAllowlist;
 #[cfg(feature = "arc_quota")]
-use crate::virtio::fs::arc_ioctl::FsPathXattrDataBuffer;
+use crate::arc_ioctl::FsPathXattrDataBuffer;
 #[cfg(feature = "arc_quota")]
-use crate::virtio::fs::arc_ioctl::FsPermissionDataBuffer;
+use crate::arc_ioctl::FsPermissionDataBuffer;
 #[cfg(feature = "arc_quota")]
-use crate::virtio::fs::arc_ioctl::XattrData;
-use crate::virtio::fs::caps::Capability;
-use crate::virtio::fs::caps::Caps;
-use crate::virtio::fs::caps::Set as CapSet;
-use crate::virtio::fs::caps::Value as CapValue;
-use crate::virtio::fs::config::CachePolicy;
-use crate::virtio::fs::config::Config;
+use crate::arc_ioctl::XattrData;
+use crate::caps::Capability;
+use crate::caps::Caps;
+use crate::caps::Set as CapSet;
+use crate::caps::Value as CapValue;
+use crate::config::CachePolicy;
+use crate::config::Config;
 #[cfg(feature = "fs_permission_translation")]
-use crate::virtio::fs::config::PermissionData;
-use crate::virtio::fs::expiring_map::ExpiringMap;
-use crate::virtio::fs::multikey::MultikeyBTreeMap;
-use crate::virtio::fs::read_dir::ReadDir;
+use crate::config::PermissionData;
+use crate::expiring_map::ExpiringMap;
+use crate::multikey::MultikeyBTreeMap;
+use crate::read_dir::ReadDir;
 
 // RESOLVE_* constants are missing in libc crate for some targets (e.g. Android).
 // Define them here as they are stable Linux kernel API constants.
@@ -3863,11 +3863,11 @@ mod tests {
 
     use super::*;
     #[cfg(feature = "arc_quota")]
-    use crate::virtio::fs::arc_ioctl::FS_IOCTL_PATH_MAX_LEN;
+    use crate::arc_ioctl::FS_IOCTL_PATH_MAX_LEN;
     #[cfg(feature = "arc_quota")]
-    use crate::virtio::fs::arc_ioctl::FS_IOCTL_XATTR_NAME_MAX_LEN;
+    use crate::arc_ioctl::FS_IOCTL_XATTR_NAME_MAX_LEN;
     #[cfg(feature = "arc_quota")]
-    use crate::virtio::fs::arc_ioctl::FS_IOCTL_XATTR_VALUE_MAX_LEN;
+    use crate::arc_ioctl::FS_IOCTL_XATTR_VALUE_MAX_LEN;
 
     const UNITTEST_LOCK_NAME: &str = "passthroughfs_unittest_lock";
 

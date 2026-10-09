@@ -11,13 +11,6 @@ workspace = true
 [features]
 android_display = ["gpu_display/android_display"]
 android_display_stub = ["gpu_display/android_display_stub"]
-arc_quota = ["dbus", "protobuf", "system_api", "fs_permission_translation"]
-fs_runtime_ugid_map = ["fs_permission_translation"]
-# Allow intercepting incoming virtio-fs requests to modify its permission, UID or GID.
-#
-# This feature is not supposed to be specified directly. Instead, this will be automatically
-# enabled when either `arc_quota` or `fs_runtime_ugid_map` is enabled.
-fs_permission_translation = []
 audio = []
 audio_cras = ["libcras"]
 balloon = []
@@ -64,7 +57,6 @@ cros_async = { workspace = true }
 cros-codecs = { version = "0.0.4", optional = true }
 crosvm_cli = { workspace = true }
 data_model = { workspace = true }
-dbus = { version = "0.9.7", features = ["stdfd"], optional = true }
 disk = { workspace = true }
 enumn = { workspace = true }
 ffmpeg = { workspace = true, optional = true }
@@ -79,7 +71,6 @@ metrics = { workspace = true }
 net_util = { workspace = true }
 num-traits = "0.2"
 power_monitor = { workspace = true }
-protobuf = { version = "3.2", optional = true }
 rand = { workspace = true }
 remain = { workspace = true }
 resources = { workspace = true }
@@ -90,7 +81,6 @@ smallvec = "1.6.1"
 snapshot = { workspace = true }
 static_assertions = { workspace = true }
 sync = { workspace = true }
-system_api = { workspace = true, optional = true }
 tempfile = "3"
 thiserror = { workspace = true }
 cros_tracing = { workspace = true }
@@ -136,5 +126,4 @@ default-features = false
 bytes = "1.1.0"
 crc32fast = "1"
 libtest-mimic = "0.6"
-named-lock = "0.3"
 tempfile = "3"

@@ -3134,7 +3134,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 match shared_dir.kind {
                     SharedDirKind::FS => {
                         cfg.virtio_device_modules.push(
-                            devices::virtio::VirtioFsModule {
+                            device_virtio_fs::VirtioFsModule {
                                 src: shared_dir.src,
                                 tag: shared_dir.tag,
                                 ugid: shared_dir.ugid,

@@ -1,0 +1,54 @@
+[package]
+name = "device_virtio_fs"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+license = "BSD-3-Clause"
+
+[features]
+arc_quota = ["dbus", "protobuf", "system_api", "fs_permission_translation"]
+fs_runtime_ugid_map = ["fs_permission_translation"]
+# Allow intercepting incoming virtio-fs requests to modify its permission, UID or GID.
+#
+# This feature is not supposed to be specified directly. Instead, this will be automatically
+# enabled when either `arc_quota` or `fs_runtime_ugid_map` is enabled.
+fs_permission_translation = []
+seccomp_trace = []
+
+[dependencies]
+anyhow = { workspace = true }
+argh = { workspace = true }
+base = { workspace = true }
+cfg-if = { workspace = true }
+cros_async = { workspace = true }
+cros_tracing = { workspace = true }
+data_model = { workspace = true }
+dbus = { version = "0.9.7", features = ["stdfd"], optional = true }
+devices = { workspace = true }
+fuse = { workspace = true }
+hypervisor = { workspace = true }
+jail = { workspace = true }
+libc = { workspace = true }
+metrics = { workspace = true }
+protobuf = { version = "3.2", optional = true }
+remain = { workspace = true }
+resources = { workspace = true }
+serde = { workspace = true, features = [ "derive", "rc" ] }
+serde_keyvalue = { workspace = true, features = ["argh_derive"] }
+snapshot = { workspace = true }
+sync = { workspace = true }
+system_api = { workspace = true, optional = true }
+thiserror = { workspace = true }
+virtio_sys = { workspace = true }
+vm_control = { workspace = true }
+vm_memory = { workspace = true }
+vmm_vhost = { workspace = true }
+zerocopy = { version = "0.8.13", features = ["derive"] }
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+minijail = "*"
+
+[dev-dependencies]
+named-lock = "0.3"
+serde_json = { workspace = true }
+tempfile = "3"

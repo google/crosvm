@@ -18,14 +18,14 @@ use base::IntoRawDescriptor;
 use base::RawDescriptor;
 use base::UnixSeqpacketListener;
 use cros_async::Executor;
+use devices::virtio::vhost_user_backend::handler::DeviceRequestHandler;
+use devices::virtio::vhost_user_backend::BackendConnection;
 use jail::create_base_minijail;
 use jail::create_base_minijail_without_pivot_root;
 use minijail::Minijail;
 
-use crate::virtio::vhost_user_backend::fs::FsBackend;
-use crate::virtio::vhost_user_backend::fs::Options;
-use crate::virtio::vhost_user_backend::handler::DeviceRequestHandler;
-use crate::virtio::vhost_user_backend::BackendConnection;
+use crate::vhost_user::FsBackend;
+use crate::vhost_user::Options;
 
 fn default_uidmap() -> String {
     // SAFETY: trivially safe

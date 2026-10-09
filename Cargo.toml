@@ -156,6 +156,7 @@ data_model = { path = "common/data_model" }
 devices = { path = "devices" }
 device_virtio_block = { path = "devices/device_virtio_block" }
 device_virtio_console = { path = "devices/device_virtio_console" }
+device_virtio_fs = { path = "devices/device_virtio_fs" }
 device_virtio_net = { path = "devices/device_virtio_net" }
 device_virtio_pmem = { path = "devices/device_virtio_pmem" }
 device_virtio_rng = { path = "devices/device_virtio_rng" }
@@ -260,7 +261,7 @@ zstd-disk = ["disk/zstd-disk"]
 
 ## Enables virtiofs uid-gid mapping from the host side through command line when user-namespace
 ## isn't available for non-root users. This format is supported only for vhost-user-fs.
-fs_runtime_ugid_map = ["devices/fs_runtime_ugid_map"]
+fs_runtime_ugid_map = ["device_virtio_fs/fs_runtime_ugid_map"]
 
 ## Enables using gdb to debug the guest kernel. See
 ## [GDB Support](https://crosvm.dev/book/running_crosvm/advanced_usage.html#gdb-support) for more
@@ -435,7 +436,7 @@ default-no-sandbox = []
 ##   Requires access to the org.chromium.ArcQuota dbus service.
 ## - Support for FS_IOC_SETPERMISSION ioctl
 ## - Support for FS_IOC_SETPATHXATTR ioctl
-arc_quota = ["devices/arc_quota"]
+arc_quota = ["device_virtio_fs/arc_quota"]
 
 ## Enables use of Android AAudio virtio-snd backend.
 audio_aaudio = ["device_virtio_snd/audio_aaudio"]
@@ -656,6 +657,7 @@ x86_64 = { workspace = true }
 aarch64 = { workspace = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+device_virtio_fs = { workspace = true }
 device_virtio_pmem = { workspace = true }
 minijail = "*" # provided by ebuild
 p9 = "0.3.1"

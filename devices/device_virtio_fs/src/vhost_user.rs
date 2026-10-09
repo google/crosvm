@@ -23,6 +23,12 @@ use base::Tube;
 use base::UnixSeqpacketListener;
 use base::WorkerThread;
 use data_model::Le32;
+use devices::virtio;
+use devices::virtio::copy_config;
+use devices::virtio::device_constants::fs::FS_MAX_TAG_LEN;
+use devices::virtio::vhost_user_backend::handler::Error as DeviceError;
+use devices::virtio::vhost_user_backend::handler::VhostUserDevice;
+use devices::virtio::Queue;
 use fuse::Server;
 use hypervisor::ProtectionType;
 use snapshot::AnySnapshot;
@@ -36,16 +42,10 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::IntoBytes;
 
-use crate::virtio;
-use crate::virtio::copy_config;
-use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
-use crate::virtio::fs::passthrough::PassthroughFs;
-use crate::virtio::fs::Config;
-use crate::virtio::fs::PathAllowlist;
-use crate::virtio::fs::Worker;
-use crate::virtio::vhost_user_backend::handler::Error as DeviceError;
-use crate::virtio::vhost_user_backend::handler::VhostUserDevice;
-use crate::virtio::Queue;
+use crate::allowlist::PathAllowlist;
+use crate::config::Config;
+use crate::passthrough::PassthroughFs;
+use crate::worker::Worker;
 
 const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
 

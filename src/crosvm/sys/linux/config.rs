@@ -101,7 +101,7 @@ pub struct SharedDir {
     pub ugid: (Option<u32>, Option<u32>),
     pub uid_map: String,
     pub gid_map: String,
-    pub fs_cfg: devices::virtio::fs::Config,
+    pub fs_cfg: device_virtio_fs::Config,
     pub p9_cfg: p9::Config,
 }
 
@@ -360,7 +360,7 @@ mod tests {
     use std::time::Duration;
 
     use argh::FromArgs;
-    use devices::virtio::fs::CachePolicy;
+    use device_virtio_fs::CachePolicy;
 
     use super::*;
     use crate::crosvm::config::from_key_values;
@@ -735,7 +735,7 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.writeback, true);
         assert_eq!(
             shared_dir.fs_cfg.cache_policy,
-            devices::virtio::fs::CachePolicy::Always
+            device_virtio_fs::CachePolicy::Always
         );
         assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
         assert_eq!(shared_dir.fs_cfg.use_dax, false);
@@ -766,7 +766,7 @@ mod tests {
         assert!(shared_dir.kind == SharedDirKind::FS);
         assert_eq!(
             shared_dir.fs_cfg.cache_policy,
-            devices::virtio::fs::CachePolicy::Always
+            device_virtio_fs::CachePolicy::Always
         );
         assert_eq!(shared_dir.fs_cfg.timeout, Duration::from_secs(3600));
         assert_eq!(shared_dir.fs_cfg.negative_timeout, Duration::from_secs(60));
@@ -786,7 +786,7 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.writeback, false);
         assert_eq!(
             shared_dir.fs_cfg.cache_policy,
-            devices::virtio::fs::CachePolicy::Always
+            device_virtio_fs::CachePolicy::Always
         );
         assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
         assert_eq!(shared_dir.fs_cfg.use_dax, false);
@@ -801,7 +801,7 @@ mod tests {
         let arcvm_arg = "/:_data:type=fs:cache=always:uidmap=0 655360 5000,5000 600 50,5050 660410 1994950:gidmap=0 655360 1065,1065 20119 1,1066 656426 3934,5000 600 50,5050 660410 1994950:timeout=3600:rewrite-security-xattrs=true:writeback=true:privileged_quota_uids=0";
         assert_eq!(
             arcvm_arg.parse::<SharedDir>().unwrap().fs_cfg,
-            devices::virtio::fs::Config {
+            device_virtio_fs::Config {
                 cache_policy: CachePolicy::Always,
                 timeout: Duration::from_secs(3600),
                 rewrite_security_xattrs: true,
@@ -837,7 +837,7 @@ mod tests {
                 .unwrap();
         assert_eq!(
             shared_dir.fs_cfg,
-            devices::virtio::fs::Config {
+            device_virtio_fs::Config {
                 cache_policy: CachePolicy::Always,
                 timeout: Duration::from_secs(5),
                 writeback: false,
@@ -854,7 +854,7 @@ mod tests {
                 .unwrap();
         assert_eq!(
             shared_dir.fs_cfg,
-            devices::virtio::fs::Config {
+            device_virtio_fs::Config {
                 cache_policy: CachePolicy::Auto,
                 timeout: Duration::from_secs(1),
                 writeback: true,
