@@ -24,11 +24,13 @@ use android_audio::AudioPermissionDelegate;
 use async_trait::async_trait;
 use audio_streams::capture::AsyncCaptureBuffer;
 use audio_streams::capture::AsyncCaptureBufferStream;
+use audio_streams::capture::NoopCaptureStream;
 use audio_streams::AsyncPlaybackBufferStream;
 use audio_streams::BoxError;
+use audio_streams::SampleFormat;
+use audio_streams::StreamEffect;
 use audio_streams::StreamSource;
 use audio_streams::StreamSourceGenerator;
-#[cfg(feature = "audio_cras")]
 use base::error;
 #[cfg(feature = "audio_aaudio")]
 use base::safe_descriptor_from_cmdline_fd;
@@ -355,24 +357,22 @@ impl StreamInfo {
     pub(crate) async fn set_up_async_capture_stream(
         &mut self,
         frame_size: usize,
-        ex: &Executor,
+        _ex: &Executor,
     ) -> Result<SysBufferReader, Error> {
-        let async_capture_buffer_stream = self
-            .stream_source
-            .as_mut()
-            .ok_or(Error::EmptyStreamSource)?
-            .async_new_async_capture_stream(
-                self.channels as usize,
-                self.format,
-                self.frame_rate,
-                self.period_bytes / frame_size,
-                &self.effects,
-                ex,
-            )
-            .await
-            .map_err(Error::CreateStream)?
-            .1;
-        Ok(SysBufferReader::new(async_capture_buffer_stream))
+        // The host capture stream is created by UnixBufferReader once the stream is started, so
+        // that a PREPARE without START (e.g. a guest ALSA probe, after which the Linux virtio_snd
+        // driver never sends RELEASE) does not keep a host capture stream open.
+        let stream_source = self.stream_source.take().ok_or(Error::EmptyStreamSource)?;
+        Ok(SysBufferReader::new(
+            stream_source,
+            self.channels as usize,
+            self.format,
+            self.frame_rate,
+            // See (*)
+            self.period_bytes / frame_size,
+            self.effects.clone(),
+            self.card_index,
+        ))
     }
 
     pub(crate) async fn create_directionstream_output(
@@ -392,37 +392,127 @@ impl StreamInfo {
     }
 }
 
+/// State of the host capture stream owned by [`UnixBufferReader`].
+enum UnixCaptureStreamState {
+    /// No host capture stream. This is the initial state and the state after `stop()`.
+    Stopped,
+    /// `start()` was called. The host capture stream is created on the next capture period.
+    Starting,
+    /// The host capture stream is open.
+    Started(Box<dyn AsyncCaptureBufferStream>),
+    /// Creating the host capture stream failed. Paced silence is returned until `stop()`.
+    StartFailed(NoopCaptureStream),
+}
+
+/// Reads capture periods from a host capture stream that is only open between `start()` and
+/// `stop()`, so that host privacy indicators (e.g. the ChromeOS microphone indicator driven by
+/// CRAS input streams) reflect actual guest capture.
 pub(crate) struct UnixBufferReader {
-    async_stream: Box<dyn AsyncCaptureBufferStream>,
+    // Declared before `stream_source` so that an open capture stream is dropped before its source.
+    state: UnixCaptureStreamState,
+    stream_source: SysAudioStreamSource,
+    num_channels: usize,
+    format: SampleFormat,
+    frame_rate: u32,
+    period_frames: usize,
+    effects: Vec<StreamEffect>,
+    card_index: usize,
 }
 
 impl UnixBufferReader {
-    fn new(async_stream: Box<dyn AsyncCaptureBufferStream>) -> Self
-    where
-        Self: Sized,
-    {
-        UnixBufferReader { async_stream }
+    fn new(
+        stream_source: SysAudioStreamSource,
+        num_channels: usize,
+        format: SampleFormat,
+        frame_rate: u32,
+        period_frames: usize,
+        effects: Vec<StreamEffect>,
+        card_index: usize,
+    ) -> Self {
+        UnixBufferReader {
+            state: UnixCaptureStreamState::Stopped,
+            stream_source,
+            num_channels,
+            format,
+            frame_rate,
+            period_frames,
+            effects,
+            card_index,
+        }
+    }
+
+    async fn create_and_start_stream(
+        &mut self,
+        ex: &Executor,
+    ) -> Result<Box<dyn AsyncCaptureBufferStream>, BoxError> {
+        let (_, mut async_stream) = self
+            .stream_source
+            .async_new_async_capture_stream(
+                self.num_channels,
+                self.format,
+                self.frame_rate,
+                self.period_frames,
+                &self.effects,
+                ex,
+            )
+            .await?;
+        async_stream.start()?;
+        Ok(async_stream)
     }
 }
+
 #[async_trait(?Send)]
 impl CaptureBufferReader for UnixBufferReader {
     async fn get_next_capture_period(
         &mut self,
         ex: &Executor,
     ) -> Result<AsyncCaptureBuffer, BoxError> {
-        Ok(self
-            .async_stream
-            .next_capture_buffer(ex)
-            .await
-            .map_err(Error::FetchBuffer)?)
+        // Only open the host capture stream after start().
+        if matches!(self.state, UnixCaptureStreamState::Starting) {
+            self.state = match self.create_and_start_stream(ex).await {
+                Ok(async_stream) => UnixCaptureStreamState::Started(async_stream),
+                Err(e) => {
+                    error!(
+                        "[Card {}] Failed to create capture stream, capturing silence: {}",
+                        self.card_index, e
+                    );
+                    UnixCaptureStreamState::StartFailed(NoopCaptureStream::new(
+                        self.num_channels,
+                        self.format,
+                        self.frame_rate,
+                        self.period_frames,
+                    ))
+                }
+            };
+        }
+
+        match &mut self.state {
+            UnixCaptureStreamState::Started(async_stream) => {
+                async_stream.next_capture_buffer(ex).await
+            }
+            UnixCaptureStreamState::StartFailed(noop_stream) => {
+                noop_stream.next_capture_buffer(ex).await
+            }
+            UnixCaptureStreamState::Stopped | UnixCaptureStreamState::Starting => {
+                Err("capture stream is not started".into())
+            }
+        }
     }
 
     fn start(&mut self) -> Result<(), BoxError> {
-        self.async_stream.start()
+        // Don't replace an open stream, and don't retry a failed one until stop().
+        if matches!(self.state, UnixCaptureStreamState::Stopped) {
+            self.state = UnixCaptureStreamState::Starting;
+        }
+        Ok(())
     }
 
     fn stop(&mut self) -> Result<(), BoxError> {
-        self.async_stream.stop()
+        // Switch to Stopped first so that the stream is dropped even if stopping it fails.
+        match std::mem::replace(&mut self.state, UnixCaptureStreamState::Stopped) {
+            UnixCaptureStreamState::Started(mut async_stream) => async_stream.stop(),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -639,5 +729,399 @@ mod tests {
         // The delegate owns a validated duplicate of the fd.
         assert_eq!(keep_rds.len(), 1);
         assert_eq!(generators.len(), snd_data.pcm_info_len());
+    }
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use std::io::Read;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::MutexGuard;
+    use std::time::Duration;
+
+    use audio_streams::AudioStreamsExecutor;
+    use audio_streams::NoopStreamControl;
+    use audio_streams::NoopStreamSource;
+    use audio_streams::PlaybackBufferStream;
+    use audio_streams::StreamControl;
+    use cros_async::TimerAsync;
+    use futures::channel::mpsc;
+
+    use super::*;
+    use crate::common_backend::stream_info::SetParams;
+    use crate::constants::VIRTIO_SND_D_INPUT;
+    use crate::constants::VIRTIO_SND_R_PCM_PREPARE;
+
+    const CHANNELS: usize = 2;
+    const FORMAT: SampleFormat = SampleFormat::S16LE;
+    const FRAME_RATE: u32 = 48000;
+    // 1 ms periods keep the paced tests fast.
+    const PERIOD_FRAMES: usize = 48;
+    const FRAME_SIZE: usize = 4;
+    const PERIOD_BYTES: usize = PERIOD_FRAMES * FRAME_SIZE;
+
+    #[derive(Default)]
+    struct Log {
+        create_count: usize,
+        start_count: usize,
+        stop_count: usize,
+        active_streams: usize,
+        events: Vec<&'static str>,
+    }
+
+    #[derive(Clone, Default)]
+    struct Shared {
+        log: Arc<Mutex<Log>>,
+        fail_create: Arc<AtomicBool>,
+    }
+
+    impl Shared {
+        fn log(&self) -> MutexGuard<'_, Log> {
+            self.log.lock().unwrap()
+        }
+    }
+
+    /// Generates `CountingStreamSource`s for `StreamInfo` tests.
+    struct CountingStreamSourceGenerator(Shared);
+
+    impl StreamSourceGenerator for CountingStreamSourceGenerator {
+        fn generate(&self) -> Result<Box<dyn StreamSource>, BoxError> {
+            Ok(Box::new(CountingStreamSource {
+                shared: self.0.clone(),
+                inner: NoopStreamSource::new(),
+            }))
+        }
+    }
+
+    /// Stream source that records capture stream creation and its own drop.
+    struct CountingStreamSource {
+        shared: Shared,
+        inner: NoopStreamSource,
+    }
+
+    impl Drop for CountingStreamSource {
+        fn drop(&mut self) {
+            self.shared.log().events.push("source_drop");
+        }
+    }
+
+    impl StreamSource for CountingStreamSource {
+        fn new_playback_stream(
+            &mut self,
+            num_channels: usize,
+            format: SampleFormat,
+            frame_rate: u32,
+            buffer_size: usize,
+        ) -> Result<(Box<dyn StreamControl>, Box<dyn PlaybackBufferStream>), BoxError> {
+            self.inner
+                .new_playback_stream(num_channels, format, frame_rate, buffer_size)
+        }
+
+        fn new_async_capture_stream(
+            &mut self,
+            num_channels: usize,
+            format: SampleFormat,
+            frame_rate: u32,
+            buffer_size: usize,
+            _effects: &[StreamEffect],
+            _ex: &dyn AudioStreamsExecutor,
+        ) -> Result<(Box<dyn StreamControl>, Box<dyn AsyncCaptureBufferStream>), BoxError> {
+            if self.shared.fail_create.load(Ordering::SeqCst) {
+                return Err("create failed".into());
+            }
+            let mut log = self.shared.log();
+            log.create_count += 1;
+            log.active_streams += 1;
+            Ok((
+                Box::new(NoopStreamControl::new()),
+                Box::new(CountingCaptureStream {
+                    shared: self.shared.clone(),
+                    // Paces periods, so a running PCM worker yields to the executor.
+                    inner: NoopCaptureStream::new(num_channels, format, frame_rate, buffer_size),
+                }),
+            ))
+        }
+    }
+
+    /// Capture stream that records start/stop calls and its drop.
+    struct CountingCaptureStream {
+        shared: Shared,
+        inner: NoopCaptureStream,
+    }
+
+    impl Drop for CountingCaptureStream {
+        fn drop(&mut self) {
+            let mut log = self.shared.log();
+            log.active_streams -= 1;
+            log.events.push("stream_drop");
+        }
+    }
+
+    #[async_trait(?Send)]
+    impl AsyncCaptureBufferStream for CountingCaptureStream {
+        async fn next_capture_buffer<'a>(
+            &'a mut self,
+            ex: &dyn AudioStreamsExecutor,
+        ) -> Result<AsyncCaptureBuffer<'a>, BoxError> {
+            self.inner.next_capture_buffer(ex).await
+        }
+
+        fn start(&mut self) -> Result<(), BoxError> {
+            let mut log = self.shared.log();
+            log.start_count += 1;
+            log.events.push("stream_start");
+            Ok(())
+        }
+
+        fn stop(&mut self) -> Result<(), BoxError> {
+            let mut log = self.shared.log();
+            log.stop_count += 1;
+            log.events.push("stream_stop");
+            Ok(())
+        }
+    }
+
+    fn new_reader(shared: &Shared) -> UnixBufferReader {
+        UnixBufferReader::new(
+            Box::new(CountingStreamSource {
+                shared: shared.clone(),
+                inner: NoopStreamSource::new(),
+            }),
+            CHANNELS,
+            FORMAT,
+            FRAME_RATE,
+            PERIOD_FRAMES,
+            Vec::new(),
+            0,
+        )
+    }
+
+    /// Reads one capture period and returns its bytes.
+    fn read_period(ex: &Executor, reader: &mut UnixBufferReader) -> Result<Vec<u8>, BoxError> {
+        ex.run_until(async {
+            let mut buf = reader.get_next_capture_period(ex).await?;
+            let mut data = vec![0xa5u8; PERIOD_BYTES * 2];
+            let n = buf.read(&mut data)?;
+            data.truncate(n);
+            buf.commit().await;
+            Ok::<_, BoxError>(data)
+        })
+        .unwrap()
+    }
+
+    /// Runs the executor until `cond` holds, or panics after a timeout.
+    fn wait_until(ex: &Executor, shared: &Shared, cond: impl Fn(&Log) -> bool) {
+        let met = ex
+            .run_until(async {
+                for _ in 0..1000 {
+                    if cond(&shared.log()) {
+                        return true;
+                    }
+                    TimerAsync::sleep(ex, Duration::from_millis(2))
+                        .await
+                        .unwrap();
+                }
+                false
+            })
+            .unwrap();
+        assert!(met, "timed out waiting for condition");
+    }
+
+    fn new_prepared_capture_stream(ex: &Executor, shared: &Shared) -> StreamInfo {
+        let mut stream = StreamInfo::builder(
+            Arc::new(Box::new(CountingStreamSourceGenerator(shared.clone()))),
+            0,
+        )
+        .build();
+        ex.run_until(stream.set_params(SetParams {
+            channels: CHANNELS as u8,
+            format: FORMAT,
+            frame_rate: FRAME_RATE,
+            buffer_bytes: PERIOD_BYTES * 4,
+            period_bytes: PERIOD_BYTES,
+            dir: VIRTIO_SND_D_INPUT,
+        }))
+        .unwrap()
+        .unwrap();
+        let (tx_send, _) = mpsc::unbounded();
+        let (rx_send, _) = mpsc::unbounded();
+        ex.run_until(stream.prepare(ex, &tx_send, &rx_send))
+            .unwrap()
+            .unwrap();
+        assert_eq!(stream.state, VIRTIO_SND_R_PCM_PREPARE);
+        stream
+    }
+
+    #[test]
+    fn test_prepare_without_start_does_not_open_capture_stream() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut stream = new_prepared_capture_stream(&ex, &shared);
+
+        // Let the PCM worker run for a few periods.
+        ex.run_until(TimerAsync::sleep(&ex, Duration::from_millis(10)))
+            .unwrap()
+            .unwrap();
+        assert_eq!(shared.log().create_count, 0);
+
+        ex.run_until(stream.release()).unwrap().unwrap();
+        let log = shared.log();
+        assert_eq!(log.create_count, 0);
+        assert_eq!(log.events, ["source_drop"]);
+    }
+
+    #[test]
+    fn test_stream_info_capture_opens_on_start_closes_on_stop() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut stream = new_prepared_capture_stream(&ex, &shared);
+
+        ex.run_until(stream.start()).unwrap().unwrap();
+        wait_until(&ex, &shared, |log| log.active_streams == 1);
+        assert_eq!(shared.log().create_count, 1);
+        assert_eq!(shared.log().start_count, 1);
+
+        ex.run_until(stream.stop()).unwrap().unwrap();
+        wait_until(&ex, &shared, |log| log.active_streams == 0);
+        assert_eq!(shared.log().stop_count, 1);
+
+        // START after STOP, without a new PREPARE, opens a new stream.
+        ex.run_until(stream.start()).unwrap().unwrap();
+        wait_until(&ex, &shared, |log| log.active_streams == 1);
+        assert_eq!(shared.log().create_count, 2);
+
+        ex.run_until(stream.stop()).unwrap().unwrap();
+        ex.run_until(stream.release()).unwrap().unwrap();
+        let log = shared.log();
+        assert_eq!(log.active_streams, 0);
+        assert_eq!(log.events.last(), Some(&"source_drop"));
+    }
+
+    #[test]
+    fn test_reader_period_while_stopped_errors_without_opening() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut reader = new_reader(&shared);
+        assert!(matches!(reader.state, UnixCaptureStreamState::Stopped));
+
+        assert!(read_period(&ex, &mut reader).is_err());
+        assert!(matches!(reader.state, UnixCaptureStreamState::Stopped));
+        assert_eq!(shared.log().create_count, 0);
+    }
+
+    #[test]
+    fn test_reader_lazy_lifecycle_start_period_stop() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut reader = new_reader(&shared);
+        assert!(matches!(reader.state, UnixCaptureStreamState::Stopped));
+
+        reader.start().unwrap();
+        assert!(matches!(reader.state, UnixCaptureStreamState::Starting));
+        // The stream is only created on the first period.
+        assert_eq!(shared.log().create_count, 0);
+
+        for _ in 0..3 {
+            let data = read_period(&ex, &mut reader).unwrap();
+            assert_eq!(data.len(), PERIOD_BYTES);
+        }
+        assert!(matches!(reader.state, UnixCaptureStreamState::Started(_)));
+        {
+            let log = shared.log();
+            assert_eq!(log.create_count, 1);
+            assert_eq!(log.start_count, 1);
+            assert_eq!(log.active_streams, 1);
+        }
+
+        reader.stop().unwrap();
+        assert!(matches!(reader.state, UnixCaptureStreamState::Stopped));
+        let log = shared.log();
+        assert_eq!(log.active_streams, 0);
+        assert_eq!(log.events, ["stream_start", "stream_stop", "stream_drop"]);
+    }
+
+    #[test]
+    fn test_reader_start_is_idempotent() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut reader = new_reader(&shared);
+
+        reader.start().unwrap();
+        read_period(&ex, &mut reader).unwrap();
+        reader.start().unwrap();
+        read_period(&ex, &mut reader).unwrap();
+
+        let log = shared.log();
+        assert_eq!(log.create_count, 1);
+        assert_eq!(log.start_count, 1);
+    }
+
+    #[test]
+    fn test_reader_restart_reuses_source() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut reader = new_reader(&shared);
+
+        for _ in 0..2 {
+            reader.start().unwrap();
+            read_period(&ex, &mut reader).unwrap();
+            reader.stop().unwrap();
+        }
+
+        let log = shared.log();
+        assert_eq!(log.create_count, 2);
+        assert_eq!(log.active_streams, 0);
+        assert!(!log.events.contains(&"source_drop"));
+    }
+
+    #[test]
+    fn test_reader_create_failure_falls_back_to_silence() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut reader = new_reader(&shared);
+
+        shared.fail_create.store(true, Ordering::SeqCst);
+        reader.start().unwrap();
+        assert!(matches!(reader.state, UnixCaptureStreamState::Starting));
+        for _ in 0..2 {
+            let data = read_period(&ex, &mut reader).unwrap();
+            assert_eq!(data.len(), PERIOD_BYTES);
+            assert!(data.iter().all(|&b| b == 0));
+        }
+        assert!(matches!(
+            reader.state,
+            UnixCaptureStreamState::StartFailed(_)
+        ));
+        assert_eq!(shared.log().create_count, 0);
+
+        // The next START retries.
+        shared.fail_create.store(false, Ordering::SeqCst);
+        reader.stop().unwrap();
+        assert!(matches!(reader.state, UnixCaptureStreamState::Stopped));
+        reader.start().unwrap();
+        assert!(matches!(reader.state, UnixCaptureStreamState::Starting));
+        read_period(&ex, &mut reader).unwrap();
+        assert!(matches!(reader.state, UnixCaptureStreamState::Started(_)));
+        let log = shared.log();
+        assert_eq!(log.create_count, 1);
+        assert_eq!(log.active_streams, 1);
+    }
+
+    #[test]
+    fn test_reader_drop_while_started_drops_stream_before_source() {
+        let ex = Executor::new().unwrap();
+        let shared = Shared::default();
+        let mut reader = new_reader(&shared);
+
+        reader.start().unwrap();
+        read_period(&ex, &mut reader).unwrap();
+        drop(reader);
+
+        let log = shared.log();
+        assert_eq!(log.stop_count, 0);
+        assert_eq!(log.events, ["stream_start", "stream_drop", "source_drop"]);
     }
 }

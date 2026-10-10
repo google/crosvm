@@ -122,7 +122,7 @@ pub struct StreamInfo {
     pub sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
     release_signal: Option<Rc<(AsyncRwLock<bool>, Condvar)>>, // Signal worker on release
-    card_index: usize,
+    pub(crate) card_index: usize,
     ex: Option<Executor>, // Executor provided on `prepare()`. Used on `drop()`.
     #[cfg(windows)]
     pub(crate) playback_stream_cache: Option<(
