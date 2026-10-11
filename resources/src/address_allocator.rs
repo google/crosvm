@@ -146,7 +146,10 @@ impl AddressAllocator {
                 .find(|range| {
                     match range.start % alignment {
                         0 => range.start.checked_add(size - 1),
-                        r => range.start.checked_add(size - 1 + alignment - r),
+                        r => range
+                            .start
+                            .checked_add(size - 1)
+                            .and_then(|start| start.checked_add(alignment - r)),
                     }
                     .is_some_and(|end| end <= range.end)
                 })
@@ -170,12 +173,12 @@ impl AddressAllocator {
                 let start = if !reverse {
                     match slot.start % alignment {
                         0 => slot.start,
-                        r => slot.start + alignment - r,
+                        r => slot.start + (alignment - r),
                     }
                 } else {
                     (slot.end - (size - 1)) & !(alignment - 1)
                 };
-                let end = start + size - 1;
+                let end = start + (size - 1);
                 let range = AddressRange { start, end };
 
                 self.internal_allocate_from_slot(slot, range, alloc, tag)
@@ -1102,5 +1105,46 @@ mod tests {
         let pool = AddressAllocator::new_from_list(ranges, None, None).unwrap();
 
         assert_eq!(pool.get_max_addr(), 0xFFFFF);
+    }
+
+    #[test]
+    fn allocate_u64_max_overflow() {
+        let mut pool = AddressAllocator::new(
+            AddressRange {
+                start: u64::MAX - 3,
+                end: u64::MAX,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            pool.allocate(4, Alloc::Anon(0), String::from("bar0")),
+            Ok(u64::MAX - 3)
+        );
+        assert_eq!(
+            pool.get(&Alloc::Anon(0)),
+            Some(&(
+                AddressRange {
+                    start: u64::MAX - 3,
+                    end: u64::MAX,
+                },
+                String::from("bar0"),
+            ))
+        );
+
+        let mut pool = AddressAllocator::new(
+            AddressRange {
+                start: 1,
+                end: u64::MAX,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            pool.allocate(u64::MAX, Alloc::Anon(0), String::from("bar0")),
+            Err(Error::OutOfSpace)
+        );
     }
 }
