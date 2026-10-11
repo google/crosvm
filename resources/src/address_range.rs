@@ -77,12 +77,18 @@ impl AddressRange {
 
     /// Returns the ranges of addresses contained in `self` but not in `other`.
     ///
+    /// If `other` is empty, returns `(*self, Self::empty())`.
+    ///
     /// The first returned range will contain the addresses in `self` that are less than the start
     /// of `other`, which will be empty if the starts of the ranges coincide.
     ///
     /// The second returned range will contain the addresses in `self` that are greater than the end
     /// of `other`, which will be empty if the ends of the ranges coincide.
     pub fn non_overlapping_ranges(&self, other: AddressRange) -> (AddressRange, AddressRange) {
+        if other.is_empty() {
+            return (*self, Self::empty());
+        }
+
         let before = if self.start >= other.start {
             Self::empty()
         } else {
@@ -430,6 +436,17 @@ mod tests {
             AddressRange { start: 10, end: 20 }
                 .non_overlapping_ranges(AddressRange { start: 5, end: 15 }),
             (AddressRange::empty(), AddressRange { start: 16, end: 20 })
+        );
+
+        // Subtracting an empty range returns the original range and an empty range.
+        assert_eq!(
+            AddressRange { start: 0, end: 9 }.non_overlapping_ranges(AddressRange::empty()),
+            (AddressRange { start: 0, end: 9 }, AddressRange::empty())
+        );
+        assert_eq!(
+            AddressRange { start: 0, end: 9 }
+                .non_overlapping_ranges(AddressRange { start: 7, end: 3 }),
+            (AddressRange { start: 0, end: 9 }, AddressRange::empty())
         );
     }
 
