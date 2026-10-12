@@ -612,7 +612,6 @@ device_virtio_tpm = { workspace = true, optional = true }
 device_virtio_vsock = { workspace = true }
 disk = { workspace = true }
 document-features = { version = "0.2", optional = true }
-ext2 = { workspace = true }
 gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
 rutabaga_gfx = { workspace = true, optional = true }

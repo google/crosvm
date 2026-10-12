@@ -683,8 +683,6 @@ pub struct Config {
     pub pci_hotplug_slots: Option<u8>,
     pub per_vm_core_scheduling: bool,
     pub pflash_parameters: Option<PflashParameters>,
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    pub pmem_ext2: Vec<crate::crosvm::sys::config::PmemExt2Option>,
     #[cfg(feature = "process-invariants")]
     pub process_invariants_data_handle: Option<u64>,
     #[cfg(feature = "process-invariants")]
@@ -920,8 +918,6 @@ impl Default for Config {
             pci_hotplug_slots: None,
             per_vm_core_scheduling: false,
             pflash_parameters: None,
-            #[cfg(any(target_os = "android", target_os = "linux"))]
-            pmem_ext2: Vec::new(),
             #[cfg(feature = "process-invariants")]
             process_invariants_data_handle: None,
             #[cfg(feature = "process-invariants")]

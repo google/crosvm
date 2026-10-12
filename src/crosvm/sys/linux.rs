@@ -7,7 +7,6 @@ mod android;
 pub mod cmdline;
 pub mod config;
 mod device_helpers;
-pub(crate) mod ext2;
 #[cfg(feature = "gpu")]
 pub(crate) mod gpu;
 #[cfg(feature = "pci-hotplug")]
@@ -395,34 +394,6 @@ fn create_virtio_devices(
         }
     }
 
-    for (index, pmem_ext2) in cfg.pmem_ext2.iter().enumerate() {
-        // Prepare a `VmMemoryClient` for pmem-ext2 device to send a request for mmap() and memory
-        // registeration.
-        let (pmem_ext2_host_tube, pmem_ext2_device_tube) =
-            Tube::pair().context("failed to create tube")?;
-        let vm_memory_client = VmMemoryClient::new(pmem_ext2_device_tube);
-        add_control_tube(AnyControlTube::VmMemoryTube {
-            tube: pmem_ext2_host_tube,
-            expose_with_viommu: false,
-            remote_peer: cfg.jail_config.is_some(),
-        });
-        let (pmem_host_tube, pmem_device_tube) = Tube::pair().context("failed to create tube")?;
-        add_control_tube(AnyControlTube::VmMsync(pmem_host_tube));
-        devs.push((
-            "pmem_ext2",
-            create_pmem_ext2_device(
-                cfg.protection_type,
-                cfg.jail_config.as_ref(),
-                resources,
-                pmem_ext2,
-                index,
-                vm_memory_client,
-                pmem_device_tube,
-                worker_process_pids,
-            )?,
-        ));
-    }
-
     #[cfg(feature = "pvclock")]
     if cfg.pvclock {
         // pvclock gets a tube for handling suspend/resume requests from the main thread.
@@ -794,6 +765,7 @@ fn create_virtio_devices(
             add_control_tube,
             protection_type: cfg.protection_type,
             jail_config: cfg.jail_config.as_ref(),
+            worker_process_pids,
         };
         let dev = virtio_device_module
             .create(&mut args)

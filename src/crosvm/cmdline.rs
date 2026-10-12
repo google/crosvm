@@ -8,9 +8,9 @@ cfg_if::cfg_if! {
         use devices::parse_wayland_sock;
 
         use crate::crosvm::sys::config::parse_pmem_ext2_option;
-        use crate::crosvm::sys::config::VfioOption;
         use crate::crosvm::sys::config::SharedDir;
-        use crate::crosvm::sys::config::PmemExt2Option;
+        use crate::crosvm::sys::config::VfioOption;
+        use device_virtio_pmem::PmemExt2Option;
     }
 }
 
@@ -2679,8 +2679,14 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        {
-            cfg.pmem_ext2 = cmd.pmem_ext2;
+        for (index, pmem_ext2_option) in cmd.pmem_ext2.into_iter().enumerate() {
+            cfg.virtio_device_modules.push(
+                device_virtio_pmem::VirtioPmemExt2Module {
+                    pmem_ext2_option,
+                    index,
+                }
+                .into(),
+            );
         }
 
         #[cfg(feature = "pvclock")]

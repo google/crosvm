@@ -11,6 +11,7 @@ base = { workspace = true }
 cros_async = { workspace = true }
 data_model = { workspace = true }
 devices = { workspace = true }
+ext2 = { workspace = true }
 futures = "0.3"
 hypervisor = { workspace = true }
 jail = { workspace = true }

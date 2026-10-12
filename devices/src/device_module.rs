@@ -2,7 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use std::collections::BTreeSet;
+
 use anyhow::Result;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use base::Pid;
 use hypervisor::ProtectionType;
 use hypervisor::Vm;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -22,6 +27,9 @@ pub struct VirtioDeviceArgs<'a> {
     pub protection_type: ProtectionType,
     #[cfg(any(target_os = "android", target_os = "linux"))]
     pub jail_config: Option<&'a JailConfig>,
+    /// Set of PID of child processes that are suppose to exit cleanly.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub worker_process_pids: &'a mut BTreeSet<Pid>,
 }
 
 /// A module that creates a single virtio device and provides hooks to integrate it into the VMM.

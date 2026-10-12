@@ -797,6 +797,10 @@ impl VirtioDeviceModule for VirtioPmemModule {
     }
 }
 
+pub mod ext2;
+pub use ext2::PmemExt2Option;
+pub use ext2::VirtioPmemExt2Module;
+
 #[cfg(test)]
 mod tests {
     use super::*;

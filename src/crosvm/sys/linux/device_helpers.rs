@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::io::ErrorKind;
 use std::ops::RangeInclusive;
@@ -61,16 +60,12 @@ use hypervisor::ProtectionType;
 use hypervisor::Vm;
 use jail::*;
 use minijail::Minijail;
-use resources::Alloc;
-use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
 use vm_control::api::VmMemoryClient;
 use vm_control::AnyControlTube;
-use vm_memory::GuestAddress;
 
 use crate::crosvm::config::VhostUserFrontendOption;
-use crate::crosvm::sys::config::PmemExt2Option;
 
 /// Tubes that service requests from devices.
 ///
@@ -860,88 +855,6 @@ pub fn create_vhost_scmi_device(
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
         jail: simple_jail(jail_config, "vhost_scmi_device")?,
-    })
-}
-
-pub fn create_pmem_ext2_device(
-    protection_type: ProtectionType,
-    jail_config: Option<&JailConfig>,
-    resources: &mut SystemAllocator,
-    opts: &PmemExt2Option,
-    index: usize,
-    vm_memory_client: VmMemoryClient,
-    pmem_device_tube: Tube,
-    worker_process_pids: &mut BTreeSet<Pid>,
-) -> DeviceResult {
-    let mapping_size = opts.size as u64;
-    let builder = ext2::Builder {
-        inodes_per_group: opts.inodes_per_group,
-        blocks_per_group: opts.blocks_per_group,
-        size: mapping_size as u32,
-        ..Default::default()
-    };
-
-    let max_open_files = base::linux::max_open_files()
-        .context("failed to get max number of open files")?
-        .rlim_max;
-    let mapping_address = GuestAddress(
-        resources
-            .allocate_mmio(
-                mapping_size,
-                Alloc::PmemDevice(index),
-                format!("pmem_ext2_image_{index}"),
-                AllocOptions::new()
-                .top_down(true)
-                .prefetchable(true)
-                // 2MB alignment for DAX
-                // cf. https://docs.pmem.io/persistent-memory/getting-started-guide/creating-development-environments/linux-environments/advanced-topics/i-o-alignment-considerations#verifying-io-alignment
-                .align(2 * 1024 * 1024),
-            )
-            .context("failed to allocate memory for pmem device")?,
-    );
-
-    let (mkfs_tube, mkfs_device_tube) = Tube::pair().context("failed to create tube")?;
-
-    let ext2_proc_pid = crate::crosvm::sys::linux::ext2::launch(
-        mapping_address,
-        vm_memory_client,
-        mkfs_tube,
-        &opts.path,
-        &opts.ugid,
-        (&opts.uid_map, &opts.gid_map),
-        builder,
-        jail_config,
-    )
-    .context("failed to spawn mkfs process")?;
-
-    worker_process_pids.insert(ext2_proc_pid);
-
-    let dev = device_virtio_pmem::Pmem::new(
-        devices::virtio::base_features(protection_type),
-        device_virtio_pmem::PmemConfig {
-            disk_image: None,
-            mapping_address,
-            mem_slot: device_virtio_pmem::MemSlotConfig::LazyInit {
-                tube: mkfs_device_tube,
-            },
-            mapping_size,
-            pmem_device_tube,
-            swap_interval: None,
-            mapping_writable: false,
-        },
-    )
-    .context("failed to create pmem device")?;
-
-    let j = if let Some(jail_config) = jail_config {
-        let mut config = SandboxConfig::new(jail_config, "pmem_device");
-        config.limit_caps = false;
-        create_sandbox_minijail(&opts.path, max_open_files, &config)?
-    } else {
-        create_base_minijail(&opts.path, max_open_files)?
-    };
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        jail: Some(j),
     })
 }
 
