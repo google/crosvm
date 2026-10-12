@@ -80,8 +80,11 @@ impl VirtioDeviceModule for VirtioSndModule {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn create_jail(
         &self,
-        jail_config: &jail::JailConfig,
+        jail_config: Option<&jail::JailConfig>,
     ) -> anyhow::Result<Option<minijail::Minijail>> {
+        let Some(jail_config) = jail_config else {
+            return Ok(None);
+        };
         sys::linux::create_jail(&self.params, jail_config)
     }
 }

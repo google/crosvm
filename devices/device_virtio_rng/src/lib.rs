@@ -197,7 +197,7 @@ impl VirtioDeviceModule for VirtioRngModule {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn create_jail(&self, jail_config: &JailConfig) -> anyhow::Result<Option<Minijail>> {
-        jail::simple_jail(Some(jail_config), "rng_device")
+    fn create_jail(&self, jail_config: Option<&JailConfig>) -> anyhow::Result<Option<Minijail>> {
+        jail::simple_jail(jail_config, "rng_device")
     }
 }

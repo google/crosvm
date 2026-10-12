@@ -260,7 +260,10 @@ impl VirtioDeviceModule for VirtioTpmModule {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn create_jail(&self, jail_config: &JailConfig) -> anyhow::Result<Option<Minijail>> {
+    fn create_jail(&self, jail_config: Option<&JailConfig>) -> anyhow::Result<Option<Minijail>> {
+        let Some(jail_config) = jail_config else {
+            return Ok(None);
+        };
         let mut config = jail::SandboxConfig::new(jail_config, "vtpm_proxy_device");
         config.bind_mounts = true;
         let mut jail = jail::create_sandbox_minijail(

@@ -87,10 +87,10 @@ impl VirtioDeviceModule for VirtioScsiModule {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn create_jail(
         &self,
-        jail_config: &jail::JailConfig,
+        jail_config: Option<&jail::JailConfig>,
     ) -> anyhow::Result<Option<minijail::Minijail>> {
         let jail = jail::simple_jail(
-            Some(jail_config),
+            jail_config,
             &devices::virtio::VirtioDeviceType::Regular.seccomp_policy_file("scsi"),
         )?;
         Ok(jail)

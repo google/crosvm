@@ -42,7 +42,7 @@ impl VirtioDeviceModule for VendorDeviceModule {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn create_jail(&self, _jail_config: &JailConfig) -> Result<Option<Minijail>> {
+    fn create_jail(&self, _jail_config: Option<&JailConfig>) -> Result<Option<Minijail>> {
         bail!("no vendor devices are supported in this build")
     }
 }

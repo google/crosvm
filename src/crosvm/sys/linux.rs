@@ -864,13 +864,9 @@ fn create_virtio_devices(
         let dev = virtio_device_module
             .create(&mut args)
             .context("failed to create virtio device")?;
-        let jail = if let Some(jail_config) = cfg.jail_config.as_ref() {
-            virtio_device_module
-                .create_jail(jail_config)
-                .context("failed to create jail")?
-        } else {
-            None
-        };
+        let jail = virtio_device_module
+            .create_jail(cfg.jail_config.as_ref())
+            .context("failed to create jail")?;
         devs.push((
             virtio_device_module.sort_name(),
             VirtioDeviceStub { dev, jail },

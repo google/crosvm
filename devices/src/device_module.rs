@@ -43,5 +43,5 @@ pub trait VirtioDeviceModule: serde::Serialize + serde::de::DeserializeOwned {
 
     /// Optionally create a jail for this device.
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn create_jail(&self, jail_config: &JailConfig) -> Result<Option<Minijail>>;
+    fn create_jail(&self, jail_config: Option<&JailConfig>) -> Result<Option<Minijail>>;
 }

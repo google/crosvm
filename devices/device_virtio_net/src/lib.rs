@@ -911,7 +911,7 @@ impl VirtioDeviceModule for NetParameters {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn create_jail(
         &self,
-        jail_config: &jail::JailConfig,
+        jail_config: Option<&jail::JailConfig>,
     ) -> anyhow::Result<Option<minijail::Minijail>> {
         let policy = if self.vhost_net.is_some() {
             "vhost_net"
@@ -919,7 +919,7 @@ impl VirtioDeviceModule for NetParameters {
             "net"
         };
         let jail = jail::simple_jail(
-            Some(jail_config),
+            jail_config,
             &devices::virtio::VirtioDeviceType::Regular.seccomp_policy_file(policy),
         )?;
         Ok(jail)

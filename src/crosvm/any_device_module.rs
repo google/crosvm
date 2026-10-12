@@ -63,7 +63,7 @@ macro_rules! declare_any_virtio_device_module {
             }
 
             #[cfg(any(target_os = "android", target_os = "linux"))]
-            fn create_jail(&self, jail_config: &JailConfig) -> Result<Option<Minijail>> {
+            fn create_jail(&self, jail_config: Option<&JailConfig>) -> Result<Option<Minijail>> {
                 match self {
                     $(
                         $(#[$variant_meta])*

@@ -191,8 +191,11 @@ impl VirtioDeviceModule for VirtioConsoleModule {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn create_jail(
         &self,
-        jail_config: &jail::JailConfig,
+        jail_config: Option<&jail::JailConfig>,
     ) -> anyhow::Result<Option<minijail::Minijail>> {
+        let Some(jail_config) = jail_config else {
+            return Ok(None);
+        };
         create_jail(
             &self.0,
             jail_config,
