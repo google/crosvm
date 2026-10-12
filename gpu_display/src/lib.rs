@@ -339,7 +339,7 @@ trait DisplayT: AsRawDescriptor {
     }
 
     /// Frees a previously imported resource.
-    fn release_import(&mut self, _import_id: u32, _surface_id: u32) {}
+    fn release_import(&mut self, _surface_id: u32, _import_id: u32) {}
 
     /// Releases a previously created surface.
     fn release_surface(&mut self, _surface_id: u32) {}
@@ -667,8 +667,8 @@ impl GpuDisplay {
     }
 
     /// Releases a previously imported resource identified by the given handle.
-    pub fn release_import(&mut self, import_id: u32, surface_id: u32) {
-        self.inner.release_import(import_id, surface_id);
+    pub fn release_import(&mut self, surface_id: u32, import_id: u32) {
+        self.inner.release_import(surface_id, import_id);
     }
 
     /// Commits any pending state for the identified surface.

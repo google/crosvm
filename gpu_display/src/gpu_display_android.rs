@@ -341,13 +341,11 @@ impl DisplayT for DisplayAndroid {
     }
 
     fn release_import(&mut self, surface_id: u32, import_id: u32) {
-        let mut ahbs = self
-            .surface_ahbs_map
-            .entry(surface_id)
-            .or_default()
-            .write()
-            .expect("failed to get a lock");
-        ahbs.remove(&import_id);
+        if let Some(ahbs) = self.surface_ahbs_map.get(&surface_id) {
+            ahbs.write()
+                .expect("failed to get a lock")
+                .remove(&import_id);
+        }
     }
 }
 
@@ -356,5 +354,56 @@ impl SysDisplayT for DisplayAndroid {}
 impl AsRawDescriptor for DisplayAndroid {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.event.as_raw_descriptor()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::mem::ManuallyDrop;
+
+    use super::*;
+
+    fn create_test_display() -> ManuallyDrop<DisplayAndroid> {
+        ManuallyDrop::new(DisplayAndroid {
+            context: Rc::new(AndroidDisplayContextWrapper(NonNull::dangling())),
+            event: Event::new().unwrap(),
+            surface_ahbs_map: HashMap::new(),
+        })
+    }
+
+    #[test]
+    fn release_import_removes_import_and_ignores_released_surface() {
+        let mut display = create_test_display();
+        let surface_id = 1;
+        let import_id = 2;
+
+        display
+            .import_resource(
+                import_id,
+                surface_id,
+                DisplayExternalResourceImport::AHardwareBuffer {
+                    info: AhbInfo {
+                        fds: Vec::new(),
+                        metadata: Vec::new(),
+                    },
+                },
+            )
+            .unwrap();
+        assert!(display.surface_ahbs_map[&surface_id]
+            .read()
+            .unwrap()
+            .contains_key(&import_id));
+
+        display.release_import(surface_id, import_id);
+        assert!(!display.surface_ahbs_map[&surface_id]
+            .read()
+            .unwrap()
+            .contains_key(&import_id));
+
+        // Releasing an import for an already released or nonexistent surface should be a no-op
+        // and must not insert an empty entry into `surface_ahbs_map`.
+        display.release_surface(surface_id);
+        display.release_import(surface_id, import_id);
+        assert!(!display.surface_ahbs_map.contains_key(&surface_id));
     }
 }

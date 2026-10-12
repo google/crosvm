@@ -103,7 +103,8 @@ struct VirtioGpuResource {
     size: u64,
     shmem_offset: Option<u64>,
     scanout_data: Option<VirtioScanoutBlobData>,
-    display_import: Option<u32>,
+    /// Maps display `surface_id` to `import_id`.
+    display_import: Map<u32, u32>,
     rutabaga_external_mapping: bool,
     guest_cpu_mappable: bool,
 
@@ -142,7 +143,7 @@ impl VirtioGpuResource {
             size,
             shmem_offset: None,
             scanout_data: None,
-            display_import: None,
+            display_import: Map::new(),
             rutabaga_external_mapping: false,
             guest_cpu_mappable,
             backing_iovecs: None,
@@ -151,7 +152,7 @@ impl VirtioGpuResource {
 
     fn snapshot(&self) -> VirtioGpuResourceSnapshot {
         // Only the 2D backend is fully supported and it doesn't use these fields. 3D is WIP.
-        assert!(self.display_import.is_none());
+        assert!(self.display_import.is_empty());
 
         VirtioGpuResourceSnapshot {
             resource_id: self.resource_id,
@@ -454,7 +455,7 @@ impl VirtioGpuScanout {
         resource: &mut VirtioGpuResource,
         rutabaga: &mut Rutabaga,
     ) -> Option<u32> {
-        if let Some(import_id) = resource.display_import {
+        if let Some(&import_id) = resource.display_import.get(&surface_id) {
             return Some(import_id);
         }
         let blob = rutabaga.export_blob(resource.resource_id).ok()?;
@@ -468,7 +469,7 @@ impl VirtioGpuScanout {
                         DisplayExternalResourceImport::AHardwareBuffer { info },
                     )
                     .ok()?;
-                resource.display_import = Some(import_id);
+                resource.display_import.insert(surface_id, import_id);
                 return Some(import_id);
             }
             other => RutabagaMagmaHandle::try_from(other).ok()?,
@@ -512,7 +513,7 @@ impl VirtioGpuScanout {
                 },
             )
             .ok()?;
-        resource.display_import = Some(import_id);
+        resource.display_import.insert(surface_id, import_id);
         Some(import_id)
     }
 }
@@ -1054,6 +1055,11 @@ impl VirtioGpu {
             .remove(&resource_id)
             .ok_or(ErrInvalidResourceId)?;
 
+        let mut display = self.display.borrow_mut();
+        for (surface_id, import_id) in resource.display_import {
+            display.release_import(surface_id, import_id);
+        }
+
         if let Some(shmem_offset) = resource.shmem_offset {
             if let Some(mapper) = self.mapper.lock().as_mut() {
                 if let Err(e) = mapper.remove_mapping(shmem_offset) {
@@ -1569,5 +1575,240 @@ impl VirtioGpu {
         }
 
         self.rutabaga.resume().context("failed to resume rutabaga")
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use base::SharedMemory;
+    use rutabaga_gfx::RutabagaBuilder;
+    use rutabaga_gfx::RutabagaComponentType;
+    use rutabaga_gfx::RutabagaFenceHandler;
+    use rutabaga_gfx::RUTABAGA_CAPSET_CROSS_DOMAIN;
+
+    use super::*;
+    use crate::virtio::gpu::VIRTIO_GPU_BLOB_FLAG_USE_SHAREABLE;
+    use crate::virtio::gpu::VIRTIO_GPU_BLOB_MEM_GUEST;
+
+    fn new_test_virtio_gpu() -> VirtioGpu {
+        let display = GpuDisplay::open_stub().unwrap();
+        let display_params = vec![
+            GpuDisplayParameters::default_with_mode(DisplayMode::Windowed(800, 600)),
+            GpuDisplayParameters::default_with_mode(DisplayMode::Windowed(800, 600)),
+        ];
+        let rutabaga = RutabagaBuilder::new(
+            1 << RUTABAGA_CAPSET_CROSS_DOMAIN,
+            RutabagaFenceHandler::new(|_| {}),
+        )
+        .set_default_component(RutabagaComponentType::CrossDomain)
+        .build()
+        .unwrap();
+        VirtioGpu::new(
+            display,
+            display_params,
+            Arc::new(AtomicBool::new(false)),
+            rutabaga,
+            Arc::new(Mutex::new(None)),
+            /* external_blob= */ false,
+            /* fixed_blob_mapping= */ false,
+            /* udmabuf= */ false,
+            /* snapshot_scratch_directory= */ None,
+        )
+        .unwrap()
+    }
+
+    fn create_exportable_resource(virtio_gpu: &mut VirtioGpu, resource_id: u32) {
+        let ctx_id = 1;
+        let query_ring_id = 100;
+        let mut ring_buf = vec![0u8; 4096];
+        virtio_gpu.rutabaga.create_context(ctx_id, 0, None).unwrap();
+        virtio_gpu
+            .rutabaga
+            .resource_create_blob(
+                0,
+                query_ring_id,
+                ResourceCreateBlob {
+                    blob_mem: VIRTIO_GPU_BLOB_MEM_GUEST,
+                    blob_flags: VIRTIO_GPU_BLOB_FLAG_USE_MAPPABLE,
+                    blob_id: 0,
+                    size: ring_buf.len() as u64,
+                },
+                Some(vec![RutabagaIovec {
+                    base: ring_buf.as_mut_ptr() as *mut c_void,
+                    len: ring_buf.len(),
+                }]),
+                None,
+            )
+            .unwrap();
+        virtio_gpu
+            .rutabaga
+            .context_attach_resource(ctx_id, query_ring_id)
+            .unwrap();
+
+        // Submit CrossDomainInitV1 (cmd=1, size=20) + CrossDomainGetImageRequirements (cmd=2,
+        // size=24).
+        let cmd_words: [u32; 11] = [
+            1 | (20 << 16),
+            0,
+            query_ring_id,
+            0,
+            0,
+            2 | (24 << 16),
+            0,
+            800,
+            600,
+            0x34325258,
+            1 << 4,
+        ];
+        let mut cmd_bytes: Vec<u8> = cmd_words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        virtio_gpu
+            .rutabaga
+            .submit_command(ctx_id, &mut cmd_bytes, &[])
+            .unwrap();
+        let req_size = u64::from_le_bytes(ring_buf[40..48].try_into().unwrap());
+        let req_blob_id = u32::from_le_bytes(ring_buf[48..52].try_into().unwrap());
+
+        let shm = SharedMemory::new("test_scanout_blob", req_size).unwrap();
+        let handle = RutabagaMagmaHandle {
+            os_handle: to_rutabaga_descriptor(shm.into()),
+            handle_type: RUTABAGA_HANDLE_TYPE_MEM_DMABUF,
+        }
+        .into();
+        virtio_gpu
+            .rutabaga
+            .resource_create_blob(
+                ctx_id,
+                resource_id,
+                ResourceCreateBlob {
+                    blob_mem: VIRTIO_GPU_BLOB_MEM_HOST3D,
+                    blob_flags: VIRTIO_GPU_BLOB_FLAG_USE_SHAREABLE,
+                    blob_id: req_blob_id as u64,
+                    size: req_size,
+                },
+                None,
+                Some(handle),
+            )
+            .unwrap();
+        let resource = VirtioGpuResource::new(resource_id, 800, 600, req_size, false);
+        virtio_gpu.resources.insert(resource_id, resource);
+    }
+
+    fn scanout_rect(width: u32, height: u32) -> virtio_gpu_rect {
+        virtio_gpu_rect {
+            x: 0.into(),
+            y: 0.into(),
+            width: width.into(),
+            height: height.into(),
+        }
+    }
+
+    #[test]
+    fn scanout_surface_update_reimports_resource() {
+        let mut virtio_gpu = new_test_virtio_gpu();
+        let resource_id = 1;
+        create_exportable_resource(&mut virtio_gpu, resource_id);
+
+        virtio_gpu
+            .set_scanout(scanout_rect(800, 600), 0, resource_id, None)
+            .unwrap();
+        let surface_id_1 = virtio_gpu.scanouts[&0].surface_id.unwrap();
+
+        virtio_gpu.flush_resource(resource_id).unwrap();
+        let import_id_1 = virtio_gpu.resources[&resource_id].display_import[&surface_id_1];
+
+        // Flushing again on the same surface reuses the existing import.
+        virtio_gpu.flush_resource(resource_id).unwrap();
+        assert_eq!(
+            virtio_gpu.resources[&resource_id].display_import[&surface_id_1],
+            import_id_1
+        );
+
+        // Changing the scanout resolution recreates the surface with a new surface_id and
+        // triggers a new resource import on flush.
+        virtio_gpu
+            .set_scanout(scanout_rect(1024, 768), 0, resource_id, None)
+            .unwrap();
+        let surface_id_2 = virtio_gpu.scanouts[&0].surface_id.unwrap();
+        assert_ne!(surface_id_1, surface_id_2);
+
+        virtio_gpu.flush_resource(resource_id).unwrap();
+        let import_id_2 = virtio_gpu.resources[&resource_id].display_import[&surface_id_2];
+        assert_ne!(import_id_1, import_id_2);
+
+        // Flushing the same resource on a second scanout imports it for that scanout's surface
+        // without evicting the first scanout's import.
+        virtio_gpu
+            .set_scanout(scanout_rect(800, 600), 1, resource_id, None)
+            .unwrap();
+        let surface_id_3 = virtio_gpu.scanouts[&1].surface_id.unwrap();
+        virtio_gpu.flush_resource(resource_id).unwrap();
+        let import_id_3 = virtio_gpu.resources[&resource_id].display_import[&surface_id_3];
+        assert_eq!(
+            virtio_gpu.resources[&resource_id]
+                .display_import
+                .get(&surface_id_2),
+            Some(&import_id_2)
+        );
+
+        virtio_gpu.unref_resource(resource_id).unwrap();
+        assert!(virtio_gpu
+            .display
+            .borrow_mut()
+            .flip_to(surface_id_1, import_id_1, None, None, None)
+            .is_err());
+        assert!(virtio_gpu
+            .display
+            .borrow_mut()
+            .flip_to(surface_id_2, import_id_2, None, None, None)
+            .is_err());
+        assert!(virtio_gpu
+            .display
+            .borrow_mut()
+            .flip_to(surface_id_3, import_id_3, None, None, None)
+            .is_err());
+    }
+
+    #[test]
+    fn unref_resource_releases_display_imports() {
+        let mut virtio_gpu = new_test_virtio_gpu();
+        let resource_id = 1;
+        create_exportable_resource(&mut virtio_gpu, resource_id);
+
+        virtio_gpu
+            .set_scanout(scanout_rect(800, 600), 0, resource_id, None)
+            .unwrap();
+        let surface_id_1 = virtio_gpu.scanouts[&0].surface_id.unwrap();
+        virtio_gpu
+            .set_scanout(scanout_rect(800, 600), 1, resource_id, None)
+            .unwrap();
+        let surface_id_2 = virtio_gpu.scanouts[&1].surface_id.unwrap();
+
+        virtio_gpu.flush_resource(resource_id).unwrap();
+        let import_id_1 = virtio_gpu.resources[&resource_id].display_import[&surface_id_1];
+        let import_id_2 = virtio_gpu.resources[&resource_id].display_import[&surface_id_2];
+
+        assert!(virtio_gpu
+            .display
+            .borrow_mut()
+            .flip_to(surface_id_1, import_id_1, None, None, None)
+            .is_ok());
+        assert!(virtio_gpu
+            .display
+            .borrow_mut()
+            .flip_to(surface_id_2, import_id_2, None, None, None)
+            .is_ok());
+
+        virtio_gpu.unref_resource(resource_id).unwrap();
+
+        assert!(virtio_gpu
+            .display
+            .borrow_mut()
+            .flip_to(surface_id_1, import_id_1, None, None, None)
+            .is_err());
+        assert!(virtio_gpu
+            .display
+            .borrow_mut()
+            .flip_to(surface_id_2, import_id_2, None, None, None)
+            .is_err());
     }
 }
