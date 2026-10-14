@@ -146,19 +146,18 @@ impl SystemAllocator {
                     return Err(Error::OutOfSpace);
                 }
                 let reserved_start = config.high_mmio.start;
-                let reserved_end = reserved_start + reserved_len - 1;
-                let high_mmio_start = reserved_end + 1;
-                let high_mmio_end = config.high_mmio.end;
-                (
+                let reserved_region =
+                    AddressRange::from_start_and_size(reserved_start, reserved_len)
+                        .ok_or(Error::OutOfBounds)?;
+                let high_mmio = if reserved_len == high_mmio_len {
+                    AddressRange::empty()
+                } else {
                     AddressRange {
-                        start: high_mmio_start,
-                        end: high_mmio_end,
-                    },
-                    Some(AddressRange {
-                        start: reserved_start,
-                        end: reserved_end,
-                    }),
-                )
+                        start: reserved_start + reserved_len,
+                        end: config.high_mmio.end,
+                    }
+                };
+                (high_mmio, Some(reserved_region))
             }
             None => (config.high_mmio, None),
         };
@@ -557,6 +556,65 @@ mod tests {
                 )
                 .is_err(),
             true
+        );
+    }
+
+    #[test]
+    fn reserve_region_boundaries() {
+        let mut a = SystemAllocator::new(
+            SystemAllocatorConfig {
+                io: None,
+                low_mmio: AddressRange {
+                    start: 0x1000,
+                    end: 0x1fff,
+                },
+                high_mmio: AddressRange {
+                    start: 0,
+                    end: 0xffff_ffff,
+                },
+                platform_mmio: None,
+                first_irq: 5,
+            },
+            Some(0),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(a.reserved_region(), Some(AddressRange::empty()));
+        assert_eq!(
+            a.mmio_allocator(MmioType::High)
+                .allocate(1, Alloc::Anon(0), "high".to_string()),
+            Ok(0)
+        );
+
+        let mut a = SystemAllocator::new(
+            SystemAllocatorConfig {
+                io: None,
+                low_mmio: AddressRange {
+                    start: 0x1000,
+                    end: 0x1fff,
+                },
+                high_mmio: AddressRange {
+                    start: u64::MAX - 0xfff,
+                    end: u64::MAX,
+                },
+                platform_mmio: None,
+                first_irq: 5,
+            },
+            Some(0x1000),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            a.reserved_region(),
+            Some(AddressRange {
+                start: u64::MAX - 0xfff,
+                end: u64::MAX,
+            })
+        );
+        assert_eq!(
+            a.mmio_allocator(MmioType::High)
+                .allocate(1, Alloc::Anon(0), "high".to_string()),
+            Err(Error::OutOfSpace)
         );
     }
 }
