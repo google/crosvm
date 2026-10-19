@@ -270,6 +270,8 @@ pub enum Error {
     RegisterVsock(arch::DeviceRegistrationError),
     #[error("error reserved pcie config mmio")]
     ReservePcieCfgMmio(resources::Error),
+    #[error("failed to set the boot vCPU ID: {0}")]
+    SetBootCpuId(base::Error),
     #[error("failed to set a hardware breakpoint: {0}")]
     SetHwBreakpoint(base::Error),
     #[error("failed to set identity map addr: {0}")]
@@ -1307,6 +1309,15 @@ impl arch::LinuxArch for X8664arch {
             components.force_s2idle,
         )
         .ok_or(Error::CreateAcpi)?;
+
+        // vcpu_ids[0] is the boot vCPU (it gets vcpu_init[0]). With --host-cpu-topology the vCPU
+        // IDs are the host APIC IDs, which need not include 0 (e.g. Intel N100: 8, 10, 12, 14),
+        // but KVM makes vCPU 0 the BSP unless told otherwise, which leaves every vCPU waiting for
+        // an INIT/SIPI that never comes. The vCPUs themselves are created later, in their threads.
+        if let Some(&boot_vcpu_id) = vcpu_ids.first().filter(|&&id| id != 0) {
+            vm.set_boot_cpu_id(boot_vcpu_id)
+                .map_err(Error::SetBootCpuId)?;
+        }
 
         let mut cmdline = Self::get_base_linux_cmdline();
 

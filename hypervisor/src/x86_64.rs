@@ -56,6 +56,14 @@ pub trait HypervisorX86_64: Hypervisor {
 
 /// A wrapper for using a VM on x86_64 and getting/setting its state.
 pub trait VmX86_64: Vm {
+    /// Designates the vCPU with ID `vcpu_id` as the bootstrap processor (BSP).
+    ///
+    /// Must be called before any vCPU is created. Hypervisors that can't choose the boot vCPU
+    /// return `ENOTSUP`; for them the boot vCPU is always vCPU 0.
+    fn set_boot_cpu_id(&self, _vcpu_id: usize) -> Result<()> {
+        Err(base::Error::new(libc::ENOTSUP))
+    }
+
     /// Gets the `HypervisorX86_64` that created this VM.
     fn get_hypervisor(&self) -> &dyn HypervisorX86_64;
 

@@ -495,6 +495,24 @@ struct KvmProtectedVmInfo {
 }
 
 impl VmX86_64 for KvmVm {
+    /// Sets the bootstrap processor (BSP) vCPU ID.
+    ///
+    /// See the documentation on the KVM_SET_BOOT_CPU_ID ioctl.
+    fn set_boot_cpu_id(&self, vcpu_id: usize) -> Result<()> {
+        if !self.check_raw_capability(KvmCap::SetBootCpuId) {
+            return Err(Error::new(libc::ENOTSUP));
+        }
+        // SAFETY:
+        // Safe because we know that our file is a VM fd, the argument is a plain integer, and we
+        // verify the return result.
+        let ret = unsafe { ioctl_with_val(self, KVM_SET_BOOT_CPU_ID, vcpu_id as libc::c_ulong) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
     fn get_hypervisor(&self) -> &dyn HypervisorX86_64 {
         &self.kvm
     }
