@@ -201,11 +201,11 @@ Recipe for uploading uprevs of the refvm image.
 
 &mdash; **def [RunSteps](/infra/recipes/uprev_refvm_image.py#36)(api: RecipeApi, properties: UprevRefvmImageProperties):**
 
-[depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/9cb87e7cca51147a3b8f39033e561736f8460652/recipes/README.recipes.md#recipe_modules-bot_update
-[depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/9cb87e7cca51147a3b8f39033e561736f8460652/recipes/README.recipes.md#recipe_modules-depot_tools
-[depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/9cb87e7cca51147a3b8f39033e561736f8460652/recipes/README.recipes.md#recipe_modules-gclient
-[depot_tools/recipe_modules/git]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/9cb87e7cca51147a3b8f39033e561736f8460652/recipes/README.recipes.md#recipe_modules-git
-[depot_tools/recipe_modules/gsutil]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/9cb87e7cca51147a3b8f39033e561736f8460652/recipes/README.recipes.md#recipe_modules-gsutil
+[depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/015ce94742e779cf1c613fe7e0dc93c358ee9c36/recipes/README.recipes.md#recipe_modules-bot_update
+[depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/015ce94742e779cf1c613fe7e0dc93c358ee9c36/recipes/README.recipes.md#recipe_modules-depot_tools
+[depot_tools/recipe_modules/gclient]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/015ce94742e779cf1c613fe7e0dc93c358ee9c36/recipes/README.recipes.md#recipe_modules-gclient
+[depot_tools/recipe_modules/git]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/015ce94742e779cf1c613fe7e0dc93c358ee9c36/recipes/README.recipes.md#recipe_modules-git
+[depot_tools/recipe_modules/gsutil]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/015ce94742e779cf1c613fe7e0dc93c358ee9c36/recipes/README.recipes.md#recipe_modules-gsutil
 [recipe_engine/recipe_modules/buildbucket]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/f354272f6ff04cdc7a2bd4d96bc199cd947c6319/README.recipes.md#recipe_modules-buildbucket
 [recipe_engine/recipe_modules/cipd]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/f354272f6ff04cdc7a2bd4d96bc199cd947c6319/README.recipes.md#recipe_modules-cipd
 [recipe_engine/recipe_modules/context]: https://chromium.googlesource.com/infra/luci/recipes-py.git/+/f354272f6ff04cdc7a2bd4d96bc199cd947c6319/README.recipes.md#recipe_modules-context
