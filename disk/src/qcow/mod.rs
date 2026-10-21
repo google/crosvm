@@ -124,12 +124,16 @@ pub enum Error {
     SettingRefcountRefcount(io::Error),
     #[error("size too small for number of clusters")]
     SizeTooSmallForNumberOfClusters,
+    #[error("snapshots not supported")]
+    SnapshotsNotSupported,
     #[error("l1 entry table too large: {0}")]
     TooManyL1Entries(u64),
     #[error("ref count table too large: {0}")]
     TooManyRefcounts(u64),
     #[error("unsupported backing file format: {0}")]
     UnsupportedBackingFileFormat(String),
+    #[error("unsupported incompatible features: {0:x}")]
+    UnsupportedIncompatibleFeatures(u64),
     #[error("unsupported refcount order")]
     UnsupportedRefcountOrder,
     #[error("unsupported version: {0}")]
@@ -164,6 +168,7 @@ const V3_BARE_HEADER_SIZE: u32 = 104;
 const L1_TABLE_OFFSET_MASK: u64 = 0x00ff_ffff_ffff_fe00;
 const L2_TABLE_OFFSET_MASK: u64 = 0x00ff_ffff_ffff_fe00;
 // Flags
+const ZERO_CLUSTER_FLAG: u64 = 1;
 const COMPRESSED_FLAG: u64 = 1 << 62;
 const CLUSTER_USED_FLAG: u64 = 1 << 63;
 const COMPATIBLE_FEATURES_LAZY_REFCOUNTS: u64 = 1 << 0;
@@ -588,12 +593,13 @@ struct QcowFileInner {
     backing_file: Option<Box<dyn DiskFile>>,
 }
 
-// An entry in an L2 table, storing the host cluster offset and flags.
+// An entry in an L2 table, storing the host cluster offset and zero-cluster flag.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 struct L2CacheEntry(u64);
 
 impl L2CacheEntry {
     const UNALLOCATED: Self = Self(0);
+    const ZERO: Self = Self(ZERO_CLUSTER_FLAG);
 
     fn new_data(cluster_addr: u64) -> Self {
         debug_assert_eq!(cluster_addr & !L2_TABLE_OFFSET_MASK, 0);
@@ -604,7 +610,7 @@ impl L2CacheEntry {
         if raw & COMPRESSED_FLAG != 0 {
             return Err(std::io::Error::from_raw_os_error(ENOTSUP));
         }
-        Ok(Self(raw & L2_TABLE_OFFSET_MASK))
+        Ok(Self(raw & (L2_TABLE_OFFSET_MASK | ZERO_CLUSTER_FLAG)))
     }
 
     fn to_disk(self) -> u64 {
@@ -619,6 +625,10 @@ impl L2CacheEntry {
         let addr = self.0 & L2_TABLE_OFFSET_MASK;
         (addr != 0).then_some(addr)
     }
+
+    fn is_zero(self) -> bool {
+        self.0 & ZERO_CLUSTER_FLAG != 0
+    }
 }
 
 // Where the data for a guest address is read from.
@@ -627,6 +637,8 @@ enum ClusterLocation {
     Data(u64),
     // Not allocated: read from the backing file, or as zeroes if there is none.
     Unallocated,
+    // A zero cluster, which reads as zeroes even if there is a backing file.
+    Zero,
 }
 
 impl DiskFile for QcowFile {}
@@ -647,6 +659,16 @@ impl QcowFile {
         // Only v3 files are supported.
         if header.version != 3 {
             return Err(Error::UnsupportedVersion(header.version));
+        }
+
+        if header.incompatible_features != 0 {
+            return Err(Error::UnsupportedIncompatibleFeatures(
+                header.incompatible_features,
+            ));
+        }
+
+        if header.nb_snapshots != 0 {
+            return Err(Error::SnapshotsNotSupported);
         }
 
         // Make sure that the L1 table fits in RAM.
@@ -1243,6 +1265,9 @@ impl QcowFileInner {
         };
 
         let entry = self.l2_cache.get(&l1_index).unwrap()[l2_index];
+        if entry.is_zero() {
+            return Ok(ClusterLocation::Zero);
+        }
         match entry.cluster_addr() {
             Some(cluster_addr) => Ok(ClusterLocation::Data(
                 cluster_addr + self.raw_file.cluster_offset(address),
@@ -1287,10 +1312,20 @@ impl QcowFileInner {
             })?;
         }
 
-        let entry = self.l2_cache.get(&l1_index).unwrap()[l2_index];
+        let mut entry = self.l2_cache.get(&l1_index).unwrap()[l2_index];
+        if entry.is_zero() && entry.cluster_addr().is_some() {
+            // A preallocated zero cluster may still contain stale non-zero data on disk and has
+            // the zero flag set in the L2 entry. Release it first so a fresh zeroed cluster is
+            // allocated with a normal data L2 entry.
+            self.zero_cluster(address)?;
+            entry = self.l2_cache.get(&l1_index).unwrap()[l2_index];
+        }
         let cluster_addr = match entry.cluster_addr() {
             None => {
-                let initial_data = if let Some(backing) = self.backing_file.as_mut() {
+                let initial_data = if entry.is_zero() {
+                    // Zero clusters don't read from the backing file.
+                    None
+                } else if let Some(backing) = self.backing_file.as_mut() {
                     let cluster_size = self.raw_file.cluster_size();
                     let cluster_begin = address - (address % cluster_size);
                     let mut cluster_data = vec![0u8; cluster_size as usize];
@@ -1383,12 +1418,19 @@ impl QcowFileInner {
         Ok(new_addr)
     }
 
-    // Deallocate the storage for the cluster starting at `address`.
-    // Any future reads of this cluster will return all zeroes (or the backing file, if in use).
-    fn deallocate_cluster(&mut self, address: u64) -> std::io::Result<()> {
+    // Zero the cluster starting at `address`, deallocating its storage if any was allocated.
+    // Any future reads of this cluster will return all zeroes.
+    fn zero_cluster(&mut self, address: u64) -> std::io::Result<()> {
         if address >= self.virtual_size() {
             return Err(std::io::Error::from_raw_os_error(EINVAL));
         }
+
+        // Unallocated clusters read from the backing file, so leave a zero cluster if there is one.
+        let new_entry = if self.backing_file.is_some() {
+            L2CacheEntry::ZERO
+        } else {
+            L2CacheEntry::UNALLOCATED
+        };
 
         let l1_index = self.l1_table_index(address) as usize;
         let l2_addr_disk = *self
@@ -1397,7 +1439,7 @@ impl QcowFileInner {
             .ok_or_else(|| std::io::Error::from_raw_os_error(EINVAL))?;
         let l2_index = self.l2_table_index(address) as usize;
 
-        if l2_addr_disk == 0 {
+        if l2_addr_disk == 0 && new_entry == L2CacheEntry::UNALLOCATED {
             // The whole L2 table for this address is not allocated yet,
             // so the cluster must also be unallocated.
             return Ok(());
@@ -1405,8 +1447,16 @@ impl QcowFileInner {
 
         if !self.l2_cache.contains_key(&l1_index) {
             // Not in the cache.
-            let table =
-                VecCache::from_vec(Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)?);
+            let table = if l2_addr_disk == 0 {
+                // Allocate an L2 table to hold the zero cluster.
+                let new_addr = self.get_new_cluster(None)?;
+                let mut newly_unref = self.set_cluster_refcount(new_addr, 1)?;
+                self.unref_clusters.append(&mut newly_unref);
+                self.l1_table[l1_index] = new_addr;
+                VecCache::new(self.l2_entries as usize)
+            } else {
+                VecCache::from_vec(Self::read_l2_cluster(&mut self.raw_file, l2_addr_disk)?)
+            };
             let l1_table = &self.l1_table;
             let raw_file = &mut self.raw_file;
             self.l2_cache.insert(l1_index, table, |index, evicted| {
@@ -1415,8 +1465,17 @@ impl QcowFileInner {
         }
 
         let entry = self.l2_cache.get(&l1_index).unwrap()[l2_index];
+        if entry == new_entry {
+            // This cluster is already zeroed; nothing to do.
+            return Ok(());
+        }
+
+        // Rewrite the L2 entry to remove the cluster mapping.
+        // unwrap is safe as we just checked/inserted this entry.
+        self.l2_cache.get_mut(&l1_index).unwrap()[l2_index] = new_entry;
+
         let Some(cluster_addr) = entry.cluster_addr() else {
-            // This cluster is already unallocated; nothing to do.
+            // No storage was allocated for this cluster.
             return Ok(());
         };
 
@@ -1433,10 +1492,6 @@ impl QcowFileInner {
         let mut newly_unref = self.set_cluster_refcount(cluster_addr, new_refcount)?;
         self.unref_clusters.append(&mut newly_unref);
 
-        // Rewrite the L2 entry to remove the cluster mapping.
-        // unwrap is safe as we just checked/inserted this entry.
-        self.l2_cache.get_mut(&l1_index).unwrap()[l2_index] = L2CacheEntry::UNALLOCATED;
-
         if new_refcount == 0 {
             let cluster_size = self.raw_file.cluster_size();
             // This cluster is no longer in use; deallocate the storage.
@@ -1450,7 +1505,7 @@ impl QcowFileInner {
 
     // Fill a range of `length` bytes starting at `address` with zeroes.
     // Any future reads of this range will return all zeroes.
-    // If there is no backing file, this will deallocate cluster storage when possible.
+    // This will deallocate cluster storage when possible.
     fn zero_bytes(&mut self, address: u64, length: usize) -> std::io::Result<()> {
         let write_count: usize = self.limit_range_file(address, length);
 
@@ -1459,9 +1514,9 @@ impl QcowFileInner {
             let curr_addr = address + nwritten as u64;
             let count = self.limit_range_cluster(curr_addr, write_count - nwritten);
 
-            if self.backing_file.is_none() && count == self.raw_file.cluster_size() as usize {
-                // Full cluster and no backing file in use - deallocate the storage.
-                self.deallocate_cluster(curr_addr)?;
+            if count == self.raw_file.cluster_size() as usize {
+                // Full cluster - zero the cluster and deallocate any storage.
+                self.zero_cluster(curr_addr)?;
             } else {
                 // Partial cluster - zero out the relevant bytes.
                 let offset = match self.file_offset_read(curr_addr)? {
@@ -1472,9 +1527,9 @@ impl QcowFileInner {
                     ClusterLocation::Unallocated if self.backing_file.is_some() => {
                         Some(self.file_offset_write(curr_addr)?)
                     }
-                    // Any space in unallocated clusters can be left alone, since
-                    // unallocated clusters already read back as zeroes.
-                    ClusterLocation::Unallocated => None,
+                    // Any space in unallocated or zero clusters can be left alone, since they
+                    // already read back as zeroes.
+                    ClusterLocation::Unallocated | ClusterLocation::Zero => None,
                 };
                 if let Some(offset) = offset {
                     // Partial cluster - zero it out.
@@ -2002,6 +2057,30 @@ mod tests {
     }
 
     #[test]
+    fn invalid_incompatible_features() {
+        let mut header = valid_header();
+        header[79] = 1;
+        with_basic_file(&header, |disk_file: File| {
+            assert!(matches!(
+                QcowFile::from(disk_file, test_params()),
+                Err(Error::UnsupportedIncompatibleFeatures(1))
+            ));
+        });
+    }
+
+    #[test]
+    fn invalid_nb_snapshots() {
+        let mut header = valid_header();
+        header[63] = 1;
+        with_basic_file(&header, |disk_file: File| {
+            assert!(matches!(
+                QcowFile::from(disk_file, test_params()),
+                Err(Error::SnapshotsNotSupported)
+            ));
+        });
+    }
+
+    #[test]
     fn invalid_cluster_bits() {
         let mut header = valid_header();
         header[23] = 3;
@@ -2207,6 +2286,85 @@ mod tests {
         assert_eq!(buf[0x1FF], 0);
         assert_eq!(buf[0x200], 0x55);
         assert_eq!(buf[0xFFF], 0x55);
+    }
+
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
+    #[test]
+    fn write_zeroes_backing_full_cluster() {
+        const CLUSTER_SIZE: usize = 0x10000;
+        let mut backing = tempfile().unwrap();
+        backing.write_all(&[0x55; 2 * CLUSTER_SIZE]).unwrap();
+        let disk_file = basic_file(&valid_header());
+        let mut q = QcowFile::from(disk_file.try_clone().unwrap(), test_params()).unwrap();
+        q.set_backing_file(Some(Box::new(backing.try_clone().unwrap())));
+
+        // Zeroing a full cluster should write a zero cluster instead of allocating storage.
+        q.write_zeroes_all_at(0, CLUSTER_SIZE).unwrap();
+        drop(q);
+        let mut q = QcowFile::from(disk_file, test_params()).unwrap();
+        let inner = q.inner.get_mut();
+        let l2_addr = inner.l1_table[0];
+        let l2_table = inner.raw_file.read_pointer_cluster(l2_addr, None).unwrap();
+        assert_eq!(l2_table[0], ZERO_CLUSTER_FLAG);
+
+        q.set_backing_file(Some(Box::new(backing)));
+        let mut buf = vec![0u8; 2 * CLUSTER_SIZE];
+        read_exact_at(&mut q, &mut buf, 0).unwrap();
+        assert!(buf[..CLUSTER_SIZE].iter().all(|&b| b == 0));
+        assert!(buf[CLUSTER_SIZE..].iter().all(|&b| b == 0x55));
+
+        // Writing to a zero cluster should not copy data from the backing file.
+        write_all_at(&mut q, &[0xaa], 0).unwrap();
+        read_exact_at(&mut q, &mut buf, 0).unwrap();
+        assert_eq!(buf[0], 0xaa);
+        assert!(buf[1..CLUSTER_SIZE].iter().all(|&b| b == 0));
+
+        // Zeroing the cluster again should free its storage.
+        let inner = q.inner.get_mut();
+        let ClusterLocation::Data(data_addr) = inner.file_offset_read(0).unwrap() else {
+            panic!("cluster should be allocated");
+        };
+        q.write_zeroes_all_at(0, CLUSTER_SIZE).unwrap();
+        read_exact_at(&mut q, &mut buf, 0).unwrap();
+        assert!(buf[..CLUSTER_SIZE].iter().all(|&b| b == 0));
+        let inner = q.inner.get_mut();
+        let refcount = inner
+            .refcounts
+            .get_cluster_refcount(&mut inner.raw_file, data_addr)
+            .unwrap();
+        assert_eq!(refcount, 0);
+    }
+
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
+    #[test]
+    fn write_preallocated_zero_cluster() {
+        const CLUSTER_SIZE: usize = 0x10000;
+        with_basic_file(&valid_header(), |disk_file: File| {
+            let mut q = QcowFile::from(disk_file, test_params()).unwrap();
+            write_all_at(&mut q, &[0x55; CLUSTER_SIZE], 0).unwrap();
+
+            // Mark the cluster as a preallocated zero cluster while its on-disk bytes are still
+            // non-zero.
+            let inner = q.inner.get_mut();
+            let ClusterLocation::Data(preallocated) = inner.file_offset_read(0).unwrap() else {
+                panic!("cluster should be allocated");
+            };
+            inner.l2_cache.get_mut(&0).unwrap()[0] = L2CacheEntry(preallocated | ZERO_CLUSTER_FLAG);
+
+            // A partial write to the preallocated zero cluster must clear the zero flag and must
+            // not expose the stale 0x55 bytes from the rest of the cluster.
+            write_all_at(&mut q, &[0xaa], 0).unwrap();
+            let mut buf = vec![0u8; CLUSTER_SIZE];
+            read_exact_at(&mut q, &mut buf, 0).unwrap();
+            assert_eq!(buf[0], 0xaa);
+            assert!(buf[1..].iter().all(|&b| b == 0));
+            let inner = q.inner.get_mut();
+            let refcount = inner
+                .refcounts
+                .get_cluster_refcount(&mut inner.raw_file, preallocated)
+                .unwrap();
+            assert_eq!(refcount, 0);
+        });
     }
     #[test]
     fn test_header() {
