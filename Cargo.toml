@@ -229,7 +229,7 @@ static_assertions = "1.1"
 thiserror = "1.0.23"
 tokio = { version = "1.29.1", features = ["net", "rt-multi-thread", "time", "sync", "macros"] }
 uuid = { version = "1", features = ["v4"] }
-windows = { version = "=0.61.1" }
+windows = { version = "0.61.1" }
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
