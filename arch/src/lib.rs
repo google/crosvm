@@ -706,7 +706,11 @@ pub trait LinuxArch {
     fn get_host_cpu_max_freq_khz() -> Result<BTreeMap<usize, u32>, Self::Error>;
 
     /// Returns capacity map of the host's logical cores.
-    fn get_host_cpu_capacity() -> Result<BTreeMap<usize, u32>, Self::Error>;
+    ///
+    /// If `per_mhz` is true, the capacities are converted to per-MHz values (i.e. the frequency
+    /// normalization is reversed), which is only meaningful if the guest is also told about the
+    /// maximum frequency of each vCPU (e.g. through a virtual cpufreq device).
+    fn get_host_cpu_capacity(per_mhz: bool) -> Result<BTreeMap<usize, u32>, Self::Error>;
 
     /// Returns cluster masks for each of the host's logical cores.
     fn get_host_cpu_clusters() -> Result<Vec<CpuSet>, Self::Error>;

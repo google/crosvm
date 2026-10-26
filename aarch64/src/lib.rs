@@ -1153,10 +1153,13 @@ impl arch::LinuxArch for AArch64 {
             .map_err(Error::CpuFrequencies)
     }
 
-    /// Returns a (cpu_id -> value) map of the DMIPS/MHz capacities of logical cores
-    /// in the host system. Map only contains online CPUs.
-    fn get_host_cpu_capacity() -> std::result::Result<BTreeMap<usize, u32>, Self::Error> {
-        Self::collect_for_online_cpus(base::logical_core_capacity).map_err(Error::CpuTopology)
+    /// Returns a (cpu_id -> value) map of the capacities of logical cores in the host system. If
+    /// `per_mhz` is true, the values are DMIPS/MHz capacities. Map only contains online CPUs.
+    fn get_host_cpu_capacity(
+        per_mhz: bool,
+    ) -> std::result::Result<BTreeMap<usize, u32>, Self::Error> {
+        Self::collect_for_online_cpus(|cpu_id| base::logical_core_capacity(cpu_id, per_mhz))
+            .map_err(Error::CpuTopology)
     }
 
     /// Creates CPU cluster mask for each online CPU in the host system.

@@ -724,10 +724,18 @@ fn parse_sysfs_cpu_info_in_dir(cpu_dir: &str, cpu_id: usize, property: &str) -> 
 }
 
 /// Returns the capacity (measure of performance) of a given logical core.
-pub fn logical_core_capacity(cpu_id: usize) -> Result<u32> {
+///
+/// The capacity reported by the kernel already reflects the maximum frequency of each core. If
+/// `per_mhz` is true, this frequency normalization is reversed when the frequencies are available,
+/// i.e. the returned value is the capacity per MHz relative to the core with the largest maximum
+/// frequency, which is what the DT `capacity-dmips-mhz` property expects.
+pub fn logical_core_capacity(cpu_id: usize, per_mhz: bool) -> Result<u32> {
     static CPU_MAX_FREQS: OnceLock<Option<Vec<u32>>> = OnceLock::new();
 
     let cpu_capacity = parse_sysfs_cpu_info(cpu_id, "cpu_capacity")?;
+    if !per_mhz {
+        return Ok(cpu_capacity);
+    }
 
     // Collect and cache the maximum frequencies of all cores. We need to know
     // the largest maximum frequency between all cores to reverse normalization,

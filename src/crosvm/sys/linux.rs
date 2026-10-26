@@ -1333,7 +1333,15 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     // if --enable-fw-cfg or --fw-cfg was given, we want to enable fw_cfg
     let fw_cfg_enable = cfg.enable_fw_cfg || !cfg.fw_cfg_parameters.is_empty();
     let (vcpu_clusters, vcpu_capacity) = if cfg.host_cpu_topology {
-        let host_capacity = Arch::get_host_cpu_capacity()?;
+        // The guest scales `capacity-dmips-mhz` by the maximum frequency of each vCPU, which it
+        // only learns from the virtual cpufreq device. Without that device, the guest assumes that
+        // all vCPUs run at the same frequency, so the host capacities have to be passed as is
+        // rather than as per-MHz values. Otherwise the guest CPU capacities can even be inverted.
+        #[cfg(target_arch = "aarch64")]
+        let per_mhz = cfg.virt_cpufreq || cfg.virt_cpufreq_v2;
+        #[cfg(not(target_arch = "aarch64"))]
+        let per_mhz = false;
+        let host_capacity = Arch::get_host_cpu_capacity(per_mhz)?;
         let mapped_capacity = map_vcpu_capacity(
             cfg.vcpu_count.unwrap_or(1),
             &cfg.vcpu_affinity,

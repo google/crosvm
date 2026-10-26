@@ -499,7 +499,7 @@ impl arch::LinuxArch for Riscv64 {
         Ok(BTreeMap::new())
     }
 
-    fn get_host_cpu_capacity() -> Result<BTreeMap<usize, u32>> {
+    fn get_host_cpu_capacity(_per_mhz: bool) -> Result<BTreeMap<usize, u32>> {
         Ok(BTreeMap::new())
     }
 
