@@ -31,7 +31,7 @@ thiserror = { workspace = true }
 uuid = { version = "1", features = ["v4"], optional = true }
 vm_memory = { workspace = true }
 zerocopy = { version = "0.8.13", features = ["derive"] }
-zstd = { version = "0.13", optional = true }
+zstd = { version = "0.14", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3"
