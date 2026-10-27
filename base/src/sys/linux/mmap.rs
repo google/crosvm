@@ -306,7 +306,9 @@ impl MemoryMapping {
                 if !addr.is_null() || !align.is_power_of_two() {
                     return Err(Error::InvalidAlignment);
                 }
-                let orig_size = size + align as usize;
+                let orig_size = size
+                    .checked_add(align as usize)
+                    .ok_or(Error::InvalidAlignment)?;
                 let orig_addr = libc::mmap64(
                     null_mut(),
                     orig_size,
@@ -1060,6 +1062,18 @@ mod tests {
             MemoryMapping::from_fd_offset(&fd, 4096, (libc::off64_t::MAX as u64) + 1).unwrap_err();
         match res {
             Error::InvalidOffset => {}
+            e => panic!("unexpected error: {e}"),
+        }
+    }
+
+    #[test]
+    fn map_align_overflow() {
+        let res = MemoryMappingBuilder::new(usize::MAX)
+            .align(pagesize() as u64 * 2)
+            .build()
+            .unwrap_err();
+        match res {
+            Error::InvalidAlignment => {}
             e => panic!("unexpected error: {e}"),
         }
     }
