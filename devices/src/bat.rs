@@ -17,6 +17,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
+use base::ReadNotifier;
 use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
@@ -135,6 +136,34 @@ impl GoldfishBatteryState {
     create_battery_func!(set_charge_full, charge_full, u32, BATTERY_STATUS_CHANGED);
 
     create_battery_func!(set_bat_config, bat_config, BatConfig, BATTERY_INT_MASK);
+
+    fn update_from_power_data(&mut self, data: power_monitor::PowerData) -> bool {
+        // Each set_* function called below returns true when interrupt bits
+        // (*_STATUS_CHANGED) changed.
+        let mut inject_irq = self.set_ac_online(data.ac_online.into());
+
+        match data.battery {
+            Some(battery_data) => {
+                inject_irq |= self.set_present(1);
+                inject_irq |= self.set_capacity(battery_data.percent);
+                let battery_status = match battery_data.status {
+                    BatteryStatus::Unknown => BATTERY_STATUS_VAL_UNKNOWN,
+                    BatteryStatus::Charging => BATTERY_STATUS_VAL_CHARGING,
+                    BatteryStatus::Discharging => BATTERY_STATUS_VAL_DISCHARGING,
+                    BatteryStatus::NotCharging => BATTERY_STATUS_VAL_NOT_CHARGING,
+                };
+                inject_irq |= self.set_status(battery_status);
+                inject_irq |= self.set_voltage(battery_data.voltage);
+                inject_irq |= self.set_current(battery_data.current);
+                inject_irq |= self.set_charge_counter(battery_data.charge_counter);
+                inject_irq |= self.set_charge_full(battery_data.charge_full);
+            }
+            None => {
+                inject_irq |= self.set_present(0);
+            }
+        }
+        inject_irq
+    }
 }
 
 enum BatInitializationState {
@@ -216,8 +245,12 @@ fn command_monitor(
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
     init_state: Arc<Mutex<BatInitializationState>>,
 ) {
+    // Use `get_read_notifier()` rather than `&tube` (`AsRawDescriptor`) so Windows `WaitContext`
+    // waits on the `StreamChannel` read-notification `Event` instead of the raw named-pipe handle
+    // (which is immediately signaled after connection and would cause `tube.recv()` to block
+    // forever on an empty pipe).
     let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-        (&tube, Token::Commands),
+        (tube.get_read_notifier(), Token::Commands),
         (irq_evt.get_resample(), Token::Resample),
         (&kill_evt, Token::Kill),
     ]) {
@@ -312,33 +345,19 @@ fn command_monitor(
                         }
                     };
 
-                    let mut bat_state = state.lock();
+                    let inject_irq = {
+                        // Lock `init_state` before `state` to match the lock order in
+                        // `initialize_battery_state()` and atomically mark initialization as
+                        // `Done` with the `state` update.
+                        let mut init_state = init_state.lock();
+                        let mut bat_state = state.lock();
 
-                    // Each set_* function called below returns true when interrupt bits
-                    // (*_STATUS_CHANGED) changed. If `inject_irq` is true after we attempt to
-                    // update each field, inject an interrupt.
-                    let mut inject_irq = bat_state.set_ac_online(data.ac_online.into());
-
-                    match data.battery {
-                        Some(battery_data) => {
-                            inject_irq |= bat_state.set_capacity(battery_data.percent);
-                            let battery_status = match battery_data.status {
-                                BatteryStatus::Unknown => BATTERY_STATUS_VAL_UNKNOWN,
-                                BatteryStatus::Charging => BATTERY_STATUS_VAL_CHARGING,
-                                BatteryStatus::Discharging => BATTERY_STATUS_VAL_DISCHARGING,
-                                BatteryStatus::NotCharging => BATTERY_STATUS_VAL_NOT_CHARGING,
-                            };
-                            inject_irq |= bat_state.set_status(battery_status);
-                            inject_irq |= bat_state.set_voltage(battery_data.voltage);
-                            inject_irq |= bat_state.set_current(battery_data.current);
-                            inject_irq |= bat_state.set_charge_counter(battery_data.charge_counter);
-                            inject_irq |= bat_state.set_charge_full(battery_data.charge_full);
-                        }
-                        None => {
-                            inject_irq |= bat_state.set_present(0);
-                        }
-                    }
-                    *init_state.lock() = BatInitializationState::Done;
+                        // If `inject_irq` is true after we attempt to update each field, inject
+                        // an interrupt.
+                        let inject_irq = bat_state.update_from_power_data(data);
+                        *init_state = BatInitializationState::Done;
+                        inject_irq
+                    };
 
                     if inject_irq {
                         let _ = irq_evt.trigger();
@@ -473,7 +492,9 @@ impl GoldfishBattery {
                 power_client
             }
             (BatInitializationState::Pending(ref mut power_client), _) => power_client.as_mut(),
-            (BatInitializationState::Done, _) => bail!("battery status already intialized"),
+            // `command_monitor()` may mark `init_state` as `Done` after `battery_init_done()`
+            // returns false and before `initialize_battery_state()` acquires `init_state`.
+            (BatInitializationState::Done, _) => return Ok(()),
         };
 
         if let Some(prev_call) = power_client.last_request_timestamp() {
@@ -487,37 +508,39 @@ impl GoldfishBattery {
             }
         }
 
-        match power_client.get_power_data() {
-            Ok(data) => {
-                let mut bat_state = self.state.lock();
-                bat_state.set_ac_online(data.ac_online.into());
+        // Release `init_state` while waiting on the blocking `get_power_data()` D-Bus call so
+        // `command_monitor()` does not block on `init_state` when handling `PowerSupplyPoll`.
+        let BatInitializationState::Pending(mut power_client) =
+            std::mem::replace(&mut *init_state, BatInitializationState::NotYet)
+        else {
+            unreachable!("init_state should be Pending");
+        };
+        drop(init_state);
 
-                match data.battery {
-                    Some(battery_data) => {
-                        bat_state.set_capacity(battery_data.percent);
-                        let battery_status = match battery_data.status {
-                            BatteryStatus::Unknown => BATTERY_STATUS_VAL_UNKNOWN,
-                            BatteryStatus::Charging => BATTERY_STATUS_VAL_CHARGING,
-                            BatteryStatus::Discharging => BATTERY_STATUS_VAL_DISCHARGING,
-                            BatteryStatus::NotCharging => BATTERY_STATUS_VAL_NOT_CHARGING,
-                        };
-                        bat_state.set_status(battery_status);
-                        bat_state.set_voltage(battery_data.voltage);
-                        bat_state.set_current(battery_data.current);
-                        bat_state.set_charge_counter(battery_data.charge_counter);
-                        bat_state.set_charge_full(battery_data.charge_full);
-                    }
-                    None => {
-                        bat_state.set_present(0);
-                    }
-                }
-            }
+        let data = match power_client.get_power_data() {
+            Ok(data) => data,
             Err(e) => {
+                let mut init_state = self.init_state.lock();
+                if matches!(*init_state, BatInitializationState::Done) {
+                    return Ok(());
+                }
+                *init_state = BatInitializationState::Pending(power_client);
                 bail!("failed to get response from powerd: {:#}", e);
             }
         };
-        // Release powerd_client if the initialization data is obtained.
+
+        drop(power_client);
+
+        // Lock `init_state` before `self.state` to match `command_monitor()`. Hold `init_state`
+        // while updating `self.state` so `command_monitor()` and `initialize_battery_state()`
+        // cannot interleave and overwrite fresher monitor state.
+        let mut init_state = self.init_state.lock();
+        if matches!(*init_state, BatInitializationState::Done) {
+            return Ok(());
+        }
         *init_state = BatInitializationState::Done;
+
+        self.state.lock().update_from_power_data(data);
         Ok(())
     }
 
@@ -830,5 +853,223 @@ mod tests {
             *battery.init_state.lock(),
             BatInitializationState::NotYet,
         ));
+    }
+
+    struct BlockingPowerMonitor {
+        poll_evt: Event,
+    }
+
+    impl ReadNotifier for BlockingPowerMonitor {
+        fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+            &self.poll_evt
+        }
+    }
+
+    impl power_monitor::PowerMonitor for BlockingPowerMonitor {
+        fn read_message(
+            &mut self,
+        ) -> std::result::Result<Option<power_monitor::PowerData>, Box<dyn std::error::Error>>
+        {
+            self.poll_evt.wait().unwrap();
+            Ok(Some(power_monitor::PowerData {
+                ac_online: false,
+                battery: Some(power_monitor::BatteryData {
+                    percent: 80,
+                    status: power_monitor::BatteryStatus::Discharging,
+                    voltage: 0,
+                    current: 0,
+                    charge_counter: 0,
+                    charge_full: 0,
+                }),
+            }))
+        }
+    }
+
+    struct RacingPowerClient {
+        poll_evt: Event,
+        irq_trigger_evt: Event,
+        fail: bool,
+    }
+
+    impl power_monitor::PowerClient for RacingPowerClient {
+        fn last_request_timestamp(&self) -> Option<SystemTime> {
+            None
+        }
+
+        fn get_power_data(
+            &mut self,
+        ) -> std::result::Result<power_monitor::PowerData, Box<dyn std::error::Error>> {
+            // Trigger a `PowerSupplyPoll` event in `command_monitor` while `get_power_data()` is
+            // in flight, and wait until `command_monitor` finishes updating `state` and
+            // `init_state` and signals `irq_evt`.
+            self.poll_evt.signal().unwrap();
+            self.irq_trigger_evt.wait().unwrap();
+            if self.fail {
+                return Err("mock powerd error".into());
+            }
+            Ok(power_monitor::PowerData {
+                ac_online: true,
+                battery: Some(power_monitor::BatteryData {
+                    percent: 50,
+                    status: power_monitor::BatteryStatus::Charging,
+                    voltage: 0,
+                    current: 0,
+                    charge_counter: 0,
+                    charge_full: 0,
+                }),
+            })
+        }
+    }
+
+    #[test]
+    fn test_concurrent_monitor_and_initialize_no_deadlock() {
+        let irq_evt = IrqLevelEvent::new().unwrap();
+        let irq_trigger_evt = irq_evt.get_trigger().try_clone().unwrap();
+        let (_control_tube, device_tube) = Tube::pair().unwrap();
+        let poll_evt = Event::new().unwrap();
+
+        let poll_evt_monitor = poll_evt.try_clone().unwrap();
+        let create_monitor: Box<dyn CreatePowerMonitorFn> = Box::new(move || {
+            Ok(Box::new(BlockingPowerMonitor {
+                poll_evt: poll_evt_monitor.try_clone().unwrap(),
+            }))
+        });
+
+        let create_client: Box<dyn CreatePowerClientFn> = Box::new(move || {
+            Ok(Box::new(RacingPowerClient {
+                poll_evt: poll_evt.try_clone().unwrap(),
+                irq_trigger_evt: irq_trigger_evt.try_clone().unwrap(),
+                fail: false,
+            }))
+        });
+
+        let mut battery = GoldfishBattery::new(
+            0,
+            0,
+            irq_evt,
+            device_tube,
+            Some(create_monitor),
+            Some(create_client),
+        )
+        .unwrap();
+
+        // Simulate a prior `None` battery update (`present == 0`), enable interrupts, and start
+        // `command_monitor` as guest `goldfish_battery_probe()` does.
+        battery.state.lock().present = 0;
+        battery.state.lock().int_enable = BATTERY_INT_MASK;
+        battery.start_monitor();
+
+        // Run `initialize_battery_state()` while `command_monitor` concurrently handles
+        // `Token::Monitor`. Previously this caused an ABBA deadlock between `init_state` and
+        // `state`.
+        battery.initialize_battery_state().unwrap();
+        assert!(matches!(
+            *battery.init_state.lock(),
+            BatInitializationState::Done
+        ));
+
+        // Subsequent calls when `init_state` is already `Done` should succeed as a no-op.
+        battery.initialize_battery_state().unwrap();
+
+        // The fresher state from `command_monitor` (capacity 80, ac_online 0, Discharging) must
+        // not be overwritten by the in-flight `get_power_data()` response (capacity 50,
+        // ac_online 1, Charging), and `present` must be restored to 1.
+        let state = battery.state.lock();
+        assert_eq!(state.present, 1);
+        assert_eq!(state.ac_online, 0);
+        assert_eq!(state.capacity, 80);
+        assert_eq!(state.status, BATTERY_STATUS_VAL_DISCHARGING);
+    }
+
+    struct FailingPowerClient {
+        last_request_time: Option<SystemTime>,
+    }
+
+    impl power_monitor::PowerClient for FailingPowerClient {
+        fn last_request_timestamp(&self) -> Option<SystemTime> {
+            self.last_request_time
+        }
+
+        fn get_power_data(
+            &mut self,
+        ) -> std::result::Result<power_monitor::PowerData, Box<dyn std::error::Error>> {
+            self.last_request_time = Some(SystemTime::now());
+            Err("mock powerd failure".into())
+        }
+    }
+
+    #[test]
+    fn test_initialize_battery_state_error_restores_pending_unless_done() {
+        let irq_evt = IrqLevelEvent::new().unwrap();
+        let (_control_tube, device_tube) = Tube::pair().unwrap();
+
+        let mut battery = GoldfishBattery::new(
+            0,
+            0,
+            irq_evt,
+            device_tube,
+            None,
+            Some(Box::new(|| {
+                Ok(Box::new(FailingPowerClient {
+                    last_request_time: None,
+                }))
+            })),
+        )
+        .unwrap();
+
+        // 1. When `get_power_data()` fails and `command_monitor` has not marked `init_state` as
+        // `Done`, `init_state` must be restored to `Pending(power_client)`.
+        assert!(battery.initialize_battery_state().is_err());
+        assert!(matches!(
+            *battery.init_state.lock(),
+            BatInitializationState::Pending(ref client) if client.last_request_timestamp().is_some()
+        ));
+        // An immediate retry reuses the restored `Pending` client and is rate-limited.
+        battery.initialize_battery_state().unwrap();
+
+        // 2. When `command_monitor` marks `init_state` as `Done` while `get_power_data()` is in
+        // flight and `get_power_data()` fails, `initialize_battery_state()` should return `Ok(())`
+        // and `init_state` must remain `Done`.
+        let irq_evt = IrqLevelEvent::new().unwrap();
+        let irq_trigger_evt = irq_evt.get_trigger().try_clone().unwrap();
+        let (_control_tube, device_tube) = Tube::pair().unwrap();
+        let poll_evt = Event::new().unwrap();
+
+        let poll_evt_monitor = poll_evt.try_clone().unwrap();
+        let create_monitor: Box<dyn CreatePowerMonitorFn> = Box::new(move || {
+            Ok(Box::new(BlockingPowerMonitor {
+                poll_evt: poll_evt_monitor.try_clone().unwrap(),
+            }))
+        });
+
+        let create_client: Box<dyn CreatePowerClientFn> = Box::new(move || {
+            Ok(Box::new(RacingPowerClient {
+                poll_evt: poll_evt.try_clone().unwrap(),
+                irq_trigger_evt: irq_trigger_evt.try_clone().unwrap(),
+                fail: true,
+            }))
+        });
+
+        let mut battery = GoldfishBattery::new(
+            0,
+            0,
+            irq_evt,
+            device_tube,
+            Some(create_monitor),
+            Some(create_client),
+        )
+        .unwrap();
+
+        battery.state.lock().int_enable = BATTERY_INT_MASK;
+        battery.start_monitor();
+        assert!(matches!(battery.initialize_battery_state(), Ok(())));
+        assert!(matches!(
+            *battery.init_state.lock(),
+            BatInitializationState::Done
+        ));
+        let state = battery.state.lock();
+        assert_eq!(state.ac_online, 0);
+        assert_eq!(state.capacity, 80);
+        assert_eq!(state.status, BATTERY_STATUS_VAL_DISCHARGING);
     }
 }
