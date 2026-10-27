@@ -93,7 +93,7 @@ fn get_cpu_info(cpu_id: u32, property: &str) -> Result<u32, Error> {
 
 fn get_cpu_info_str(cpu_id: u32, property: &str) -> Result<String, Error> {
     let path = format!("/sys/devices/system/cpu/cpu{cpu_id}/{property}");
-    std::fs::read_to_string(path).map_err(|_| Error::new(libc::EINVAL))
+    Ok(std::fs::read_to_string(path)?)
 }
 
 fn get_cpu_capacity(cpu_id: u32) -> Result<u32, Error> {
@@ -112,11 +112,16 @@ fn get_cpu_curfreq_khz(cpu_id: u32) -> Result<u32, Error> {
     get_cpu_info(cpu_id, "cpufreq/scaling_cur_freq")
 }
 
-fn get_cpu_util_factor(cpu_id: u32) -> Result<u32, Error> {
-    let gov = get_cpu_info_str(cpu_id, "cpufreq/scaling_governor")?;
-    match gov.trim() {
-        "schedutil" => Ok(CPUFREQ_GOV_SCALE_FACTOR_SCHEDUTIL),
-        _ => Ok(CPUFREQ_GOV_SCALE_FACTOR_DEFAULT),
+fn get_cpu_util_factor(cpu_id: u32) -> u32 {
+    match get_cpu_info_str(cpu_id, "cpufreq/scaling_governor") {
+        Ok(gov) if gov.trim() == "schedutil" => CPUFREQ_GOV_SCALE_FACTOR_SCHEDUTIL,
+        Ok(_) => CPUFREQ_GOV_SCALE_FACTOR_DEFAULT,
+        Err(err) => {
+            warn!(
+                "Unable to get cpufreq governor for cpu{cpu_id}, using 100% default util factor: {err:#}"
+            );
+            CPUFREQ_GOV_SCALE_FACTOR_DEFAULT
+        }
     }
 }
 
@@ -134,7 +139,7 @@ impl VirtCpufreqV2 {
     ) -> Self {
         let pcpu_capacity = get_cpu_capacity(pcpu).expect("Error reading capacity");
         let pcpu_fmax = get_cpu_maxfreq_khz(pcpu).expect("Error reading max freq");
-        let util_factor = get_cpu_util_factor(pcpu).expect("Error getting util factor");
+        let util_factor = get_cpu_util_factor(pcpu);
         let freqtbl_sel = 0;
         let mut domain_uclamp_min = None;
         let mut domain_uclamp_max = None;
