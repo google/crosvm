@@ -174,7 +174,7 @@ const CLUSTER_USED_FLAG: u64 = 1 << 63;
 const COMPATIBLE_FEATURES_LAZY_REFCOUNTS: u64 = 1 << 0;
 
 // The format supports a "header extension area".
-const QCOW2_EXT_MAGIC_BACKING_FORMAT: u32 = 0xe279_268f;
+const QCOW2_EXT_MAGIC_BACKING_FORMAT: u32 = 0xe279_2aca;
 
 // Defined by the specification
 const MAX_BACKING_FILE_SIZE: u32 = 1023;
@@ -2952,6 +2952,55 @@ mod tests {
             Some(String::from("/my/path/to/a/file"))
         );
         assert_eq!(read_header.backing_file_path, header.backing_file_path);
+        assert_eq!(read_header.backing_file_format, Some(crate::ImageType::Raw));
+    }
+
+    #[test]
+    fn test_backing_format_extension_magic() {
+        const EXPECTED_MAGIC: [u8; 4] = [0xe2, 0x79, 0x2a, 0xca];
+
+        let header = QcowHeader::create_for_size_and_path(
+            0x10_0000,
+            Some(("/my/path/to/a/file", crate::ImageType::Raw)),
+        )
+        .expect("Failed to create header.");
+        let mut disk_file = tempfile().expect("failed to create temp file");
+        header
+            .write_to(&mut disk_file)
+            .expect("Failed to write header.");
+
+        // Verify serialized header extension magic bytes on disk at offset V3_BARE_HEADER_SIZE
+        // (104) equal the literal big-endian bytes [0xe2, 0x79, 0x2a, 0xca].
+        let mut magic_bytes = [0u8; 4];
+        disk_file
+            .seek(SeekFrom::Start(V3_BARE_HEADER_SIZE as u64))
+            .unwrap();
+        disk_file.read_exact(&mut magic_bytes).unwrap();
+        assert_eq!(magic_bytes, EXPECTED_MAGIC);
+
+        // Verify that QcowHeader::new parses a header containing those literal bytes.
+        disk_file.seek(SeekFrom::Start(0)).unwrap();
+        let read_header = QcowHeader::new(&mut disk_file).expect("Failed to parse header.");
+        assert_eq!(read_header.backing_file_format, Some(crate::ImageType::Raw));
+
+        // Overwrite the magic bytes with an unrecognized extension type to ensure
+        // QcowHeader::new does not recognize unknown extensions as backing format.
+        disk_file
+            .seek(SeekFrom::Start(V3_BARE_HEADER_SIZE as u64))
+            .unwrap();
+        disk_file.write_all(&[0xe2, 0x79, 0x26, 0x8f]).unwrap();
+        disk_file.seek(SeekFrom::Start(0)).unwrap();
+        let header_with_unknown_ext =
+            QcowHeader::new(&mut disk_file).expect("Failed to parse header.");
+        assert_eq!(header_with_unknown_ext.backing_file_format, None);
+
+        // Rewrite literal specification bytes and verify it parses successfully.
+        disk_file
+            .seek(SeekFrom::Start(V3_BARE_HEADER_SIZE as u64))
+            .unwrap();
+        disk_file.write_all(&EXPECTED_MAGIC).unwrap();
+        disk_file.seek(SeekFrom::Start(0)).unwrap();
+        let read_header = QcowHeader::new(&mut disk_file).expect("Failed to parse header.");
         assert_eq!(read_header.backing_file_format, Some(crate::ImageType::Raw));
     }
 
