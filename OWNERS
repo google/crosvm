@@ -16,12 +16,6 @@ zihanchen@google.com #{LAST_RESORT_SUGGESTION}
 # Cloud Android Team
 fmayle@google.com #{LAST_RESORT_SUGGESTION}
 
-# For Windows
-auradkar@google.com #{LAST_RESORT_SUGGESTION}
-nkgold@google.com #{LAST_RESORT_SUGGESTION}
-rizhang@google.com #{LAST_RESORT_SUGGESTION}
-idanr@google.com #{LAST_RESORT_SUGGESTION}
-
 # Bots
 crosvm-bot@crosvm-packages.iam.gserviceaccount.com #{LAST_RESORT_SUGGESTION}
 recipe-mega-autoroller@chops-service-accounts.iam.gserviceaccount.com #{LAST_RESORT_SUGGESTION}
