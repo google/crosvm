@@ -1637,7 +1637,7 @@ impl QcowFileInner {
         // Write the modified refcount blocks.
         self.refcounts.flush_blocks(&mut self.raw_file)?;
         // Make sure metadata(file len) and all data clusters are written.
-        self.raw_file.file_mut().sync_all()?;
+        self.raw_file.file_mut().sync_data()?;
 
         // Push L1 table and refcount table last as all the clusters they point to are now
         // guaranteed to be valid.
