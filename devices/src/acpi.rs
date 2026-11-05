@@ -13,6 +13,7 @@ use anyhow::bail;
 use anyhow::Context;
 use base::custom_serde::serialize_arc_mutex;
 use base::error;
+use base::info;
 use base::warn;
 use base::Error as SysError;
 use base::Event;
@@ -620,6 +621,7 @@ impl BusDevice for ACPIPMResource {
                             }
                         }
                         SLEEP_TYPE_S5 => {
+                            info!("ACPIPM: SLEEP_TYPE_S5 written, triggering exit event");
                             if let Err(e) =
                                 self.exit_evt_wrtube.send::<VmEventType>(&VmEventType::Exit)
                             {
