@@ -125,12 +125,22 @@ struct ComponentDiskPart {
     length: u64,
     file_offset: u64, // Location within the host file
     // Whether there have been any writes since the last fsync or fdatasync.
-    needs_flush: AtomicBool,
+    needs_flush: Arc<AtomicBool>,
 }
 
 impl ComponentDiskPart {
     fn range(&self) -> Range<u64> {
         self.offset..(self.offset + self.length)
+    }
+
+    fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            file: self.file.try_clone()?,
+            offset: self.offset,
+            length: self.length,
+            file_offset: self.file_offset,
+            needs_flush: Arc::clone(&self.needs_flush),
+        })
     }
 }
 
@@ -145,8 +155,18 @@ pub struct CompositeDiskFile {
     _disk_spec_file: File,
 }
 
-// TODO(b/271381851): implement `try_clone`. It allows virtio-blk to run multiple workers.
-impl DiskFile for CompositeDiskFile {}
+impl DiskFile for CompositeDiskFile {
+    fn try_clone(&self) -> io::Result<Box<dyn DiskFile>> {
+        Ok(Box::new(CompositeDiskFile {
+            component_disks: self
+                .component_disks
+                .iter()
+                .map(ComponentDiskPart::try_clone)
+                .collect::<io::Result<Vec<_>>>()?,
+            _disk_spec_file: self._disk_spec_file.try_clone()?,
+        }))
+    }
+}
 
 fn ranges_overlap(a: &Range<u64>, b: &Range<u64>) -> bool {
     range_intersection(a, b).is_some()
@@ -240,7 +260,7 @@ impl CompositeDiskFile {
                     offset: disk.offset,
                     length: 0, // Assigned later
                     file_offset: disk.file_offset,
-                    needs_flush: AtomicBool::new(false),
+                    needs_flush: Arc::new(AtomicBool::new(false)),
                 })
             })
             .collect::<Result<Vec<ComponentDiskPart>>>()?;
@@ -366,7 +386,7 @@ struct AsyncComponentDiskPart {
     offset: u64, // Location in the block device visible to the guest
     length: u64,
     file_offset: u64, // Location within the host file
-    needs_flush: AtomicBool,
+    needs_flush: Arc<AtomicBool>,
 }
 
 pub struct AsyncCompositeDiskFile {
@@ -871,14 +891,14 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         assert!(new_from_components(vec![disk_part1, disk_part2]).is_err());
     }
@@ -892,14 +912,14 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2]).unwrap();
         let len = composite.get_len().unwrap();
@@ -915,14 +935,14 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2]).unwrap();
 
@@ -940,7 +960,7 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part]).unwrap();
         let mut input_memory = [55u8; 5];
@@ -969,7 +989,7 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 2,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part]).unwrap();
         let mut output_memory = [0u8; 3];
@@ -988,7 +1008,7 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1025,7 +1045,7 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 2,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1060,21 +1080,21 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut out_descriptors = composite.as_raw_descriptors();
@@ -1092,21 +1112,21 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let mut input_memory = [55u8; 200];
@@ -1132,21 +1152,21 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1196,21 +1216,21 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1279,21 +1299,21 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part2 = ComponentDiskPart {
             file: Box::new(file2),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let disk_part3 = ComponentDiskPart {
             file: Box::new(file3),
             offset: 200,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![disk_part1, disk_part2, disk_part3]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1371,14 +1391,14 @@ mod tests {
             offset: 0,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let ro_part = ComponentDiskPart {
             file: Box::new(ro_file),
             offset: 100,
             length: 100,
             file_offset: 0,
-            needs_flush: AtomicBool::new(false),
+            needs_flush: Arc::new(AtomicBool::new(false)),
         };
         let composite = new_from_components(vec![rw_part, ro_part]).unwrap();
         let ex = Executor::new().unwrap();
@@ -1639,5 +1659,97 @@ mod tests {
             &mut composite_image,
         );
         assert!(matches!(result, Err(Error::DuplicatePartitionLabel(label)) if label == "label"));
+    }
+
+    #[test]
+    fn clone_composite_disk() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let part1_path = tmp_dir.path().join("part1.img");
+        let part1 = File::create(&part1_path).unwrap();
+        part1.set_len(4096).unwrap();
+        let part2_path = tmp_dir.path().join("part2.img");
+        let part2 = File::create(&part2_path).unwrap();
+        part2.set_len(4096).unwrap();
+
+        let zero_filler_path = tmp_dir.path().join("zero_filler.img");
+        File::create(&zero_filler_path)
+            .unwrap()
+            .set_len(4096 * 16)
+            .unwrap();
+        let header_path = tmp_dir.path().join("header.img");
+        let mut header_image = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&header_path)
+            .unwrap();
+        let footer_path = tmp_dir.path().join("footer.img");
+        let mut footer_image = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&footer_path)
+            .unwrap();
+        let composite_path = tmp_dir.path().join("composite.img");
+        let mut composite_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&composite_path)
+            .unwrap();
+
+        create_composite_disk(
+            &[
+                PartitionInfo {
+                    label: "part1".to_string(),
+                    path: part1_path,
+                    partition_type: ImagePartitionType::LinuxFilesystem,
+                    writable: true,
+                    size: 4096,
+                    part_guid: None,
+                },
+                PartitionInfo {
+                    label: "part2".to_string(),
+                    path: part2_path,
+                    partition_type: ImagePartitionType::LinuxFilesystem,
+                    writable: true,
+                    size: 4096,
+                    part_guid: None,
+                },
+            ],
+            &zero_filler_path,
+            &header_path,
+            &mut header_image,
+            &footer_path,
+            &mut footer_image,
+            &mut composite_file,
+        )
+        .unwrap();
+
+        let composite = CompositeDiskFile::from_file(
+            composite_file,
+            DiskFileParams {
+                path: composite_path,
+                is_read_only: false,
+                is_sparse_file: false,
+                is_direct: false,
+                depth: 0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let cloned = composite.try_clone().unwrap();
+        assert_eq!(cloned.get_len().unwrap(), composite.get_len().unwrap());
+
+        let mut input = [0xA5u8; 16];
+        let mut output = [0u8; 16];
+        let offset = composite.component_disks[2].offset;
+        composite
+            .write_all_at_volatile(VolatileSlice::new(&mut input), offset)
+            .unwrap();
+        cloned
+            .read_exact_at_volatile(VolatileSlice::new(&mut output), offset)
+            .unwrap();
+        assert_eq!(output, input);
     }
 }
