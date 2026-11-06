@@ -14,6 +14,12 @@ use crate::AAudioStream;
 use crate::AAudioStreamBuilder;
 use crate::AaudioFormatT;
 use crate::AaudioResultT;
+use crate::AaudioStreamStateT;
+
+/// Handle for which `AAudioStream_waitForStateChange()` reports a disconnected stream, so tests
+/// can exercise that path. Every other handle reports a started stream.
+pub(crate) const DISCONNECTED_STREAM: usize = 0xd15c;
+const AAUDIO_STREAM_STATE_DISCONNECTED: AaudioStreamStateT = 13;
 
 #[no_mangle]
 extern "C" fn AAudio_createStreamBuilder(builder: *mut *mut AAudioStreamBuilder) -> AaudioResultT {
@@ -117,5 +123,26 @@ extern "C" fn AAudioStream_requestStop(_stream: *mut AAudioStream) -> AaudioResu
 
 #[no_mangle]
 extern "C" fn AAudioStream_close(_stream: *mut AAudioStream) -> AaudioResultT {
+    0
+}
+
+#[no_mangle]
+extern "C" fn AAudioStream_waitForStateChange(
+    stream: *mut AAudioStream,
+    _input_state: AaudioStreamStateT,
+    next_state: *mut AaudioStreamStateT,
+    _timeout_nanoseconds: i64,
+) -> AaudioResultT {
+    if !next_state.is_null() {
+        let state = if stream as usize == DISCONNECTED_STREAM {
+            AAUDIO_STREAM_STATE_DISCONNECTED
+        } else {
+            crate::AAUDIO_STREAM_STATE_STARTED
+        };
+        // SAFETY: `next_state` is a valid out-pointer provided by the caller in tests.
+        unsafe {
+            *next_state = state;
+        }
+    }
     0
 }

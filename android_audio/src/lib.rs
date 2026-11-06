@@ -9,7 +9,12 @@ mod libaaudio_stub;
 
 use std::os::raw::c_void;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::sync::PoisonError;
+use std::sync::Weak;
 use std::task::Poll;
+use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -73,10 +78,14 @@ struct AAudioStreamBuilder {
 
 type AaudioFormatT = i32;
 type AaudioResultT = i32;
+type AaudioStreamStateT = i32;
 const AAUDIO_OK: AaudioResultT = 0;
 // From Android NDK `<aaudio/AAudio.h>`:
 const AAUDIO_FORMAT_PCM_I16: AaudioFormatT = 1;
 const AAUDIO_FORMAT_PCM_I32: AaudioFormatT = 4;
+const AAUDIO_STREAM_STATE_UNKNOWN: AaudioStreamStateT = 1;
+const AAUDIO_STREAM_STATE_STARTING: AaudioStreamStateT = 3;
+const AAUDIO_STREAM_STATE_STARTED: AaudioStreamStateT = 4;
 
 fn to_aaudio_format(format: SampleFormat) -> Result<AaudioFormatT, AAudioError> {
     match format {
@@ -119,12 +128,27 @@ extern "C" {
         timeout_nanoseconds: i64,
     ) -> AaudioResultT;
     fn AAudioStream_close(stream: *mut AAudioStream) -> AaudioResultT;
+    fn AAudioStream_waitForStateChange(
+        stream: *mut AAudioStream,
+        input_state: AaudioStreamStateT,
+        next_state: *mut AaudioStreamStateT,
+        timeout_nanoseconds: i64,
+    ) -> AaudioResultT;
 }
 
 struct AAudioStreamPtr {
     // TODO: Use callback function to avoid possible thread preemption and glitches cause by
     // using AAudio APIs in different threads.
     stream_ptr: *mut AAudioStream,
+}
+
+impl Default for AAudioStreamPtr {
+    /// A null handle, which owns no stream.
+    fn default() -> Self {
+        Self {
+            stream_ptr: std::ptr::null_mut(),
+        }
+    }
 }
 
 // SAFETY:
@@ -160,6 +184,9 @@ struct AudioStream {
     permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
     /// A permission request was sent and its answer has not been applied yet.
     permission_pending: bool,
+    /// Where this stream is parked when dropped, if it is a playback stream; see
+    /// `PlaybackParking`.
+    playback_parking: Option<Arc<PlaybackParking>>,
 }
 
 struct AndroidAudioStreamCommit {
@@ -258,7 +285,165 @@ fn create_and_open_aaudio_stream(
     Ok((stream_ptr, aaudio_buffer_size))
 }
 
+/// How long a dropped playback stream's AAudio stream stays open, waiting for reuse, before it is
+/// closed. Long enough to span the STOP, RELEASE, PREPARE and START of a guest XRUN recovery, which
+/// take milliseconds, and short enough that the host stops playing soon after the guest really
+/// stops.
+const PLAYBACK_PARKING_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Keeps the AAudio stream of a dropped playback stream open for a short while, so the next
+/// playback stream with the same parameters reuses it instead of opening a new one.
+///
+/// Guest XRUN recovery (STOP, RELEASE, PREPARE, START) would otherwise close and reopen the host
+/// stream. Each open blocks the executor that all streams of the card share, and each open or
+/// close makes several host services log. The parked stream is left started, so XRUN recovery
+/// doesn't toggle the host's playback state. If it stays unfed for long, AudioFlinger may pause the
+/// host track, and the next write restarts it.
+///
+/// A guest that stops and restarts playback with the same parameters (e.g. to seek) also reuses
+/// the stream, so audio still buffered in it, at most about two periods, plays before the new
+/// audio. Flushing would need a pause, which would toggle the host's playback state again.
+///
+/// Capture streams are never parked: they must close so the host releases the microphone, and
+/// each capture start asks for permission again.
+struct PlaybackParking {
+    state: Mutex<PlaybackParkingState>,
+    /// How long a stream stays parked. Only tests change it.
+    timeout: Duration,
+}
+
+#[derive(Default)]
+struct PlaybackParkingState {
+    parked: Option<ParkedPlaybackStream>,
+    /// A thread is running that closes `parked` once it times out. There is at most one per
+    /// `PlaybackParking`, so a burst of XRUNs doesn't spawn a thread per park.
+    reaper_running: bool,
+}
+
+/// An open, started playback AAudio stream whose `AudioStream` was dropped.
+struct ParkedPlaybackStream {
+    stream: AAudioStreamPtr,
+    aaudio_buffer_size: usize,
+    params: PlaybackParams,
+    parked_at: Instant,
+}
+
+/// Parameters a playback AAudio stream was opened with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PlaybackParams {
+    num_channels: usize,
+    format: SampleFormat,
+    frame_rate: u32,
+    buffer_size: usize,
+}
+
+impl Default for PlaybackParking {
+    fn default() -> Self {
+        Self {
+            state: Mutex::default(),
+            timeout: PLAYBACK_PARKING_TIMEOUT,
+        }
+    }
+}
+
+impl PlaybackParking {
+    fn lock(&self) -> MutexGuard<'_, PlaybackParkingState> {
+        // Nothing panics while holding the lock, and the state stays consistent if it did.
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Takes the parked stream if it was opened with `params` and AAudio still reports it as
+    /// started. Any other parked stream is closed.
+    fn take(&self, params: PlaybackParams) -> Option<ParkedPlaybackStream> {
+        // A stream that isn't returned is closed here, after the lock is released.
+        let parked = self.lock().parked.take()?;
+        (parked.params == params && parked.is_started()).then_some(parked)
+    }
+
+    /// Parks `stream` and makes sure a thread closes it if it isn't taken within `timeout`.
+    fn park(self: &Arc<Self>, stream: ParkedPlaybackStream) {
+        let mut state = self.lock();
+        if !state.reaper_running {
+            let parking = Arc::downgrade(self);
+            if let Err(e) = thread::Builder::new()
+                .name("aaudio_reaper".to_string())
+                .spawn(move || reap_parked_playback(parking))
+            {
+                warn!("Failed to spawn parked playback stream reaper ({e}); closing stream");
+                // `stream` is dropped, and so closed, after `state` is unlocked.
+                return;
+            }
+            state.reaper_running = true;
+        }
+        let replaced = state.parked.replace(stream);
+        drop(state);
+        // Close outside the lock: AAudioStream_close() can take tens of milliseconds.
+        drop(replaced);
+    }
+}
+
+/// Closes the parked playback stream once it has been parked for longer than the timeout. Exits
+/// when nothing is parked, or when the `PlaybackParking` is gone.
+fn reap_parked_playback(weak: Weak<PlaybackParking>) {
+    while let Some(parking) = weak.upgrade() {
+        let mut state = parking.lock();
+        let wait = state.parked.as_ref().map_or(Duration::ZERO, |p| {
+            parking.timeout.saturating_sub(p.parked_at.elapsed())
+        });
+        if wait.is_zero() {
+            // Nothing is parked, or the parked stream timed out.
+            let expired = state.parked.take();
+            state.reaper_running = false;
+            drop(state);
+            drop(expired);
+            return;
+        }
+        drop(state);
+        // Don't keep `parking` alive while sleeping.
+        drop(parking);
+        thread::sleep(wait);
+    }
+}
+
+// SAFETY:
+// The parked pointer has no other owner (the dropped `AudioStream` nulls its copy), and AAudio
+// stream handles may be used from any thread as long as calls on one stream are not concurrent.
+unsafe impl Send for ParkedPlaybackStream {}
+
+impl ParkedPlaybackStream {
+    /// Returns whether AAudio still reports the stream as starting or started. A stream that lost
+    /// its audio device fails this call or reports AAUDIO_STREAM_STATE_DISCONNECTED.
+    fn is_started(&self) -> bool {
+        let mut state = AAUDIO_STREAM_STATE_UNKNOWN;
+        // SAFETY:
+        // The parked stream is exclusively owned here, so no other call on it runs concurrently.
+        // AAudio.h documents this call with AAUDIO_STREAM_STATE_UNKNOWN and a zero timeout as the
+        // way to refresh the client state from the server without blocking.
+        let res = unsafe {
+            AAudioStream_waitForStateChange(
+                self.stream.stream_ptr,
+                AAUDIO_STREAM_STATE_UNKNOWN,
+                &mut state,
+                0,
+            )
+        };
+        let started = res == AAUDIO_OK
+            && matches!(
+                state,
+                AAUDIO_STREAM_STATE_STARTING | AAUDIO_STREAM_STATE_STARTED
+            );
+        if !started {
+            info!(
+                "Parked AAudio playback stream is no longer started: result {res}, state {state}"
+            );
+        }
+        started
+    }
+}
+
 impl AudioStream {
+    /// Creates a stream. Playback streams open and start their AAudio stream here, reusing the
+    /// one parked in `playback_parking` if it matches. Capture streams ignore `playback_parking`.
     pub fn new(
         num_channels: usize,
         format: SampleFormat,
@@ -266,6 +451,7 @@ impl AudioStream {
         buffer_size: usize,
         direction: AndroidAudioStreamDirection,
         permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
+        playback_parking: Option<Arc<PlaybackParking>>,
     ) -> Result<Self, BoxError> {
         // Reject unsupported formats up front: capture streams only open AAudio in start().
         to_aaudio_format(format)?;
@@ -274,17 +460,33 @@ impl AudioStream {
 
         // Capture streams defer AAudio stream creation until start() is called,
         // preventing premature device initialization during guest boot.
-        let (stream_ptr, aaudio_buffer_size) = match direction {
-            AndroidAudioStreamDirection::Input => (std::ptr::null_mut(), 0),
-            AndroidAudioStreamDirection::Output => create_and_open_aaudio_stream(
-                num_channels,
-                format,
-                frame_rate,
-                buffer_size,
-                direction,
-            )?,
+        let (stream, aaudio_buffer_size) = match direction {
+            AndroidAudioStreamDirection::Input => (AAudioStreamPtr::default(), 0),
+            AndroidAudioStreamDirection::Output => {
+                let params = PlaybackParams {
+                    num_channels,
+                    format,
+                    frame_rate,
+                    buffer_size,
+                };
+                match playback_parking.as_ref().and_then(|p| p.take(params)) {
+                    Some(parked) => {
+                        debug!("Reusing parked AAudio playback stream ({params:?})");
+                        (parked.stream, parked.aaudio_buffer_size)
+                    }
+                    None => {
+                        let (stream_ptr, aaudio_buffer_size) = create_and_open_aaudio_stream(
+                            num_channels,
+                            format,
+                            frame_rate,
+                            buffer_size,
+                            direction,
+                        )?;
+                        (AAudioStreamPtr { stream_ptr }, aaudio_buffer_size)
+                    }
+                }
+            }
         };
-        let stream = AAudioStreamPtr { stream_ptr };
         let buffer_drop = AndroidAudioStreamCommit {
             stream,
             buffer_ptr: buffer.as_ptr(),
@@ -304,6 +506,7 @@ impl AudioStream {
             aaudio_buffer_size,
             permission_delegate,
             permission_pending: false,
+            playback_parking,
         })
     }
 
@@ -589,9 +792,37 @@ impl Drop for AAudioStreamPtr {
     }
 }
 
+impl Drop for AudioStream {
+    fn drop(&mut self) {
+        // Park a playback stream for reuse. Anything else is closed when `buffer_drop` is
+        // dropped; in particular capture streams, which must release the microphone.
+        let (AndroidAudioStreamDirection::Output, Some(parking)) =
+            (self.buffer_drop.direction, &self.playback_parking)
+        else {
+            return;
+        };
+        let stream = std::mem::take(&mut self.buffer_drop.stream);
+        if stream.stream_ptr.is_null() {
+            return;
+        }
+        parking.park(ParkedPlaybackStream {
+            stream,
+            aaudio_buffer_size: self.aaudio_buffer_size,
+            params: PlaybackParams {
+                num_channels: self.num_channels,
+                format: self.format,
+                frame_rate: self.frame_rate,
+                buffer_size: self.buffer.len() / self.frame_size,
+            },
+            parked_at: Instant::now(),
+        });
+    }
+}
+
 #[derive(Default, Clone)]
 struct AndroidAudioStreamSource {
     permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
+    playback_parking: Arc<PlaybackParking>,
 }
 
 impl StreamSource for AndroidAudioStreamSource {
@@ -623,6 +854,7 @@ impl StreamSource for AndroidAudioStreamSource {
             buffer_size,
             AndroidAudioStreamDirection::Output,
             None,
+            Some(self.playback_parking.clone()),
         )?;
         Ok((Box::new(NoopStreamControl::new()), Box::new(audio_stream)))
     }
@@ -658,6 +890,7 @@ impl StreamSource for AndroidAudioStreamSource {
             buffer_size,
             AndroidAudioStreamDirection::Input,
             self.permission_delegate.clone(),
+            None,
         )?;
         Ok((Box::new(NoopStreamControl::new()), Box::new(audio_stream)))
     }
@@ -666,6 +899,8 @@ impl StreamSource for AndroidAudioStreamSource {
 #[derive(Default, Clone)]
 pub struct AndroidAudioStreamSourceGenerator {
     permission_delegate: Option<Arc<dyn AudioPermissionDelegate>>,
+    /// Shared by every source this generator creates, and by its clones; see `PlaybackParking`.
+    playback_parking: Arc<PlaybackParking>,
 }
 
 impl AndroidAudioStreamSourceGenerator {
@@ -678,6 +913,7 @@ impl AndroidAudioStreamSourceGenerator {
     pub fn with_permission_delegate(delegate: Arc<dyn AudioPermissionDelegate>) -> Self {
         Self {
             permission_delegate: Some(delegate),
+            ..Default::default()
         }
     }
 }
@@ -688,6 +924,7 @@ impl StreamSourceGenerator for AndroidAudioStreamSourceGenerator {
     fn generate(&self) -> Result<Box<dyn StreamSource>, BoxError> {
         Ok(Box::new(AndroidAudioStreamSource {
             permission_delegate: self.permission_delegate.clone(),
+            playback_parking: self.playback_parking.clone(),
         }))
     }
 }
@@ -697,7 +934,6 @@ mod tests {
     use std::io::Read;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::sync::Mutex;
 
     use futures::FutureExt;
 
@@ -737,6 +973,7 @@ mod tests {
             480,
             AndroidAudioStreamDirection::Input,
             None,
+            None,
         )
         .expect("Failed to create capture stream");
 
@@ -752,6 +989,7 @@ mod tests {
             48000,
             480,
             AndroidAudioStreamDirection::Input,
+            None,
             None,
         )
         .expect("Failed to create capture stream");
@@ -770,6 +1008,7 @@ mod tests {
                 48000,
                 480,
                 AndroidAudioStreamDirection::Input,
+                None,
                 None,
             )
             .expect("Failed to create capture stream");
@@ -846,6 +1085,7 @@ mod tests {
             48000,
             480,
             AndroidAudioStreamDirection::Input,
+            None,
             None,
         )
         .expect("Failed to create capture stream")
@@ -991,7 +1231,7 @@ mod tests {
                 AndroidAudioStreamDirection::Output,
                 AndroidAudioStreamDirection::Input,
             ] {
-                assert!(AudioStream::new(2, format, 48000, 480, direction, None).is_err());
+                assert!(AudioStream::new(2, format, 48000, 480, direction, None, None).is_err());
             }
         }
     }
@@ -1020,6 +1260,143 @@ mod tests {
         assert!(stream.start().is_ok());
         assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
         assert!(stream.aaudio_buffer_size > 0);
+    }
+
+    fn new_playback_stream(parking: &Arc<PlaybackParking>, frame_rate: u32) -> AudioStream {
+        AudioStream::new(
+            2,
+            SampleFormat::S16LE,
+            frame_rate,
+            480,
+            AndroidAudioStreamDirection::Output,
+            None,
+            Some(parking.clone()),
+        )
+        .expect("Failed to create playback stream")
+    }
+
+    /// Parking whose streams don't time out during a test, even on a loaded machine.
+    fn test_parking() -> Arc<PlaybackParking> {
+        Arc::new(PlaybackParking {
+            timeout: Duration::from_secs(30),
+            ..Default::default()
+        })
+    }
+
+    /// Waits until the reaper has closed the parked stream and exited.
+    fn wait_until_reaped(parking: &PlaybackParking) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            {
+                let state = parking.lock();
+                if state.parked.is_none() && !state.reaper_running {
+                    return;
+                }
+            }
+            assert!(Instant::now() < deadline, "parked stream was not closed");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    /// Replaces the parked stream's handle with `marker`. The AAudio stub hands out the same
+    /// handle for every stream, so this is how tests tell whether a new stream reused the parked
+    /// one. The stub never dereferences handles.
+    #[cfg(feature = "libaaudio_stub")]
+    fn mark_parked_stream(parking: &PlaybackParking, marker: usize) -> *mut AAudioStream {
+        let marker = marker as *mut AAudioStream;
+        parking
+            .lock()
+            .parked
+            .as_mut()
+            .expect("No parked stream")
+            .stream
+            .stream_ptr = marker;
+        marker
+    }
+
+    #[test]
+    #[cfg(feature = "libaaudio_stub")]
+    fn test_playback_stream_parked_on_drop_and_reused() {
+        let parking = test_parking();
+        drop(new_playback_stream(&parking, 48000));
+        let marker = mark_parked_stream(&parking, 0x1234);
+
+        let stream = new_playback_stream(&parking, 48000);
+        assert_eq!(stream.buffer_drop.stream.stream_ptr, marker);
+        assert!(parking.lock().parked.is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "libaaudio_stub")]
+    fn test_playback_stream_with_other_params_does_not_reuse() {
+        let parking = test_parking();
+        drop(new_playback_stream(&parking, 48000));
+        let marker = mark_parked_stream(&parking, 0x1234);
+
+        let stream = new_playback_stream(&parking, 44100);
+        assert_ne!(stream.buffer_drop.stream.stream_ptr, marker);
+        assert!(parking.lock().parked.is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "libaaudio_stub")]
+    fn test_disconnected_playback_stream_not_reused() {
+        let parking = test_parking();
+        drop(new_playback_stream(&parking, 48000));
+        let marker = mark_parked_stream(&parking, libaaudio_stub::DISCONNECTED_STREAM);
+
+        let stream = new_playback_stream(&parking, 48000);
+        assert_ne!(stream.buffer_drop.stream.stream_ptr, marker);
+        assert!(parking.lock().parked.is_none());
+    }
+
+    #[test]
+    fn test_capture_stream_never_parked() {
+        let parking = test_parking();
+        let mut stream = AudioStream::new(
+            2,
+            SampleFormat::S16LE,
+            48000,
+            480,
+            AndroidAudioStreamDirection::Input,
+            None,
+            Some(parking.clone()),
+        )
+        .expect("Failed to create capture stream");
+
+        // Dropped while open: the stream is closed, not parked.
+        assert!(stream.start().is_ok());
+        assert!(!stream.buffer_drop.stream.stream_ptr.is_null());
+        drop(stream);
+        assert!(parking.lock().parked.is_none());
+    }
+
+    #[test]
+    fn test_parked_playback_stream_closed_after_timeout() {
+        let parking = Arc::new(PlaybackParking {
+            timeout: Duration::from_millis(10),
+            ..Default::default()
+        });
+        drop(new_playback_stream(&parking, 48000));
+        wait_until_reaped(&parking);
+    }
+
+    #[test]
+    fn test_source_generator_sources_share_parking() {
+        // StreamInfo::prepare() generates a new source for every PREPARE, so a playback stream
+        // from any source must be parked where the generator's next source looks for it.
+        let generator = AndroidAudioStreamSourceGenerator {
+            playback_parking: test_parking(),
+            ..Default::default()
+        };
+        let (_control, stream) = generator
+            .generate()
+            .expect("Failed to generate stream source")
+            .new_async_playback_stream(2, SampleFormat::S16LE, 48000, 480, &TestExecutor)
+            .expect("Failed to create new async playback stream");
+
+        drop(stream);
+        assert!(generator.playback_parking.lock().parked.is_some());
     }
 
     struct MockPermissionDelegate {
@@ -1072,6 +1449,7 @@ mod tests {
             480,
             AndroidAudioStreamDirection::Input,
             Some(delegate.clone()),
+            None,
         )
         .expect("Failed to create capture stream")
     }
