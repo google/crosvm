@@ -198,6 +198,7 @@ struct GuestMemoryMapping {
 
 impl GuestMemoryMapping {
     fn new(mem: &GuestMemory, sgs: &[SgEntry]) -> anyhow::Result<Self> {
+        anyhow::ensure!(!sgs.is_empty(), "SG list is empty");
         let page_size = base::pagesize() as u64;
         let page_mask = page_size - 1;
 
@@ -206,48 +207,65 @@ impl GuestMemoryMapping {
         // We can only map full pages and need to maintain a linear area. This means that the
         // following invariants must be withheld:
         //
+        // - `len` must be greater than 0.
+        // - `start + len` must not overflow `u64`.
         // - For all entries but the first, the start offset within the page must be 0.
         // - For all entries but the last, `start + len` must be a multiple of page size.
-        for sg in sgs.iter().skip(1) {
-            if sg.start & page_mask != 0 {
+        // - `[start, start + len)` must lie within a valid guest memory region.
+        for (i, sg) in sgs.iter().enumerate() {
+            anyhow::ensure!(sg.len > 0, "SG entry length is 0");
+            let end = sg
+                .start
+                .checked_add(u64::from(sg.len))
+                .context("SG entry end address overflow")?;
+            if i > 0 && (sg.start & page_mask != 0) {
                 anyhow::bail!("non-initial SG entry start offset is not 0");
             }
-        }
-        for sg in sgs.iter().take(sgs.len() - 1) {
-            if (sg.start + sg.len as u64) & page_mask != 0 {
+            if i + 1 < sgs.len() && (end & page_mask != 0) {
                 anyhow::bail!("non-terminal SG entry with start + len != page_size");
             }
+            anyhow::ensure!(
+                mem.is_valid_range(GuestAddress(sg.start), u64::from(sg.len)),
+                "SG entry out of guest memory bounds"
+            );
         }
 
         // Compute the arena size.
         let arena_size = sgs
             .iter()
-            .fold(0, |size, sg| size + (sg.start & page_mask) + sg.len as u64)
+            .try_fold(0u64, |size, sg| {
+                let entry_span = (sg.start & page_mask)
+                    .checked_add(u64::from(sg.len))
+                    .context("SG entry span overflow")?;
+                size.checked_add(entry_span)
+                    .context("SG arena size overflow")
+            })?
             // Align to page size if the last entry did not cover a full page.
-            .next_multiple_of(page_size);
-        let mut arena = MemoryMappingArena::new(arena_size as usize)?;
+            .checked_next_multiple_of(page_size)
+            .context("SG arena aligned size overflow")?;
+        let arena_size = usize::try_from(arena_size).context("SG arena size exceeds usize")?;
+        let mut arena = MemoryMappingArena::new(arena_size)?;
 
         // Map all SG entries.
-        let mut pos = 0;
+        let mut pos = 0usize;
         for region in sgs {
             // Address of the first page of the region.
             let region_first_page = region.start & !page_mask;
-            let len = region.start - region_first_page + region.len as u64;
-            // Make sure to map whole pages (only necessary for the last entry).
-            let len = len.next_multiple_of(page_size) as usize;
+            let len = (region.start & page_mask)
+                .checked_add(u64::from(region.len))
+                .and_then(|v| v.checked_next_multiple_of(page_size))
+                .and_then(|v| usize::try_from(v).ok())
+                .context("SG entry mapping length overflow")?;
             // TODO: find the offset from the region, this assumes a single
             // region starting at address 0.
             let fd = mem.offset_region(region_first_page)?;
             // Always map whole pages
             arena.add_fd_offset(pos, len, fd, region_first_page)?;
 
-            pos += len;
+            pos = pos.checked_add(len).context("SG mapping offset overflow")?;
         }
 
-        let start_offset = sgs
-            .first()
-            .map(|region| region.start & page_mask)
-            .unwrap_or(0) as usize;
+        let start_offset = (sgs[0].start & page_mask) as usize;
 
         Ok(GuestMemoryMapping {
             arena,
@@ -288,15 +306,21 @@ struct GuestMemoryShadowMapping {
 
 impl GuestMemoryShadowMapping {
     fn new(mem: &GuestMemory, sgs: Vec<SgEntry>) -> anyhow::Result<Self> {
-        let total_size = sgs.iter().fold(0, |total, sg| total + sg.len as usize);
+        let total_size = sgs.iter().try_fold(0usize, |total, sg| {
+            usize::try_from(sg.len)
+                .ok()
+                .and_then(|len| total.checked_add(len))
+                .context("SG shadow mapping total size overflow")
+        })?;
         let mut data = vec![0u8; total_size];
-        let mut pos = 0;
+        let mut pos = 0usize;
         for sg in &sgs {
-            mem.read_exact_at_addr(
-                &mut data[pos..pos + sg.len as usize],
-                GuestAddress(sg.start),
-            )?;
-            pos += sg.len as usize;
+            let len = usize::try_from(sg.len).context("SG entry length exceeds usize")?;
+            let end = pos
+                .checked_add(len)
+                .context("SG shadow mapping offset overflow")?;
+            mem.read_exact_at_addr(&mut data[pos..end], GuestAddress(sg.start))?;
+            pos = end;
         }
 
         Ok(Self {
@@ -377,7 +401,12 @@ impl VirtioMediaGuestMemoryMapper for GuestMemoryMapper {
         /// Anything below that is copied into a shadow buffer and synced back to the guest when
         /// the memory chunk is destroyed.
         const MAPPING_THRESHOLD: usize = 0x400;
-        let total_size = sgs.iter().fold(0, |total, sg| total + sg.len as usize);
+        let total_size = sgs.iter().try_fold(0usize, |total, sg| {
+            usize::try_from(sg.len)
+                .ok()
+                .and_then(|len| total.checked_add(len))
+                .context("SG list total size overflow")
+        })?;
 
         if total_size >= MAPPING_THRESHOLD {
             GuestMemoryMapping::new(&self.0, &sgs).map(GuestMemoryChunk::Mapping)
@@ -775,4 +804,130 @@ pub fn create_virtio_media_decoder_adapter_device(
         config,
         create_device,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_sg(start: u64, len: u32) -> SgEntry {
+        // SAFETY: `SgEntry` only contains primitive integer fields.
+        let mut sg: SgEntry = unsafe { std::mem::zeroed() };
+        sg.start = start;
+        sg.len = len;
+        sg
+    }
+
+    #[test]
+    fn shadow_mapping_reads_and_writes_back() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x4000)]).unwrap();
+        mem.write_all_at_addr(&[1, 2, 3, 4], GuestAddress(0x100))
+            .unwrap();
+        mem.write_all_at_addr(&[5, 6], GuestAddress(0x300)).unwrap();
+
+        let mapper = GuestMemoryMapper(mem.clone());
+        {
+            let mut mapping = mapper
+                .new_mapping(vec![make_sg(0x100, 4), make_sg(0x300, 2)])
+                .unwrap();
+            // SAFETY: `mapping` covers 6 bytes across the two SG entries.
+            let slice = unsafe { std::slice::from_raw_parts_mut(mapping.as_mut_ptr(), 6) };
+            assert_eq!(slice, &[1, 2, 3, 4, 5, 6]);
+            slice[4] = 9;
+        }
+
+        let mut read_back = [0u8; 2];
+        mem.read_exact_at_addr(&mut read_back, GuestAddress(0x300))
+            .unwrap();
+        assert_eq!(read_back, [9, 6]);
+    }
+
+    #[test]
+    fn direct_mapping_handles_unaligned_first_entry() {
+        let page_size = base::pagesize();
+        let mem = GuestMemory::new(&[(GuestAddress(0), (page_size * 4) as u64)]).unwrap();
+        let first_start = 0x100usize;
+        let first_len = page_size - first_start;
+        mem.write_all_at_addr(&[0xaa, 0xbb], GuestAddress(first_start as u64))
+            .unwrap();
+        mem.write_all_at_addr(&[0xcc, 0xdd], GuestAddress((page_size * 2) as u64))
+            .unwrap();
+
+        let mapper = GuestMemoryMapper(mem);
+        let mapping = mapper
+            .new_mapping(vec![
+                make_sg(first_start as u64, first_len as u32),
+                make_sg((page_size * 2) as u64, 0x200),
+            ])
+            .unwrap();
+        let total_len = first_len + 0x200;
+        // SAFETY: `mapping` covers `total_len` linear bytes across the mapped pages.
+        let slice = unsafe { std::slice::from_raw_parts(mapping.as_ptr(), total_len) };
+        assert_eq!(&slice[0..2], &[0xaa, 0xbb]);
+        assert_eq!(&slice[first_len..first_len + 2], &[0xcc, 0xdd]);
+    }
+
+    #[test]
+    fn mapping_rejects_non_terminal_end_overflow() {
+        let page_size = base::pagesize() as u64;
+        let mem = GuestMemory::new(&[(GuestAddress(0), page_size * 4)]).unwrap();
+        let mapper = GuestMemoryMapper(mem);
+
+        // `(u64::MAX - page_size + 1).wrapping_add(page_size * 2) == page_size`, which would
+        // appear page-aligned if arithmetic wrapped.
+        let err = mapper
+            .new_mapping(vec![
+                make_sg(u64::MAX - page_size + 1, (page_size * 2) as u32),
+                make_sg(page_size, page_size as u32),
+            ])
+            .err()
+            .expect("overflowing non-terminal SG entry must fail");
+        assert!(format!("{err:#}").contains("overflow"));
+    }
+
+    #[test]
+    fn mapping_rejects_terminal_end_overflow() {
+        let page_size = base::pagesize() as u64;
+        let mem = GuestMemory::new(&[(GuestAddress(0), page_size * 4)]).unwrap();
+        let mapper = GuestMemoryMapper(mem);
+
+        let err = mapper
+            .new_mapping(vec![make_sg(u64::MAX - 0x10, 0x1000)])
+            .err()
+            .expect("overflowing terminal SG entry must fail");
+        assert!(format!("{err:#}").contains("overflow"));
+    }
+
+    #[test]
+    fn direct_mapping_empty_sgs_does_not_panic() {
+        let page_size = base::pagesize() as u64;
+        let mem = GuestMemory::new(&[(GuestAddress(0), page_size)]).unwrap();
+        assert!(GuestMemoryMapping::new(&mem, &[]).is_err());
+    }
+
+    #[test]
+    fn direct_mapping_rejects_zero_len_entry() {
+        let page_size = base::pagesize() as u64;
+        let mem = GuestMemory::new(&[(GuestAddress(0), page_size * 4)]).unwrap();
+        let mapper = GuestMemoryMapper(mem);
+
+        let err = mapper
+            .new_mapping(vec![make_sg(0, 0), make_sg(page_size, page_size as u32)])
+            .err()
+            .expect("zero-length SG entry must fail");
+        assert!(format!("{err:#}").contains("length is 0"));
+    }
+
+    #[test]
+    fn direct_mapping_rejects_out_of_bounds_end() {
+        let page_size = base::pagesize() as u64;
+        let mem = GuestMemory::new(&[(GuestAddress(0), page_size * 4)]).unwrap();
+        let mapper = GuestMemoryMapper(mem);
+
+        let err = mapper
+            .new_mapping(vec![make_sg(page_size * 3, (page_size * 2) as u32)])
+            .err()
+            .expect("out-of-bounds SG entry must fail");
+        assert!(format!("{err:#}").contains("out of guest memory bounds"));
+    }
 }
