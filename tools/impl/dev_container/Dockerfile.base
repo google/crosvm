@@ -8,7 +8,7 @@
 # required Debian packages. This allows us to pin the version of debian packages used and update
 # other parts of the container without pulling in the latest testing packages.
 
-FROM docker.io/debian:testing-slim
+FROM docker.io/debian:trixie-slim
 
 # Add foreign architectures for cross-compilation.
 RUN dpkg --add-architecture arm64 \
@@ -23,6 +23,7 @@ COPY --chmod=555 \
     /tools/deps/
 RUN cd /tools/deps \
     && apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes sudo curl \
     && ./install-x86_64-debs \
     && ./install-aarch64-debs \

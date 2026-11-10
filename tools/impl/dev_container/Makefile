@@ -12,6 +12,7 @@ BUILD_CONTEXT=$(shell realpath ../../../)
 DOCKER ?= podman
 
 crosvm_dev:
+	$(DOCKER) pull docker.io/golang:latest
 	$(DOCKER) pull $(TAG_BASE)/crosvm_dev_base:$(BASE_VERSION)
 	$(DOCKER) build \
 		-t $(TAG_BASE)/$@:$(VERSION) \
@@ -26,6 +27,7 @@ upload_dev: crosvm_dev
 
 crosvm_dev_base:
 	$(DOCKER) build \
+		--pull \
 		-t $(TAG_BASE)/$@:$(BASE_VERSION) \
 		-f Dockerfile.base \
 		$(BUILD_CONTEXT)

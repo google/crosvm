@@ -8,9 +8,10 @@ The container is split into two, `crosvm_dev` defined by `tools/impl/dev_contain
 
 ## Base image `crosvm_dev_base`
 
-The `Dockerfile.base` image contains a plain debian image with only debian packages from
-`tools/deps/install-*-debs` installed. Since we track debian testing, new packages can come with new
-problems and that image should not be updated very often.
+The `Dockerfile.base` image contains a Debian `trixie-slim` image with only debian packages from
+`tools/deps/install-*-debs` installed. Since base image updates rebuild all toolchain/sysroot
+packages and affect every developer and CI runner, that image should only be updated when needed
+(for example, dependency changes or security fixes).
 
 To make changes to those debian packages, modify the install scripts and uprev the
 `tools/impl/dev_container/base_version` file. Then rebuild the container with:

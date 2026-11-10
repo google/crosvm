@@ -671,8 +671,8 @@ fn create_pmem_device(
                 Alloc::PmemDevice(index),
                 format!("pmem_disk_image_{index}"),
                 AllocOptions::new()
-                    // Allocate from the bottom up rather than top down to avoid exceeding PHYSMEM_END
-                    // with kaslr.
+                    // Allocate from the bottom up rather than top down to avoid exceeding
+                    // PHYSMEM_END with kaslr.
                     // TODO: b/375506171: Find a proper fix.
                     .top_down(false)
                     .prefetchable(true)
