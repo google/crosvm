@@ -23,10 +23,15 @@ use crate::pci::PciBarConfiguration;
 use crate::pci::PciCapability;
 
 /// Type of Virtio device memory mapping to use.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SharedMemoryPrepareType {
     /// On first attempted mapping, the entire SharedMemoryRegion is configured with declared
-    /// MemCacheType.
-    SingleMappingOnFirst(MemCacheType),
+    /// MemCacheType. If `force` is true, preparation is forced on 64-bit platforms even when
+    /// disabled by default (e.g. when KVM tdp_mmu is disabled on x86_64).
+    SingleMappingOnFirst {
+        cache_type: MemCacheType,
+        force: bool,
+    },
     /// No mapping preparation is performed. each mapping is handled individually
     DynamicPerMapping,
 }
@@ -202,7 +207,10 @@ pub trait VirtioDevice: Send {
     /// setup a hypervisor mapping with every request's caching type.
     fn get_shared_memory_prepare_type(&mut self) -> SharedMemoryPrepareType {
         // default to lazy-prepare of a single memslot with explicit caching type
-        SharedMemoryPrepareType::SingleMappingOnFirst(MemCacheType::CacheCoherent)
+        SharedMemoryPrepareType::SingleMappingOnFirst {
+            cache_type: MemCacheType::CacheCoherent,
+            force: false,
+        }
     }
 
     /// Pause all processing.

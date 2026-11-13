@@ -652,7 +652,11 @@ pub struct VmMemoryFileMapping {
 pub enum VmMemoryRequest {
     /// Prepare a shared memory region to make later operations more efficient. This
     /// may be a no-op depending on underlying platform support.
-    PrepareSharedMemoryRegion { alloc: Alloc, cache: MemCacheType },
+    PrepareSharedMemoryRegion {
+        alloc: Alloc,
+        cache: MemCacheType,
+        force: bool,
+    },
     /// Register a memory to be mapped to the guest.
     RegisterMemory {
         /// Source of the memory to register (mapped file descriptor, shared memory region, etc.)
@@ -821,7 +825,11 @@ impl VmMemoryRequest {
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match self {
-            PrepareSharedMemoryRegion { alloc, cache } => {
+            PrepareSharedMemoryRegion {
+                alloc,
+                cache,
+                force,
+            } => {
                 // Currently the iommu_client is only used by virtio-gpu when used alongside GPU
                 // pci-passthrough.
                 //
@@ -831,7 +839,7 @@ impl VmMemoryRequest {
                 // RegisterMemory case below).
                 assert!(iommu_client.is_none());
 
-                if !sys::should_prepare_memory_region() {
+                if !sys::should_prepare_memory_region(force) {
                     return VmMemoryResponse::Ok;
                 }
 
@@ -3181,5 +3189,16 @@ mod tests {
         );
         assert_eq!(AudioPermissionResponse::try_from(0u8), Err(0u8));
         assert_eq!(AudioPermissionResponse::try_from(3u8), Err(3u8));
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[test]
+    fn test_should_prepare_memory_region_force() {
+        if cfg!(target_pointer_width = "64") {
+            assert!(sys::should_prepare_memory_region(true));
+        } else {
+            assert!(!sys::should_prepare_memory_region(true));
+            assert!(!sys::should_prepare_memory_region(false));
+        }
     }
 }

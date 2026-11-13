@@ -117,7 +117,7 @@ pub fn recv_service_message(
     )
 }
 
-pub fn should_prepare_memory_region() -> bool {
+pub fn should_prepare_memory_region(_force: bool) -> bool {
     false
 }
 

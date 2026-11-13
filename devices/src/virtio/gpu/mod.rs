@@ -1921,7 +1921,10 @@ impl VirtioDevice for Gpu {
             } else {
                 MemCacheType::CacheCoherent
             };
-            SharedMemoryPrepareType::SingleMappingOnFirst(cache_type)
+            SharedMemoryPrepareType::SingleMappingOnFirst {
+                cache_type,
+                force: true,
+            }
         } else {
             SharedMemoryPrepareType::DynamicPerMapping
         }
@@ -2190,5 +2193,55 @@ impl ResourceBridges {
         self.should_process.clear();
         self.should_process
             .resize(self.resource_bridges.len(), false);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn create_test_gpu(fixed_blob_mapping: bool) -> Gpu {
+        let (exit_evt_wrtube, _exit_evt_rdtube) = Tube::directional_pair().unwrap();
+        let (gpu_control_tube, _gpu_control_client) = Tube::pair().unwrap();
+        let gpu_params = GpuParameters {
+            fixed_blob_mapping,
+            ..Default::default()
+        };
+        Gpu::new(
+            exit_evt_wrtube,
+            gpu_control_tube,
+            Vec::new(),
+            vec![DisplayBackend::Stub],
+            &gpu_params,
+            None,
+            Vec::new(),
+            0,
+            &BTreeMap::new(),
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            None,
+        )
+    }
+
+    #[test]
+    fn shared_memory_prepare_type_forces_when_fixed_blob_mapping_enabled() {
+        let mut gpu_dynamic = create_test_gpu(false);
+        assert_eq!(
+            gpu_dynamic.get_shared_memory_prepare_type(),
+            SharedMemoryPrepareType::DynamicPerMapping
+        );
+
+        let mut gpu_fixed = create_test_gpu(true);
+        let expected_cache_type = if cfg!(feature = "noncoherent-dma") {
+            MemCacheType::CacheNonCoherent
+        } else {
+            MemCacheType::CacheCoherent
+        };
+        assert_eq!(
+            gpu_fixed.get_shared_memory_prepare_type(),
+            SharedMemoryPrepareType::SingleMappingOnFirst {
+                cache_type: expected_cache_type,
+                force: true,
+            }
+        );
     }
 }

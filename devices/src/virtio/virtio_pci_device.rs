@@ -1489,26 +1489,30 @@ impl SharedMemoryMapper for VmRequester {
         cache: MemCacheType,
     ) -> anyhow::Result<()> {
         if !self.prepared {
-            if let SharedMemoryPrepareType::SingleMappingOnFirst(prepare_cache_type) =
-                self.prepare_type
+            if let SharedMemoryPrepareType::SingleMappingOnFirst {
+                cache_type: prepare_cache_type,
+                force,
+            } = self.prepare_type
             {
                 debug!(
-                    "lazy prepare_shared_memory_region with {:?}",
-                    prepare_cache_type
+                    "lazy prepare_shared_memory_region with {:?} (force={})",
+                    prepare_cache_type, force
                 );
                 self.vm_memory_client
-                    .prepare_shared_memory_region(self.alloc, prepare_cache_type)
+                    .prepare_shared_memory_region(self.alloc, prepare_cache_type, force)
                     .context("lazy prepare_shared_memory_region failed")?;
             }
             self.prepared = true;
         }
 
         // devices must implement VirtioDevice::get_shared_memory_prepare_type(), returning
-        // SharedMemoryPrepareType::SingleMappingOnFirst(MemCacheType::CacheNonCoherent) in order to
-        // add any mapping that requests MemCacheType::CacheNonCoherent.
+        // SharedMemoryPrepareType::SingleMappingOnFirst with MemCacheType::CacheNonCoherent in
+        // order to add any mapping that requests MemCacheType::CacheNonCoherent.
         if cache == MemCacheType::CacheNonCoherent {
-            if let SharedMemoryPrepareType::SingleMappingOnFirst(MemCacheType::CacheCoherent) =
-                self.prepare_type
+            if let SharedMemoryPrepareType::SingleMappingOnFirst {
+                cache_type: MemCacheType::CacheCoherent,
+                ..
+            } = self.prepare_type
             {
                 error!("invalid request to map with CacheNonCoherent for device with prepared CacheCoherent memory");
                 return Err(anyhow!("invalid MemCacheType"));
@@ -1546,6 +1550,13 @@ impl SharedMemoryMapper for VmRequester {
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+
+    use vm_control::VmMemoryRequest;
+    use vm_control::VmMemoryResponse;
+    use vm_memory::GuestAddress;
+
+    use super::*;
 
     #[cfg(feature = "pci-hotplug")]
     #[test]
@@ -1559,5 +1570,81 @@ mod tests {
         assert_eq!(simple_allocator.alloc(0x88, 0x80).unwrap(), 0x80);
         // 0x108 => start at 0x180. Interval end at 0x1b0.
         assert_eq!(simple_allocator.alloc(0x30, 0x80).unwrap(), 0x180);
+    }
+
+    #[test]
+    fn vm_requester_propagates_force_prepare_and_checks_cache_type() {
+        let (client_tube, server_tube) = Tube::pair().unwrap();
+        let alloc = Alloc::PciBar {
+            bus: 0,
+            dev: 1,
+            func: 0,
+            bar: 4,
+        };
+        let mut requester = VmRequester::new(
+            VmMemoryClient::new(client_tube),
+            alloc,
+            SharedMemoryPrepareType::SingleMappingOnFirst {
+                cache_type: MemCacheType::CacheCoherent,
+                force: true,
+            },
+        );
+
+        let server = thread::spawn(move || {
+            match server_tube.recv::<VmMemoryRequest>().unwrap() {
+                VmMemoryRequest::PrepareSharedMemoryRegion {
+                    alloc: req_alloc,
+                    cache,
+                    force,
+                } => {
+                    assert_eq!(req_alloc, alloc);
+                    assert_eq!(cache, MemCacheType::CacheCoherent);
+                    assert!(force);
+                }
+                other => panic!(
+                    "expected PrepareSharedMemoryRegion, got {:?}",
+                    std::mem::discriminant(&other)
+                ),
+            }
+            server_tube.send(&VmMemoryResponse::Ok).unwrap();
+
+            match server_tube.recv::<VmMemoryRequest>().unwrap() {
+                VmMemoryRequest::RegisterMemory { .. } => {}
+                other => panic!(
+                    "expected RegisterMemory, got {:?}",
+                    std::mem::discriminant(&other)
+                ),
+            }
+            server_tube
+                .send(&VmMemoryResponse::RegisterMemory {
+                    region_id: VmMemoryRegionId(GuestAddress(0x1000)),
+                    slot: 7,
+                })
+                .unwrap();
+        });
+
+        let shm = SharedMemory::new("test_blob", 4096).unwrap();
+        requester
+            .add_mapping(
+                VmMemorySource::SharedMemory(shm),
+                0,
+                Protection::read_write(),
+                MemCacheType::CacheCoherent,
+            )
+            .unwrap();
+
+        server.join().unwrap();
+
+        // Subsequent CacheNonCoherent mapping on a CacheCoherent-prepared region must still fail
+        // even when force=true.
+        let shm_nc = SharedMemory::new("test_blob_nc", 4096).unwrap();
+        assert!(requester
+            .add_mapping(
+                VmMemorySource::SharedMemory(shm_nc),
+                4096,
+                Protection::read_write(),
+                MemCacheType::CacheNonCoherent,
+            )
+            .is_err());
     }
 }

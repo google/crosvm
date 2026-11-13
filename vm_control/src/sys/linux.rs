@@ -239,8 +239,12 @@ static SHOULD_PREPARE_MEMORY_REGION: LazyLock<bool> = LazyLock::new(|| {
     }
 });
 
-pub fn should_prepare_memory_region() -> bool {
-    *SHOULD_PREPARE_MEMORY_REGION
+pub fn should_prepare_memory_region(force: bool) -> bool {
+    if cfg!(target_pointer_width = "64") && force {
+        true
+    } else {
+        *SHOULD_PREPARE_MEMORY_REGION
+    }
 }
 
 impl FsMappingRequest {
