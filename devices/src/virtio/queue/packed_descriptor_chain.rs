@@ -199,7 +199,8 @@ impl DescriptorChainIter for PackedDescriptorChain<'_> {
         trace!("{index:5}: addr={address:#016x} len={len:#08x} flags={flags:#x}");
 
         if !desc.is_available(self.avail_wrap_counter as u16) {
-            return Ok(None);
+            // Missing a descriptor mid-chain means it is malformed.
+            bail!("descriptor {index} in the chain is not available");
         }
 
         if len == 0 {
