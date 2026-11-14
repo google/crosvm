@@ -1295,6 +1295,33 @@ mod tests {
 
     use super::*;
 
+    /// Returns the state of a `disk_size` byte disk backed by a temporary file.
+    fn test_disk(ex: &Executor, disk_size: u64) -> DiskState {
+        let f = tempfile().unwrap();
+        f.set_len(disk_size).unwrap();
+        test_disk_from_file(ex, f)
+    }
+
+    /// Returns the state of a disk backed by `f`.
+    fn test_disk_from_file(ex: &Executor, f: File) -> DiskState {
+        let disk_size = f.metadata().unwrap().len();
+        DiskState {
+            disk_image: Box::new(SingleFileDisk::new(f, ex).expect("Failed to create SFD")),
+            read_only: false,
+            sparse: true,
+            id: Default::default(),
+            dontcache_read: false,
+            dontcache_write: false,
+            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
+                disk_size: Arc::new(AtomicU64::new(disk_size)),
+            })),
+        }
+    }
+
+    fn test_timer(ex: &Executor) -> TimerAsync<Timer> {
+        TimerAsync::new(Timer::new().unwrap(), ex).expect("Failed to create an async timer")
+    }
+
     #[test]
     fn read_size() {
         let f = tempfile().unwrap();
@@ -1437,11 +1464,6 @@ mod tests {
     fn read_last_sector() {
         let ex = Executor::new().expect("creating an executor failed");
 
-        let f = tempfile().unwrap();
-        let disk_size = 0x1000;
-        f.set_len(disk_size).unwrap();
-        let af = SingleFileDisk::new(f, &ex).expect("Failed to create SFD");
-
         let mem = Rc::new(
             GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
                 .expect("Creating guest memory failed."),
@@ -1471,23 +1493,9 @@ mod tests {
         )
         .expect("create_descriptor_chain failed");
 
-        let timer = Timer::new().expect("Failed to create a timer");
-        let flush_timer = Rc::new(RefCell::new(
-            TimerAsync::new(timer, &ex).expect("Failed to create an async timer"),
-        ));
+        let flush_timer = Rc::new(RefCell::new(test_timer(&ex)));
         let flush_timer_armed = Rc::new(RefCell::new(false));
-
-        let disk_state = Rc::new(AsyncRwLock::new(DiskState {
-            disk_image: Box::new(af),
-            read_only: false,
-            sparse: true,
-            id: Default::default(),
-            dontcache_read: false,
-            dontcache_write: false,
-            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
-                disk_size: Arc::new(AtomicU64::new(disk_size)),
-            })),
-        }));
+        let disk_state = Rc::new(AsyncRwLock::new(test_disk(&ex, 0x1000)));
 
         let fut = process_one_request(
             &mut avail_desc,
@@ -1507,9 +1515,6 @@ mod tests {
 
     #[test]
     fn read_beyond_last_sector() {
-        let f = tempfile().unwrap();
-        let disk_size = 0x1000;
-        f.set_len(disk_size).unwrap();
         let mem = Rc::new(
             GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
                 .expect("Creating guest memory failed."),
@@ -1541,23 +1546,9 @@ mod tests {
 
         let ex = Executor::new().expect("creating an executor failed");
 
-        let af = SingleFileDisk::new(f, &ex).expect("Failed to create SFD");
-        let timer = Timer::new().expect("Failed to create a timer");
-        let flush_timer = Rc::new(RefCell::new(
-            TimerAsync::new(timer, &ex).expect("Failed to create an async timer"),
-        ));
+        let flush_timer = Rc::new(RefCell::new(test_timer(&ex)));
         let flush_timer_armed = Rc::new(RefCell::new(false));
-        let disk_state = Rc::new(AsyncRwLock::new(DiskState {
-            disk_image: Box::new(af),
-            read_only: false,
-            sparse: true,
-            id: Default::default(),
-            dontcache_read: false,
-            dontcache_write: false,
-            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
-                disk_size: Arc::new(AtomicU64::new(disk_size)),
-            })),
-        }));
+        let disk_state = Rc::new(AsyncRwLock::new(test_disk(&ex, 0x1000)));
 
         let fut = process_one_request(
             &mut avail_desc,
@@ -1578,10 +1569,6 @@ mod tests {
     #[test]
     fn get_id() {
         let ex = Executor::new().expect("creating an executor failed");
-
-        let f = tempfile().unwrap();
-        let disk_size = 0x1000;
-        f.set_len(disk_size).unwrap();
 
         let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
             .expect("Creating guest memory failed.");
@@ -1610,25 +1597,14 @@ mod tests {
         )
         .expect("create_descriptor_chain failed");
 
-        let af = SingleFileDisk::new(f, &ex).expect("Failed to create SFD");
-        let timer = Timer::new().expect("Failed to create a timer");
-        let flush_timer = Rc::new(RefCell::new(
-            TimerAsync::new(timer, &ex).expect("Failed to create an async timer"),
-        ));
+        let flush_timer = Rc::new(RefCell::new(test_timer(&ex)));
         let flush_timer_armed = Rc::new(RefCell::new(false));
 
         let id = b"a20-byteserialnumber";
 
         let disk_state = Rc::new(AsyncRwLock::new(DiskState {
-            disk_image: Box::new(af),
-            read_only: false,
-            sparse: true,
             id: *id,
-            dontcache_read: false,
-            dontcache_write: false,
-            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
-                disk_size: Arc::new(AtomicU64::new(disk_size)),
-            })),
+            ..test_disk(&ex, 0x1000)
         }));
 
         let fut = process_one_request(
