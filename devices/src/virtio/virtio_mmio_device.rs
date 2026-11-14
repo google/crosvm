@@ -143,7 +143,7 @@ impl VirtioMmioDevice {
         self.interrupt = Some(interrupt.clone());
 
         // Use ready queues and their events.
-        let queues = self
+        let queues = match self
             .queues
             .iter_mut()
             .zip(self.queue_evts.iter())
@@ -158,11 +158,21 @@ impl VirtioMmioDevice {
                         .context("failed to activate queue")?,
                 ))
             })
-            .collect::<anyhow::Result<BTreeMap<usize, Queue>>>()?;
+            .collect::<anyhow::Result<BTreeMap<usize, Queue>>>()
+        {
+            Ok(queues) => queues,
+            Err(e) => {
+                error!("{} failed to activate queues: {:#}", self.debug_label(), e);
+                self.driver_status |= VIRTIO_CONFIG_S_NEEDS_RESET as u8;
+                interrupt.signal_config_changed();
+                return Ok(());
+            }
+        };
 
-        if let Err(e) = self.device.activate(mem, interrupt, queues) {
+        if let Err(e) = self.device.activate(mem, interrupt.clone(), queues) {
             error!("{} activate failed: {:#}", self.debug_label(), e);
             self.driver_status |= VIRTIO_CONFIG_S_NEEDS_RESET as u8;
+            interrupt.signal_config_changed();
         } else {
             self.device_activated = true;
         }
@@ -465,6 +475,7 @@ impl Suspendable for VirtioMmioDevice {}
 #[cfg(test)]
 mod tests {
     use base::RawDescriptor;
+    use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
     use vm_memory::GuestAddress;
 
     use super::*;
@@ -481,6 +492,10 @@ mod tests {
 
         fn device_type(&self) -> DeviceType {
             DeviceType::Block
+        }
+
+        fn features(&self) -> u64 {
+            1 << VIRTIO_F_RING_PACKED
         }
 
         fn queue_max_sizes(&self) -> &[u16] {
@@ -541,6 +556,53 @@ mod tests {
 
         // The driver can configure the queue again and activate the device.
         configure_queue(&mut device);
+        device.write_mmio(status, &ready.to_le_bytes());
+        assert!(device.device_activated);
+        assert_eq!(device.driver_status, ready as u8);
+    }
+
+    #[test]
+    fn reset_after_queue_activation_failure() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut device = VirtioMmioDevice::new(
+            mem,
+            Box::new(TestDevice {
+                fail_activate: false,
+            }),
+            false,
+        )
+        .unwrap();
+        device.interrupt_evt = Some(IrqEdgeEvent::new().unwrap());
+        let status = BusAccessInfo {
+            offset: VIRTIO_MMIO_STATUS as u64,
+            address: 0,
+            id: 0,
+        };
+        let ready = VIRTIO_CONFIG_S_ACKNOWLEDGE
+            | VIRTIO_CONFIG_S_DRIVER
+            | VIRTIO_CONFIG_S_FEATURES_OK
+            | VIRTIO_CONFIG_S_DRIVER_OK;
+        let configure_queue = |device: &mut VirtioMmioDevice, desc_table| {
+            device.queues[0].ack_features(1 << VIRTIO_F_RING_PACKED);
+            device.queues[0].set_desc_table(GuestAddress(desc_table));
+            device.queues[0].set_avail_ring(GuestAddress(0x200));
+            device.queues[0].set_used_ring(GuestAddress(0x400));
+            device.queues[0].set_ready(true);
+        };
+
+        // The driver enables a packed queue with a descriptor table outside RAM.
+        configure_queue(&mut device, 0x1000);
+        device.write_mmio(status, &ready.to_le_bytes());
+        assert!(!device.device_activated);
+        assert_ne!(device.driver_status & VIRTIO_CONFIG_S_NEEDS_RESET as u8, 0);
+
+        // Reset must clear the queue even though the device never activated.
+        device.write_mmio(status, &0u32.to_le_bytes());
+        assert!(!device.queues[0].ready());
+        assert!(device.interrupt.is_none());
+
+        // The driver can configure valid rings and activate the device again.
+        configure_queue(&mut device, 0);
         device.write_mmio(status, &ready.to_le_bytes());
         assert!(device.device_activated);
         assert_eq!(device.driver_status, ready as u8);

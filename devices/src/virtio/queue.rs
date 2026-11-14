@@ -39,7 +39,6 @@ use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 
-#[allow(dead_code)] // Used by the following queue validation changes.
 fn validate_queue_area(
     mem: &GuestMemory,
     addr: GuestAddress,
