@@ -247,6 +247,7 @@ impl VirtioMmioDevice {
 
         // This unwrap cannot fail since data.len() is checked.
         let val = u32::from_le_bytes(data.try_into().unwrap());
+        let was_reset_requested = self.is_reset_requested();
 
         macro_rules! hi {
             ($q:expr, $get:ident, $set:ident, $x:expr) => {
@@ -337,9 +338,15 @@ impl VirtioMmioDevice {
             }
         }
 
-        // Device has been reset by the driver
-        if self.device_activated && self.is_reset_requested() {
-            if let Err(e) = self.device.reset() {
+        // Device has been reset by the driver. Only reset on the transition to 0 or to retry a
+        // failed device reset.
+        if self.is_reset_requested() && (!was_reset_requested || self.device_activated) {
+            let result = if self.device_activated {
+                self.device.reset()
+            } else {
+                Ok(())
+            };
+            if let Err(e) = result {
                 error!("failed to reset {} device: {:#}", self.debug_label(), e);
             } else {
                 self.device_activated = false;
@@ -454,3 +461,110 @@ impl BusDevice for VirtioMmioDevice {
 
 // TODO: Mimic the Suspendable impl in ViritoPciDevice when/if someone wants it.
 impl Suspendable for VirtioMmioDevice {}
+
+#[cfg(test)]
+mod tests {
+    use base::RawDescriptor;
+    use vm_memory::GuestAddress;
+
+    use super::*;
+
+    /// A device with one queue. If `fail_activate` is set, the next activation fails.
+    struct TestDevice {
+        fail_activate: bool,
+    }
+
+    impl VirtioDevice for TestDevice {
+        fn keep_rds(&self) -> Vec<RawDescriptor> {
+            Vec::new()
+        }
+
+        fn device_type(&self) -> DeviceType {
+            DeviceType::Block
+        }
+
+        fn queue_max_sizes(&self) -> &[u16] {
+            &[16]
+        }
+
+        fn activate(
+            &mut self,
+            _mem: GuestMemory,
+            _interrupt: Interrupt,
+            _queues: BTreeMap<usize, Queue>,
+        ) -> anyhow::Result<()> {
+            if std::mem::take(&mut self.fail_activate) {
+                anyhow::bail!("test activation failure");
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn reset_after_device_activation_failure() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut device = VirtioMmioDevice::new(
+            mem,
+            Box::new(TestDevice {
+                fail_activate: true,
+            }),
+            false,
+        )
+        .unwrap();
+        device.interrupt_evt = Some(IrqEdgeEvent::new().unwrap());
+        let status = BusAccessInfo {
+            offset: VIRTIO_MMIO_STATUS as u64,
+            address: 0,
+            id: 0,
+        };
+        let ready = VIRTIO_CONFIG_S_ACKNOWLEDGE
+            | VIRTIO_CONFIG_S_DRIVER
+            | VIRTIO_CONFIG_S_FEATURES_OK
+            | VIRTIO_CONFIG_S_DRIVER_OK;
+        let configure_queue = |device: &mut VirtioMmioDevice| {
+            device.queues[0].set_desc_table(GuestAddress(0));
+            device.queues[0].set_avail_ring(GuestAddress(0x200));
+            device.queues[0].set_used_ring(GuestAddress(0x400));
+            device.queues[0].set_ready(true);
+        };
+
+        // The queue activates but the device fails to.
+        configure_queue(&mut device);
+        device.write_mmio(status, &ready.to_le_bytes());
+        assert!(!device.device_activated);
+        assert_ne!(device.driver_status & VIRTIO_CONFIG_S_NEEDS_RESET as u8, 0);
+
+        // Reset must clear the queue even though the device never activated.
+        device.write_mmio(status, &0u32.to_le_bytes());
+        assert!(!device.queues[0].ready());
+        assert!(device.interrupt.is_none());
+
+        // The driver can configure the queue again and activate the device.
+        configure_queue(&mut device);
+        device.write_mmio(status, &ready.to_le_bytes());
+        assert!(device.device_activated);
+        assert_eq!(device.driver_status, ready as u8);
+    }
+
+    #[test]
+    fn writes_while_reset_do_not_reset_queues() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut device = VirtioMmioDevice::new(
+            mem,
+            Box::new(TestDevice {
+                fail_activate: false,
+            }),
+            false,
+        )
+        .unwrap();
+        let desc_low = BusAccessInfo {
+            offset: VIRTIO_MMIO_QUEUE_DESC_LOW as u64,
+            address: 0,
+            id: 0,
+        };
+
+        // The status is already 0, so this is not a reset request.
+        device.write_mmio(desc_low, &0x200u32.to_le_bytes());
+        assert_eq!(device.queues[0].desc_table(), GuestAddress(0x200));
+    }
+}

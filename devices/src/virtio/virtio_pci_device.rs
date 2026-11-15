@@ -538,7 +538,9 @@ impl VirtioPciDevice {
             | VIRTIO_CONFIG_S_DRIVER_OK
             | VIRTIO_CONFIG_S_FEATURES_OK) as u8;
         (self.common_config.driver_status & ready_bits) == ready_bits
-            && self.common_config.driver_status & VIRTIO_CONFIG_S_FAILED as u8 == 0
+            && self.common_config.driver_status
+                & (VIRTIO_CONFIG_S_FAILED | VIRTIO_CONFIG_S_NEEDS_RESET) as u8
+                == 0
     }
 
     fn is_device_suspended(&self) -> bool {
@@ -918,6 +920,7 @@ impl PciDevice for VirtioPciDevice {
 
     fn write_bar(&mut self, bar_index: usize, offset: u64, data: &[u8]) {
         let was_suspended = self.is_device_suspended();
+        let was_reset_requested = self.is_reset_requested();
 
         if bar_index == self.settings_bar {
             match offset {
@@ -985,9 +988,15 @@ impl PciDevice for VirtioPciDevice {
             }
         }
 
-        // Device has been reset by the driver
-        if self.device_activated && self.is_reset_requested() {
-            if let Err(e) = self.device.reset() {
+        // Device has been reset by the driver. Only reset on the transition to 0 or to retry a
+        // failed device reset.
+        if self.is_reset_requested() && (!was_reset_requested || self.device_activated) {
+            let result = if self.device_activated {
+                self.device.reset()
+            } else {
+                Ok(())
+            };
+            if let Err(e) = result {
                 error!("failed to reset {} device: {:#}", self.debug_label(), e);
             } else {
                 self.device_activated = false;
@@ -1561,6 +1570,139 @@ mod tests {
     use vm_memory::GuestAddress;
 
     use super::*;
+
+    /// A device with one queue. If `fail_activate` is set, the next activation fails.
+    struct TestDevice {
+        fail_activate: bool,
+    }
+
+    impl VirtioDevice for TestDevice {
+        fn keep_rds(&self) -> Vec<RawDescriptor> {
+            Vec::new()
+        }
+
+        fn device_type(&self) -> DeviceType {
+            DeviceType::Block
+        }
+
+        fn queue_max_sizes(&self) -> &[u16] {
+            &[16]
+        }
+
+        fn activate(
+            &mut self,
+            _mem: GuestMemory,
+            _interrupt: Interrupt,
+            _queues: BTreeMap<usize, Queue>,
+        ) -> anyhow::Result<()> {
+            if std::mem::take(&mut self.fail_activate) {
+                return Err(anyhow!("test activation failure"));
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn needs_reset_prevents_activation() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let mut device = VirtioPciDevice::new(
+            mem,
+            Box::new(TestDevice {
+                fail_activate: false,
+            }),
+            Tube::pair().unwrap().0,
+            false,
+            None,
+            VmMemoryClient::new(Tube::pair().unwrap().0),
+            Tube::pair().unwrap().0,
+        )
+        .unwrap();
+        device.common_config.driver_status = (VIRTIO_CONFIG_S_ACKNOWLEDGE
+            | VIRTIO_CONFIG_S_DRIVER
+            | VIRTIO_CONFIG_S_DRIVER_OK
+            | VIRTIO_CONFIG_S_FEATURES_OK) as u8;
+        assert!(device.is_driver_ready());
+
+        // Queue activation failed; later BAR writes must not retry it.
+        device.common_config.driver_status |= VIRTIO_CONFIG_S_NEEDS_RESET as u8;
+        assert!(!device.is_driver_ready());
+    }
+
+    #[test]
+    fn reset_after_device_activation_failure() {
+        // Common configuration register offsets.
+        const STATUS: u64 = COMMON_CONFIG_BAR_OFFSET + 0x14;
+        const QUEUE_ENABLE: u64 = COMMON_CONFIG_BAR_OFFSET + 0x1c;
+        const QUEUE_DESC: u64 = COMMON_CONFIG_BAR_OFFSET + 0x20;
+        const QUEUE_AVAIL: u64 = COMMON_CONFIG_BAR_OFFSET + 0x28;
+        const QUEUE_USED: u64 = COMMON_CONFIG_BAR_OFFSET + 0x30;
+
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
+        let (ioevent_tube, ioevent_server) = Tube::pair().unwrap();
+        // Acknowledge ioevent requests and record whether each registered or unregistered.
+        let ioevent_server = thread::spawn(move || {
+            let mut registrations = Vec::new();
+            while let Ok(request) = ioevent_server.recv::<VmMemoryRequest>() {
+                match request {
+                    VmMemoryRequest::IoEventRaw(request) => registrations.push(request.register),
+                    _ => panic!("unexpected VmMemoryRequest"),
+                }
+                ioevent_server.send(&VmMemoryResponse::Ok).unwrap();
+            }
+            registrations
+        });
+        let mut device = VirtioPciDevice::new(
+            mem,
+            Box::new(TestDevice {
+                fail_activate: true,
+            }),
+            Tube::pair().unwrap().0,
+            false,
+            None,
+            VmMemoryClient::new(ioevent_tube),
+            Tube::pair().unwrap().0,
+        )
+        .unwrap();
+        device.assign_irq(IrqLevelEvent::new().unwrap(), PciInterruptPin::IntA, 0);
+        let bar = device.settings_bar;
+        let features_ok = (VIRTIO_CONFIG_S_ACKNOWLEDGE
+            | VIRTIO_CONFIG_S_DRIVER
+            | VIRTIO_CONFIG_S_FEATURES_OK) as u8;
+        let ready = features_ok | VIRTIO_CONFIG_S_DRIVER_OK as u8;
+        let configure_queue = |device: &mut VirtioPciDevice| {
+            device.write_bar(bar, STATUS, &[features_ok]);
+            device.write_bar(bar, QUEUE_DESC, &0u64.to_le_bytes());
+            device.write_bar(bar, QUEUE_AVAIL, &0x200u64.to_le_bytes());
+            device.write_bar(bar, QUEUE_USED, &0x400u64.to_le_bytes());
+            device.write_bar(bar, QUEUE_ENABLE, &1u16.to_le_bytes());
+        };
+
+        // The queue activates but the device fails to.
+        configure_queue(&mut device);
+        device.write_bar(bar, STATUS, &[ready]);
+        assert!(!device.device_activated);
+        assert_ne!(
+            device.common_config.driver_status & VIRTIO_CONFIG_S_NEEDS_RESET as u8,
+            0
+        );
+        assert!(device.interrupt.is_some());
+
+        // Reset must clean up the queue and its ioevent even though the device
+        // never activated.
+        device.write_bar(bar, STATUS, &[0]);
+        assert!(!device.queues[0].ready());
+        assert!(!device.queue_evts[0].ioevent_registered);
+        assert!(device.interrupt_resample_worker.is_none());
+
+        // The driver can configure the queue again and activate the device.
+        configure_queue(&mut device);
+        device.write_bar(bar, STATUS, &[ready]);
+        assert!(device.device_activated);
+        assert_eq!(device.common_config.driver_status, ready);
+
+        drop(device);
+        assert_eq!(ioevent_server.join().unwrap(), [true, false, true]);
+    }
 
     #[cfg(feature = "pci-hotplug")]
     #[test]
