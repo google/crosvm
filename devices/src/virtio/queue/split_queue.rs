@@ -24,6 +24,7 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
+use crate::virtio::queue::validate_queue_area;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
 use crate::virtio::QueueConfig;
@@ -103,23 +104,17 @@ impl SplitQueue {
         let avail_ring = config.avail_ring();
         let used_ring = config.used_ring();
 
-        // Validate addresses and queue size to ensure that address calculation won't overflow.
+        // Validate addresses and queue size don't overflow and are within guest memory.
         let ring_sizes = Self::ring_sizes(size, desc_table, avail_ring, used_ring);
         let rings = ring_sizes
             .iter()
             .zip(vec!["descriptor table", "available ring", "used ring"]);
 
         for ((addr, size), name) in rings {
-            if addr.checked_add(*size as u64).is_none() {
-                bail!(
-                    "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                    name,
-                    addr.offset(),
-                    size,
-                );
-            }
+            validate_queue_area(mem, *addr, *size, 1, name)?;
         }
 
+        // GuestMemory keeps these mappings alive for the lifetime of the queue.
         Ok(SplitQueue {
             mem: mem.clone(),
             event,
@@ -729,6 +724,45 @@ mod tests {
     fn fake_desc_chain(mem: &GuestMemory) -> DescriptorChain {
         create_descriptor_chain(mem, GuestAddress(0), GuestAddress(0), Vec::new(), 0)
             .expect("failed to create descriptor chain")
+    }
+
+    #[test]
+    fn rejects_rings_outside_guest_memory() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        let rings = [
+            (
+                QueueConfig::set_desc_table as fn(&mut QueueConfig, GuestAddress),
+                "descriptor table",
+                16,
+            ),
+            (
+                QueueConfig::set_avail_ring,
+                "available ring",
+                4 + 2 * QUEUE_SIZE,
+            ),
+            (QueueConfig::set_used_ring, "used ring", 4 + 8 * QUEUE_SIZE),
+        ];
+        for (set_addr, name, partial_size) in rings {
+            // Cover fully unmapped rings and ones whose end is outside RAM. For
+            // the available and used rings, only the event index is outside RAM.
+            for addr in [GUEST_MEMORY_SIZE, GUEST_MEMORY_SIZE - partial_size as u64] {
+                let mut config = QueueConfig::new(QUEUE_SIZE as u16, 0);
+                config.set_desc_table(GuestAddress(DESC_OFFSET));
+                config.set_avail_ring(GuestAddress(AVAIL_OFFSET));
+                config.set_used_ring(GuestAddress(USED_OFFSET));
+                set_addr(&mut config, GuestAddress(addr));
+                config.set_ready(true);
+
+                let err = config
+                    .activate(&mem, Event::new().unwrap(), Interrupt::new_for_test())
+                    .unwrap_err();
+                let msg = format!("{err:#}");
+                assert!(
+                    msg.contains(&format!("{name} is not in guest memory")),
+                    "{msg}"
+                );
+            }
+        }
     }
 
     #[test]
