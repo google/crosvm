@@ -106,12 +106,14 @@ impl SplitQueue {
 
         // Validate addresses and queue size don't overflow and are within guest memory.
         let ring_sizes = Self::ring_sizes(size, desc_table, avail_ring, used_ring);
-        let rings = ring_sizes
-            .iter()
-            .zip(vec!["descriptor table", "available ring", "used ring"]);
+        let rings = ring_sizes.iter().zip([
+            ("descriptor table", 16),
+            ("available ring", 2),
+            ("used ring", 4),
+        ]);
 
-        for ((addr, size), name) in rings {
-            validate_queue_area(mem, *addr, *size, 1, name)?;
+        for ((addr, size), (name, alignment)) in rings {
+            validate_queue_area(mem, *addr, *size, alignment, name)?;
         }
 
         // GuestMemory keeps these mappings alive for the lifetime of the queue.
@@ -724,6 +726,38 @@ mod tests {
     fn fake_desc_chain(mem: &GuestMemory) -> DescriptorChain {
         create_descriptor_chain(mem, GuestAddress(0), GuestAddress(0), Vec::new(), 0)
             .expect("failed to create descriptor chain")
+    }
+
+    #[test]
+    fn rejects_unaligned_rings() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        let rings = [
+            (
+                QueueConfig::set_desc_table as fn(&mut QueueConfig, GuestAddress),
+                "descriptor table",
+                DESC_OFFSET + 8,
+            ),
+            (
+                QueueConfig::set_avail_ring,
+                "available ring",
+                AVAIL_OFFSET + 1,
+            ),
+            (QueueConfig::set_used_ring, "used ring", USED_OFFSET + 2),
+        ];
+        for (set_addr, name, addr) in rings {
+            let mut config = QueueConfig::new(QUEUE_SIZE as u16, 0);
+            config.set_desc_table(GuestAddress(DESC_OFFSET));
+            config.set_avail_ring(GuestAddress(AVAIL_OFFSET));
+            config.set_used_ring(GuestAddress(USED_OFFSET));
+            set_addr(&mut config, GuestAddress(addr));
+            config.set_ready(true);
+
+            let err = config
+                .activate(&mem, Event::new().unwrap(), Interrupt::new_for_test())
+                .unwrap_err();
+            let msg = format!("{err:#}");
+            assert!(msg.contains(&format!("{name} is not aligned")), "{msg}");
+        }
     }
 
     #[test]
