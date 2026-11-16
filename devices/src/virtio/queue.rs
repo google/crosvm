@@ -39,6 +39,33 @@ use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 
+#[allow(dead_code)] // Used by the following queue validation changes.
+fn validate_queue_area(
+    mem: &GuestMemory,
+    addr: GuestAddress,
+    size: usize,
+    alignment: u64,
+    name: &str,
+) -> Result<()> {
+    if addr.offset() % alignment != 0 {
+        bail!(
+            "virtio queue {} is not aligned to {} bytes: start:0x{:08x}",
+            name,
+            alignment,
+            addr.offset(),
+        );
+    }
+    if !mem.is_valid_range(addr, size as u64) {
+        bail!(
+            "virtio queue {} is not in guest memory: start:0x{:08x} size:0x{:08x}",
+            name,
+            addr.offset(),
+            size,
+        );
+    }
+    Ok(())
+}
+
 /// A virtio queue's parameters.
 ///
 /// `QueueConfig` can be converted into a running `Queue` by calling [`QueueConfig::activate()`].
