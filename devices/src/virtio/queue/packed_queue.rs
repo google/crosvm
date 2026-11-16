@@ -145,15 +145,14 @@ impl PackedQueue {
         let device_area = config.used_ring();
 
         // Validate addresses and queue size don't overflow and are within guest memory.
-        let ring_sizes = Self::area_sizes(size, desc_table, driver_area, device_area);
-        let rings = ring_sizes.iter().zip(vec![
-            "descriptor table",
-            "driver_event_suppression",
-            "device_event_suppression",
-        ]);
+        let rings = [
+            (desc_table, 16 * size as usize, 16, "descriptor table"),
+            (driver_area, 4, 4, "driver_event_suppression"),
+            (device_area, 4, 4, "device_event_suppression"),
+        ];
 
-        for ((addr, size), name) in rings {
-            validate_queue_area(mem, *addr, *size, 1, name)?;
+        for (addr, len, alignment, name) in rings {
+            validate_queue_area(mem, addr, len, alignment, name)?;
         }
 
         Ok(PackedQueue {
@@ -215,19 +214,6 @@ impl PackedQueue {
     /// Get a reference to the queue's interrupt
     pub fn interrupt(&self) -> &Interrupt {
         &self.interrupt
-    }
-
-    fn area_sizes(
-        queue_size: u16,
-        desc_table: GuestAddress,
-        driver_area: GuestAddress,
-        device_area: GuestAddress,
-    ) -> Vec<(GuestAddress, usize)> {
-        vec![
-            (desc_table, 16 * queue_size as usize),
-            (driver_area, 4),
-            (device_area, 4),
-        ]
     }
 
     /// Set the device event suppression
@@ -545,6 +531,40 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unaligned_ring_areas() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        let features = 1u64 << VIRTIO_F_RING_PACKED;
+        let areas = [
+            (
+                QueueConfig::set_desc_table as fn(&mut QueueConfig, GuestAddress),
+                "descriptor table",
+                DESC_OFFSET + 8,
+            ),
+            (
+                QueueConfig::set_avail_ring,
+                "driver_event_suppression",
+                DRIVER_EVENT_OFFSET + 2,
+            ),
+            (
+                QueueConfig::set_used_ring,
+                "device_event_suppression",
+                DEVICE_EVENT_OFFSET + 2,
+            ),
+        ];
+        for (set_addr, name, addr) in areas {
+            let mut config = QueueConfig::new(QUEUE_SIZE, features);
+            config.set_desc_table(GuestAddress(DESC_OFFSET));
+            config.set_avail_ring(GuestAddress(DRIVER_EVENT_OFFSET));
+            config.set_used_ring(GuestAddress(DEVICE_EVENT_OFFSET));
+            set_addr(&mut config, GuestAddress(addr));
+
+            let err = activate_packed(&mem, &mut config, features).unwrap_err();
+            let msg = format!("{err:#}");
+            assert!(msg.contains(&format!("{name} is not aligned")), "{msg}");
+        }
+    }
+
+    #[test]
     fn rejects_ring_areas_outside_guest_memory() {
         let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
         let features = (1u64 << VIRTIO_RING_F_EVENT_IDX) | (1u64 << VIRTIO_F_RING_PACKED);
@@ -588,7 +608,7 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
         let features = 1u64 << VIRTIO_F_RING_PACKED;
         let mut config = QueueConfig::new(QUEUE_SIZE, features);
-        config.set_desc_table(GuestAddress(u64::MAX - 8));
+        config.set_desc_table(GuestAddress(u64::MAX - 15));
         config.set_avail_ring(GuestAddress(DRIVER_EVENT_OFFSET));
         config.set_used_ring(GuestAddress(DEVICE_EVENT_OFFSET));
 
