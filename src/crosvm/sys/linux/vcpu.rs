@@ -420,6 +420,42 @@ fn vcpu_loop(
                 Ok(VcpuExit::IrqWindowOpen) => {}
                 Ok(VcpuExit::Hlt) => irq_chip.halted(cpu_id),
                 Ok(VcpuExit::Shutdown(reason)) => {
+                    // On x86_64 KVM, VcpuExit::Shutdown (KVM_EXIT_SHUTDOWN) is triggered by a
+                    // guest triple fault. Log the vCPU ID and architectural registers to
+                    // identify the faulting instruction pointer and processor mode.
+                    #[cfg(target_arch = "x86_64")]
+                    {
+                        let regs_str = match vcpu.get_regs() {
+                            Ok(r) => {
+                                format!("rip={:#x} rsp={:#x} rflags={:#x}", r.rip, r.rsp, r.rflags)
+                            }
+                            Err(e) => format!("regs_err={e}"),
+                        };
+                        let sregs_str = match vcpu.get_sregs() {
+                            Ok(s) => format!(
+                                "cs={{base={:#x} sel={:#x} db={} l={}}} cr0={:#x} cr2={:#x} \
+                                 cr3={:#x} cr4={:#x} efer={:#x} gdt={{base={:#x} limit={:#x}}} \
+                                 idt={{base={:#x} limit={:#x}}}",
+                                s.cs.base,
+                                s.cs.selector,
+                                s.cs.db,
+                                s.cs.l,
+                                s.cr0,
+                                s.cr2,
+                                s.cr3,
+                                s.cr4,
+                                s.efer,
+                                s.gdt.base,
+                                s.gdt.limit,
+                                s.idt.base,
+                                s.idt.limit,
+                            ),
+                            Err(e) => format!("sregs_err={e}"),
+                        };
+                        info!("vcpu {} shutdown exit: {} {}", cpu_id, regs_str, sregs_str);
+                    }
+                    #[cfg(not(target_arch = "x86_64"))]
+                    info!("vcpu {} shutdown exit", cpu_id);
                     if let Err(e) = reason {
                         metrics::log_descriptor(
                             MetricEventType::VcpuShutdownError,
