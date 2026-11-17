@@ -53,6 +53,9 @@ LUCI_EMAIL = "chromeos-scoped@luci-project-accounts.iam.gserviceaccount.com"
 # Do not create more dry runs than this within a 24h timespan
 MAX_DRY_RUNS_PER_DAY = 2
 
+# Always trigger a merge if there are at least this many commits, even if all are from recipe-roller
+ALWAYS_UPREV_THRESHOLD = 9
+
 
 def list_active_merges():
     return GerritChange.query(
@@ -211,10 +214,13 @@ def create_merge_commits(
     if not commits:
         print("Nothing to merge.")
         return (0, False)
-    else:
+    elif len(commits) < ALWAYS_UPREV_THRESHOLD:
         commit_authors = git_log(f"HEAD..{revision}", "--pretty=%an").lines()
         if all(map(lambda x: x == "recipe-roller", commit_authors)):
-            print("All commits are from recipe roller, don't merge yet")
+            print(
+                f"Fewer than {ALWAYS_UPREV_THRESHOLD} commits and all are from recipe "
+                "roller, don't merge yet"
+            )
             return (0, False)
 
     # Create a merge commit for each batch
