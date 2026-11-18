@@ -293,7 +293,8 @@ impl MemoryMapping {
     }
 
     /// Writes an object to the memory region at the specified offset.
-    /// Returns Ok(()) if the object fits, or Err if it extends past the end.
+    /// Returns Ok(()) if the object fits, Err(InvalidAddress) if it extends
+    /// past the end, or Err(InvalidAlignment) if unaligned.
     ///
     /// The write operation will be volatile, i.e. it will not be reordered by
     /// the compiler and is suitable for I/O, but must be aligned. When writing
@@ -316,13 +317,17 @@ impl MemoryMapping {
         offset: usize,
     ) -> Result<()> {
         self.mapping.range_end(offset, size_of::<T>())?;
+        // SAFETY: We checked the bounds above.
+        let ptr = unsafe { self.as_ptr().add(offset) } as *mut T;
+        if !ptr.is_aligned() {
+            return Err(Error::InvalidAlignment);
+        }
         // Make sure writes to memory have been committed before performing I/O that could
         // potentially depend on them.
         fence(Ordering::SeqCst);
-        // SAFETY:
-        // This is safe because we checked the bounds above.
+        // SAFETY: We checked the bounds and alignment above.
         unsafe {
-            write_volatile(self.as_ptr().add(offset) as *mut T, val);
+            write_volatile(ptr, val);
         }
         Ok(())
     }
@@ -351,14 +356,14 @@ impl MemoryMapping {
     /// ```
     pub fn read_obj_volatile<T: FromBytes>(&self, offset: usize) -> Result<T> {
         self.mapping.range_end(offset, size_of::<T>())?;
-        // SAFETY:
-        // This is safe because by definition Copy types can have their bits set arbitrarily and
-        // still be valid.
-        unsafe {
-            Ok(read_volatile(
-                self.as_ptr().add(offset) as *const u8 as *const T
-            ))
+        // SAFETY: We checked the bounds above.
+        let ptr = unsafe { self.as_ptr().add(offset) } as *const u8 as *const T;
+        if !ptr.is_aligned() {
+            return Err(Error::InvalidAlignment);
         }
+        // SAFETY: We checked the bounds and alignment above and any bit pattern is valid for
+        // `FromBytes`.
+        unsafe { Ok(read_volatile(ptr)) }
     }
 
     pub fn msync(&self) -> Result<()> {
@@ -601,5 +606,32 @@ unsafe impl MappedRegion for ExternalMapping {
     /// Returns the size of the memory region in bytes.
     fn size(&self) -> usize {
         self.size
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MemoryMappingBuilder;
+    use crate::SharedMemory;
+
+    #[test]
+    fn write_read_obj_volatile_alignment() {
+        let shm = SharedMemory::new("test", 1024).unwrap();
+        let mem_map = MemoryMappingBuilder::new(1024)
+            .from_shared_memory(&shm)
+            .build()
+            .unwrap();
+        mem_map.write_obj_volatile(0xf00u32, 16).unwrap();
+        assert_eq!(mem_map.read_obj_volatile::<u32>(16).unwrap(), 0xf00u32);
+
+        assert!(matches!(
+            mem_map.write_obj_volatile(0xf00u32, 17),
+            Err(Error::InvalidAlignment)
+        ));
+        assert!(matches!(
+            mem_map.read_obj_volatile::<u32>(17),
+            Err(Error::InvalidAlignment)
+        ));
     }
 }
