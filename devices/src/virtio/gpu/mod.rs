@@ -14,8 +14,6 @@ use std::io::Read;
 use std::mem::size_of;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -79,6 +77,7 @@ pub use self::protocol::VIRTIO_GPU_MAX_SCANOUTS;
 pub use self::protocol::VIRTIO_GPU_SHM_ID_HOST_VISIBLE;
 use self::protocol::*;
 use self::virtio_gpu::to_rutabaga_descriptor;
+use self::virtio_gpu::DisplayEvent;
 pub use self::virtio_gpu::ProcessDisplayResult;
 use self::virtio_gpu::VirtioGpu;
 use self::virtio_gpu::VirtioGpuSnapshot;
@@ -238,7 +237,7 @@ impl QueueReader for SharedQueueReader {
 fn build(
     display_backends: &[DisplayBackend],
     display_params: Vec<GpuDisplayParameters>,
-    display_event: Arc<AtomicBool>,
+    display_event: Arc<DisplayEvent>,
     rutabaga: Rutabaga,
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     external_blob: bool,
@@ -977,7 +976,7 @@ impl Worker {
         rutabaga_server_descriptor: Option<RutabagaDescriptor>,
         display_backends: Vec<DisplayBackend>,
         display_params: Vec<GpuDisplayParameters>,
-        display_event: Arc<AtomicBool>,
+        display_event: Arc<DisplayEvent>,
         mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
         event_devices: Vec<EventDevice>,
         external_blob: bool,
@@ -1441,7 +1440,7 @@ pub struct Gpu {
     worker_thread: Option<WorkerThread<()>>,
     display_backends: Vec<DisplayBackend>,
     display_params: Vec<GpuDisplayParameters>,
-    display_event: Arc<AtomicBool>,
+    display_event: Arc<DisplayEvent>,
     gpu_parameters: GpuParameters,
     rutabaga_paths: Vec<RutabagaPath>,
     pci_address: Option<PciAddress>,
@@ -1522,7 +1521,7 @@ impl Gpu {
             worker_thread: None,
             display_backends,
             display_params,
-            display_event: Arc::new(AtomicBool::new(false)),
+            display_event: Arc::new(DisplayEvent::default()),
             gpu_parameters: gpu_parameters.clone(),
             rutabaga_paths,
             pci_address: gpu_parameters.pci_address,
@@ -1729,10 +1728,16 @@ impl Gpu {
         }
     }
 
-    fn get_config(&self) -> virtio_gpu_config {
+    /// `observe_display_event` is set when the guest reads `events_read`.
+    fn get_config(&self, observe_display_event: bool) -> virtio_gpu_config {
         let mut events_read = 0;
 
-        if self.display_event.load(Ordering::Relaxed) {
+        let display_event_pending = if observe_display_event {
+            self.display_event.observe_and_is_pending()
+        } else {
+            self.display_event.is_pending()
+        };
+        if display_event_pending {
             events_read |= VIRTIO_GPU_EVENT_DISPLAY;
         }
 
@@ -1835,14 +1840,20 @@ impl VirtioDevice for Gpu {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.get_config().as_bytes(), offset);
+        let reads_events_read = offset < std::mem::size_of::<Le32>() as u64;
+        copy_config(
+            data,
+            0,
+            self.get_config(reads_events_read).as_bytes(),
+            offset,
+        );
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        let mut cfg = self.get_config();
+        let mut cfg = self.get_config(false);
         copy_config(cfg.as_mut_bytes(), offset, data, 0);
         if (cfg.events_clear.to_native() & VIRTIO_GPU_EVENT_DISPLAY) != 0 {
-            self.display_event.store(false, Ordering::Relaxed);
+            self.display_event.acknowledge_observed();
         }
     }
 

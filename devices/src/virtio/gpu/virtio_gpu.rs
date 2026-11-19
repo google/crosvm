@@ -10,7 +10,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::result::Result;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -521,11 +521,67 @@ impl VirtioGpuScanout {
     }
 }
 
+/// Pending state of the `VIRTIO_GPU_EVENT_DISPLAY` config event.
+///
+/// The guest reads `events_read`, queries the display info and then writes `events_clear`. A
+/// display change landing between that read and write must stay pending, or the guest never learns
+/// about it. So the event is a generation counter, and `events_clear` only acknowledges the
+/// generation the guest saw in `events_read`.
+#[derive(Default)]
+pub struct DisplayEvent {
+    /// Incremented on every display change.
+    generation: AtomicU64,
+    /// Generation current when the guest last read `events_read`.
+    observed: AtomicU64,
+    /// Generation last acknowledged by the guest through `events_clear`.
+    acked: AtomicU64,
+}
+
+impl DisplayEvent {
+    /// Records a display change to report to the guest.
+    pub fn signal(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Returns whether there is a display change the guest has not acknowledged.
+    pub fn is_pending(&self) -> bool {
+        self.generation.load(Ordering::SeqCst) != self.acked.load(Ordering::SeqCst)
+    }
+
+    /// Called when the guest reads `events_read`. Records the current generation for a later
+    /// `events_clear` and returns whether it is pending, from a single load of the generation so
+    /// that the guest acknowledges exactly the state reported to it.
+    pub fn observe_and_is_pending(&self) -> bool {
+        let generation = self.generation.load(Ordering::SeqCst);
+        self.observed.store(generation, Ordering::SeqCst);
+        generation != self.acked.load(Ordering::SeqCst)
+    }
+
+    /// Called when the guest writes `VIRTIO_GPU_EVENT_DISPLAY` to `events_clear`.
+    pub fn acknowledge_observed(&self) {
+        self.acked
+            .fetch_max(self.observed.load(Ordering::SeqCst), Ordering::SeqCst);
+    }
+
+    fn set_pending(&self, pending: bool) {
+        if pending == self.is_pending() {
+            return;
+        }
+        if pending {
+            self.signal();
+        } else {
+            let generation = self.generation.load(Ordering::SeqCst);
+            self.observed.store(generation, Ordering::SeqCst);
+            self.acked.store(generation, Ordering::SeqCst);
+        }
+    }
+}
+
 /// Handles functionality related to displays, input events and hypervisor memory management.
 pub struct VirtioGpu {
     display: Rc<RefCell<GpuDisplay>>,
     scanouts: Map<u32, VirtioGpuScanout>,
-    scanouts_updated: Arc<AtomicBool>,
+    scanouts_updated: Arc<DisplayEvent>,
     cursor_scanout: VirtioGpuScanout,
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     rutabaga: Rutabaga,
@@ -603,7 +659,7 @@ impl VirtioGpu {
     pub fn new(
         display: GpuDisplay,
         display_params: Vec<GpuDisplayParameters>,
-        display_event: Arc<AtomicBool>,
+        display_event: Arc<DisplayEvent>,
         rutabaga: Rutabaga,
         mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
         external_blob: bool,
@@ -703,7 +759,7 @@ impl VirtioGpu {
             );
         }
 
-        self.scanouts_updated.store(true, Ordering::Relaxed);
+        self.scanouts_updated.signal();
 
         GpuControlResult::DisplaysUpdated
     }
@@ -735,7 +791,7 @@ impl VirtioGpu {
             }
         }
 
-        self.scanouts_updated.store(true, Ordering::Relaxed);
+        self.scanouts_updated.signal();
         GpuControlResult::DisplaysUpdated
     }
 
@@ -1380,6 +1436,25 @@ impl VirtioGpu {
         scanout_data: Option<VirtioScanoutBlobData>,
         resource_id: u32,
     ) -> VirtioGpuResult {
+        // Virtio spec: "The driver can use resource_id = 0 to disable a scanout."
+        //
+        // This does not require the scanout to still exist: the guest may disable a scanout after
+        // the host has already removed the display, e.g. while handling a display hotplug.
+        if resource_id == 0 {
+            let scanout = match scanout_type {
+                SurfaceType::Cursor => Some(&mut self.cursor_scanout),
+                SurfaceType::Scanout => self.scanouts.get_mut(&scanout_id),
+            };
+            if let Some(scanout) = scanout {
+                // Ignore any initial set_scanout(..., resource_id: 0) calls.
+                if scanout.resource_id.is_some() {
+                    scanout.release_surface(&self.display);
+                }
+                scanout.resource_id = None;
+            }
+            return Ok(OkNoData);
+        }
+
         let scanout: &mut VirtioGpuScanout;
         let mut scanout_parent_surface_id = None;
 
@@ -1402,17 +1477,6 @@ impl VirtioGpu {
                     .ok_or(ErrInvalidScanoutId)?;
             }
         };
-
-        // Virtio spec: "The driver can use resource_id = 0 to disable a scanout."
-        if resource_id == 0 {
-            // Ignore any initial set_scanout(..., resource_id: 0) calls.
-            if scanout.resource_id.is_some() {
-                scanout.release_surface(&self.display);
-            }
-
-            scanout.resource_id = None;
-            return Ok(OkNoData);
-        }
 
         let resource = self
             .resources
@@ -1483,7 +1547,7 @@ impl VirtioGpu {
                 .iter()
                 .map(|(i, s)| (*i, s.snapshot()))
                 .collect(),
-            scanouts_updated: self.scanouts_updated.load(Ordering::SeqCst),
+            scanouts_updated: self.scanouts_updated.is_pending(),
             cursor_scanout: self.cursor_scanout.snapshot(),
             rutabaga: {
                 self.rutabaga
@@ -1525,8 +1589,7 @@ impl VirtioGpu {
                     )
                     .context("failed to restore scanouts")?;
             }
-            self.scanouts_updated
-                .store(snapshot.scanouts_updated, Ordering::SeqCst);
+            self.scanouts_updated.set_pending(snapshot.scanouts_updated);
 
             let cursor_parent_surface_id = snapshot
                 .cursor_scanout
@@ -1620,7 +1683,7 @@ mod tests {
         VirtioGpu::new(
             display,
             display_params,
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(DisplayEvent::default()),
             rutabaga,
             Arc::new(Mutex::new(None)),
             /* external_blob= */ false,
@@ -1904,5 +1967,113 @@ mod tests {
         });
         let res = frontend.process_gpu_command(&mem, cmd, &mut reader);
         assert!(matches!(res, Err(GpuResponse::ErrUnspec)));
+    }
+
+    #[test]
+    fn display_event_clear_acknowledges_only_observed_changes() {
+        let event = DisplayEvent::default();
+        assert!(!event.is_pending());
+
+        event.signal();
+        assert!(event.observe_and_is_pending());
+        // A display change lands after the guest read `events_read` but before it wrote
+        // `events_clear`.
+        event.signal();
+        event.acknowledge_observed();
+        assert!(event.is_pending());
+
+        assert!(event.observe_and_is_pending());
+        event.acknowledge_observed();
+        assert!(!event.is_pending());
+        assert!(!event.observe_and_is_pending());
+
+        // Clearing without reading first does not acknowledge anything.
+        event.signal();
+        event.acknowledge_observed();
+        assert!(event.is_pending());
+    }
+
+    #[test]
+    fn display_event_set_pending() {
+        let event = DisplayEvent::default();
+        event.set_pending(true);
+        assert!(event.is_pending());
+        event.set_pending(true);
+        assert!(event.observe_and_is_pending());
+        event.acknowledge_observed();
+        assert!(!event.is_pending());
+
+        event.signal();
+        event.set_pending(false);
+        assert!(!event.is_pending());
+    }
+
+    #[test]
+    fn display_hotplug_during_events_clear_stays_pending() {
+        let mut virtio_gpu = new_test_virtio_gpu();
+        let event = virtio_gpu.scanouts_updated.clone();
+
+        // Resize the display by adding the new display before removing the old one.
+        virtio_gpu.process_gpu_control_command(GpuControlCommand::AddDisplays {
+            displays: vec![DisplayParameters::default_with_mode(DisplayMode::Windowed(
+                1024, 768,
+            ))],
+        });
+        assert!(event.observe_and_is_pending());
+        virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
+            display_ids: vec![0],
+        });
+        event.acknowledge_observed();
+        assert!(event.is_pending());
+
+        assert!(event.observe_and_is_pending());
+        assert_eq!(
+            virtio_gpu.display_info()[..3],
+            [(0, 0, false), (800, 600, true), (1024, 768, true)]
+        );
+        event.acknowledge_observed();
+        assert!(!event.is_pending());
+    }
+
+    #[test]
+    fn disable_removed_scanout() {
+        let mut virtio_gpu = new_test_virtio_gpu();
+        let resource_id = 1;
+        create_exportable_resource(&mut virtio_gpu, resource_id);
+
+        virtio_gpu
+            .set_scanout(scanout_rect(800, 600), 0, resource_id, None)
+            .unwrap();
+        assert!(virtio_gpu.scanouts[&0].surface_id.is_some());
+        virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
+            display_ids: vec![0],
+        });
+
+        // The guest disables the scanout and the cursor of a display the host already removed.
+        virtio_gpu
+            .set_scanout(scanout_rect(0, 0), 0, 0, None)
+            .unwrap();
+        virtio_gpu
+            .update_scanout_resource(SurfaceType::Cursor, None, 0, None, 0)
+            .unwrap();
+        assert!(virtio_gpu.cursor_scanout.surface_id.is_none());
+        assert!(virtio_gpu.cursor_scanout.resource_id.is_none());
+
+        // Disabling a scanout that never existed is also a no-op.
+        virtio_gpu
+            .set_scanout(scanout_rect(0, 0), 5, 0, None)
+            .unwrap();
+
+        // Enabling a removed scanout is still rejected.
+        assert!(matches!(
+            virtio_gpu.set_scanout(scanout_rect(800, 600), 0, resource_id, None),
+            Err(ErrInvalidScanoutId)
+        ));
+
+        // The remaining scanout keeps working.
+        virtio_gpu
+            .set_scanout(scanout_rect(800, 600), 1, resource_id, None)
+            .unwrap();
+        assert!(virtio_gpu.scanouts[&1].surface_id.is_some());
     }
 }
