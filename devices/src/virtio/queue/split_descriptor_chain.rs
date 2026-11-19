@@ -44,7 +44,7 @@ pub struct Desc {
 }
 
 /// Iterator over the descriptors of a split virtqueue descriptor chain.
-pub struct SplitDescriptorChain<'m> {
+pub struct SplitDescriptorChain {
     /// Current descriptor index within `desc_table`, or `None` if the iterator is exhausted.
     index: Option<u16>,
 
@@ -54,37 +54,29 @@ pub struct SplitDescriptorChain<'m> {
 
     queue_size: u16,
 
-    mem: &'m GuestMemory,
     desc_table: GuestAddress,
 }
 
-impl<'m> SplitDescriptorChain<'m> {
+impl SplitDescriptorChain {
     /// Construct a new iterator over a split virtqueue descriptor chain.
     ///
     /// # Arguments
-    /// * `mem` - The [`GuestMemory`] containing the descriptor chain.
     /// * `desc_table` - Guest physical address of the descriptor table.
     /// * `queue_size` - Total number of entries in the descriptor table.
     /// * `index` - The index of the first descriptor in the chain.
-    pub fn new(
-        mem: &'m GuestMemory,
-        desc_table: GuestAddress,
-        queue_size: u16,
-        index: u16,
-    ) -> SplitDescriptorChain<'m> {
+    pub fn new(desc_table: GuestAddress, queue_size: u16, index: u16) -> SplitDescriptorChain {
         trace!("starting split descriptor chain head={index}");
         SplitDescriptorChain {
             index: Some(index),
             count: 0,
             queue_size,
-            mem,
             desc_table,
         }
     }
 }
 
-impl DescriptorChainIter for SplitDescriptorChain<'_> {
-    fn next(&mut self) -> Result<Option<Descriptor>> {
+impl DescriptorChainIter for SplitDescriptorChain {
+    fn next(&mut self, mem: &GuestMemory) -> Result<Option<Descriptor>> {
         let index = match self.index {
             Some(index) => index,
             None => return Ok(None),
@@ -107,8 +99,7 @@ impl DescriptorChainIter for SplitDescriptorChain<'_> {
             .desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc = self
-            .mem
+        let desc = mem
             .read_obj_from_addr::<Desc>(desc_addr)
             .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
 

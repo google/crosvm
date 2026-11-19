@@ -861,7 +861,7 @@ pub fn create_descriptor_chain(
         );
     }
 
-    let chain = SplitDescriptorChain::new(memory, descriptor_array_addr, 0x100, 0);
+    let chain = SplitDescriptorChain::new(descriptor_array_addr, 0x100, 0);
     DescriptorChain::new(chain, memory, 0)
 }
 

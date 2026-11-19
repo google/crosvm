@@ -335,8 +335,7 @@ impl SplitQueue {
         // SAFETY: `ring_ptr` is a valid `*const u16` within `avail_ring_vslice`.
         let descriptor_index: u16 = unsafe { std::ptr::read_volatile(ring_ptr) };
 
-        let chain =
-            SplitDescriptorChain::new(&self.mem, self.desc_table, self.size, descriptor_index);
+        let chain = SplitDescriptorChain::new(self.desc_table, self.size, descriptor_index);
         DescriptorChain::new(chain, &self.mem, descriptor_index)
             .map_err(|e| {
                 error!("{:#}", e);

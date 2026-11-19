@@ -283,7 +283,6 @@ impl PackedQueue {
         fence(Ordering::SeqCst);
 
         let chain = PackedDescriptorChain::new(
-            &self.mem,
             self.desc_table,
             self.size,
             self.avail_index.wrap_counter,

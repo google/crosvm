@@ -115,7 +115,7 @@ pub enum PackedNotificationType {
     Desc(u16),
 }
 
-pub struct PackedDescriptorChain<'m> {
+pub struct PackedDescriptorChain {
     avail_wrap_counter: bool,
 
     /// Current descriptor index within `desc_table`, or `None` if the iterator is exhausted.
@@ -130,40 +130,37 @@ pub struct PackedDescriptorChain<'m> {
 
     queue_size: u16,
 
-    mem: &'m GuestMemory,
     desc_table: GuestAddress,
 }
 
-impl<'m> PackedDescriptorChain<'m> {
-    /// Construct a new iterator over a split virtqueue descriptor chain.
+impl PackedDescriptorChain {
+    /// Construct a new iterator over a packed virtqueue descriptor chain.
     ///
     /// # Arguments
-    /// * `mem` - The [`GuestMemory`] containing the descriptor chain.
     /// * `desc_table` - Guest physical address of the descriptor table.
     /// * `queue_size` - Total number of entries in the descriptor table.
+    /// * `avail_wrap_counter` - Current device wrap counter polarity.
     /// * `index` - The index of the first descriptor in the chain.
     pub fn new(
-        mem: &'m GuestMemory,
         desc_table: GuestAddress,
         queue_size: u16,
         avail_wrap_counter: bool,
         index: u16,
-    ) -> PackedDescriptorChain<'m> {
+    ) -> PackedDescriptorChain {
         trace!("starting packed descriptor chain head={index}");
         PackedDescriptorChain {
             index: Some(index),
             count: 0,
             id: None,
             queue_size,
-            mem,
             desc_table,
             avail_wrap_counter,
         }
     }
 }
 
-impl DescriptorChainIter for PackedDescriptorChain<'_> {
-    fn next(&mut self) -> Result<Option<Descriptor>> {
+impl DescriptorChainIter for PackedDescriptorChain {
+    fn next(&mut self, mem: &GuestMemory) -> Result<Option<Descriptor>> {
         let index = match self.index {
             Some(index) => index,
             None => {
@@ -187,8 +184,7 @@ impl DescriptorChainIter for PackedDescriptorChain<'_> {
             .desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc = self
-            .mem
+        let desc = mem
             .read_obj_from_addr::<PackedDesc>(desc_addr)
             .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
 

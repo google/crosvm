@@ -91,7 +91,7 @@ impl DescriptorChain {
         // descriptors.
         let mut writable = false;
 
-        while let Some(desc) = chain.next()? {
+        while let Some(desc) = chain.next(mem)? {
             if desc.len == 0 {
                 trace!("zero-length descriptor at index {index}");
                 continue;
@@ -206,7 +206,7 @@ pub struct Descriptor {
 /// Iterator over the descriptors of a descriptor chain.
 pub trait DescriptorChainIter {
     /// Return the next descriptor in the chain, or `None` if there are no more descriptors.
-    fn next(&mut self) -> Result<Option<Descriptor>>;
+    fn next(&mut self, mem: &GuestMemory) -> Result<Option<Descriptor>>;
 
     /// Return the number of descriptor has been iterated in the chain
     fn count(&self) -> u16;
