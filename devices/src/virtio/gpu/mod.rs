@@ -233,6 +233,33 @@ impl QueueReader for SharedQueueReader {
     }
 }
 
+/// Returns the DRM format of a virtio-gpu format used by `SET_SCANOUT_BLOB`.
+///
+/// virtio-gpu formats name the channels in memory byte order, DRM formats from the most
+/// significant byte of a little-endian word, so the channel order is reversed.
+fn drm_format_from_virtio_gpu_format(virtio_gpu_format: u32) -> Option<DrmFormat> {
+    let drm_format = match virtio_gpu_format {
+        // DRM_FORMAT_XRGB8888
+        VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM => DrmFormat::new(b'X', b'R', b'2', b'4'),
+        // DRM_FORMAT_ARGB8888
+        VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM => DrmFormat::new(b'A', b'R', b'2', b'4'),
+        // DRM_FORMAT_BGRX8888
+        VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM => DrmFormat::new(b'B', b'X', b'2', b'4'),
+        // DRM_FORMAT_BGRA8888
+        VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM => DrmFormat::new(b'B', b'A', b'2', b'4'),
+        // DRM_FORMAT_XBGR8888
+        VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM => DrmFormat::new(b'X', b'B', b'2', b'4'),
+        // DRM_FORMAT_ABGR8888
+        VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM => DrmFormat::new(b'A', b'B', b'2', b'4'),
+        // DRM_FORMAT_RGBX8888
+        VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM => DrmFormat::new(b'R', b'X', b'2', b'4'),
+        // DRM_FORMAT_RGBA8888
+        VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM => DrmFormat::new(b'R', b'A', b'2', b'4'),
+        _ => return None,
+    };
+    Some(drm_format)
+}
+
 /// Initializes the virtio_gpu state tracker.
 fn build(
     display_backends: &[DisplayBackend],
@@ -639,16 +666,9 @@ impl Frontend {
                 let mut strides: [u32; 4] = [0; 4];
                 let mut offsets: [u32; 4] = [0; 4];
 
-                // As of v4.19, virtio-gpu kms only really uses these formats.  If that changes,
-                // the following may have to change too.
-                let drm_format = match virtio_gpu_format {
-                    VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM => DrmFormat::new(b'X', b'R', b'2', b'4'),
-                    VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM => DrmFormat::new(b'A', b'R', b'2', b'4'),
-                    VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM => DrmFormat::new(b'A', b'B', b'2', b'4'),
-                    _ => {
-                        error!("unrecognized virtio-gpu format {}", virtio_gpu_format);
-                        return Err(GpuResponse::ErrUnspec);
-                    }
+                let Some(drm_format) = drm_format_from_virtio_gpu_format(virtio_gpu_format) else {
+                    error!("unrecognized virtio-gpu format {}", virtio_gpu_format);
+                    return Err(GpuResponse::ErrUnspec);
                 };
 
                 for plane_index in 0..PLANE_INFO_MAX_COUNT {
@@ -2260,5 +2280,26 @@ mod tests {
                 force: true,
             }
         );
+    }
+
+    #[test]
+    fn scanout_blob_drm_formats() {
+        // The format pairs of the Android common kernel virtio-gpu driver (virtgpu_plane.c).
+        for (virtio_gpu_format, fourcc) in [
+            (VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM, b"XR24"),
+            (VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM, b"AR24"),
+            (VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM, b"BX24"),
+            (VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM, b"BA24"),
+            (VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM, b"XB24"),
+            (VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM, b"AB24"),
+            (VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM, b"RX24"),
+            (VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM, b"RA24"),
+        ] {
+            assert_eq!(
+                drm_format_from_virtio_gpu_format(virtio_gpu_format).map(|f| f.to_bytes()),
+                Some(*fourcc),
+            );
+        }
+        assert!(drm_format_from_virtio_gpu_format(0).is_none());
     }
 }
