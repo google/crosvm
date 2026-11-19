@@ -1010,6 +1010,8 @@ impl PciDevice for VirtioPciDevice {
                 if let Some(interrupt_resample_worker) = self.interrupt_resample_worker.take() {
                     interrupt_resample_worker.stop();
                 }
+                // reset interrupt
+                self.interrupt = None;
             }
         }
     }
@@ -1687,11 +1689,12 @@ mod tests {
         );
         assert!(device.interrupt.is_some());
 
-        // Reset must clean up the queue and its ioevent even though the device
+        // Reset must clean up the queue, its ioevent and the interrupt even though the device
         // never activated.
         device.write_bar(bar, STATUS, &[0]);
         assert!(!device.queues[0].ready());
         assert!(!device.queue_evts[0].ioevent_registered);
+        assert!(device.interrupt.is_none());
         assert!(device.interrupt_resample_worker.is_none());
 
         // The driver can configure the queue again and activate the device.
