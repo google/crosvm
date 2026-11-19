@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use anyhow::bail;
+use anyhow::Context;
 use base::error;
 use base::AsRawDescriptor;
 use base::Event;
@@ -47,6 +48,13 @@ pub(crate) struct AndroidDisplayContext {
 // Opaque blob
 #[repr(C)]
 pub(crate) struct AndroidDisplaySurface {
+    _data: [u8; 0],
+    _marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+}
+
+// Opaque blob
+#[repr(C)]
+pub(crate) struct AHardwareBuffer {
     _data: [u8; 0],
     _marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
@@ -122,11 +130,26 @@ extern "C" {
         surface: *mut AndroidDisplaySurface,
     );
 
-    fn android_display_flip_to(
+    /// Creates an AHardwareBuffer from `ahb_info` and returns an owned reference to it, or null on
+    /// failure. The buffer keeps its own copies of the file descriptors, so `ahb_info` does not
+    /// need to outlive the call. The returned buffer must be released with
+    /// `android_display_release_buffer`.
+    fn android_display_import_buffer(
         ctx: *mut AndroidDisplayContext,
-        _surface: *mut AndroidDisplaySurface,
         ahb_info: *const AHardwareBufferInfo,
+    ) -> *mut AHardwareBuffer;
+
+    /// Presents a buffer returned by `android_display_import_buffer` on the given surface.
+    /// Presenting the same buffer object for the same guest resource lets the Android display
+    /// stack reuse its per-buffer caches instead of re-importing the buffer on every flip.
+    fn android_display_flip_to_imported(
+        ctx: *mut AndroidDisplayContext,
+        surface: *mut AndroidDisplaySurface,
+        ahb: *mut AHardwareBuffer,
     );
+
+    /// Releases a buffer returned by `android_display_import_buffer`.
+    fn android_display_release_buffer(ahb: *mut AHardwareBuffer);
 }
 
 unsafe extern "C" fn error_callback(message: *const c_char) {
@@ -185,8 +208,40 @@ pub struct AHardwareBufferInfo {
     pub metadata_ptr: *const u8,
 }
 
+/// An owned reference to an AHardwareBuffer created by `android_display_import_buffer`.
+///
+/// Keeping one buffer object per imported guest resource, instead of recreating it on every flip,
+/// gives the buffer a stable identity so the Android display stack can cache it.
+struct ImportedBuffer(NonNull<AHardwareBuffer>);
+
+impl ImportedBuffer {
+    fn import(context: &AndroidDisplayContextWrapper, info: &AhbInfo) -> anyhow::Result<Self> {
+        let fds: Vec<i32> = info.fds.iter().map(|fd| fd.as_fd().as_raw_fd()).collect();
+        let ahb_info = AHardwareBufferInfo {
+            num_fds: fds.len(),
+            fds_ptr: fds.as_ptr(),
+            metadata_len: info.metadata.len(),
+            metadata_ptr: info.metadata.as_ptr(),
+        };
+        // SAFETY: context is an opaque handle. `ahb_info` and the memory it points to outlive the
+        // call, and `android_display_import_buffer` does not retain them.
+        let ahb = unsafe { android_display_import_buffer(context.0.as_ptr(), &ahb_info) };
+        NonNull::new(ahb)
+            .map(ImportedBuffer)
+            .context("failed to import AHardwareBuffer")
+    }
+}
+
+impl Drop for ImportedBuffer {
+    fn drop(&mut self) {
+        // SAFETY: the buffer was returned by `android_display_import_buffer` and is released
+        // exactly once.
+        unsafe { android_display_release_buffer(self.0.as_ptr()) };
+    }
+}
+
 // The key is an import id.
-type AHardwareBufferImportMap = HashMap<u32, AhbInfo>;
+type AHardwareBufferImportMap = HashMap<u32, ImportedBuffer>;
 
 struct AndroidSurface {
     context: Rc<AndroidDisplayContextWrapper>,
@@ -230,30 +285,19 @@ impl GpuDisplaySurface for AndroidSurface {
         _release_timepoint: Option<SemaphoreTimepoint>,
         _extra_info: Option<FlipToExtraInfo>,
     ) -> anyhow::Result<Waitable> {
-        {
-            let ahb_import_map = self.ahb_import_map.read().expect("failed to get a lock");
-            let ahb = ahb_import_map
-                .get(&import_id)
-                .ok_or(GpuDisplayError::InvalidImportId)?;
-            let fds: Vec<i32> = ahb.fds.iter().map(|fd| fd.as_fd().as_raw_fd()).collect();
-
-            let info = AHardwareBufferInfo {
-                num_fds: fds.len(),
-                fds_ptr: fds.as_ptr(),
-                metadata_len: ahb.metadata.len(),
-                metadata_ptr: ahb.metadata.as_ptr(),
-            };
-            // SAFETY:
-            // Safe because the `AHardwareBufferInfo` outlives the call, and
-            // `android_display_flip_to` does not retain the pointer.
-            unsafe {
-                android_display_flip_to(
-                    self.context.0.as_ptr(),
-                    self.surface.as_ptr(),
-                    &info as *const AHardwareBufferInfo,
-                )
-            };
-        }
+        let ahb_import_map = self.ahb_import_map.read().expect("failed to get a lock");
+        let buffer = ahb_import_map
+            .get(&import_id)
+            .ok_or(GpuDisplayError::InvalidImportId)?;
+        // SAFETY: context and surface are opaque handles, and the buffer stays alive for the
+        // duration of the call. `android_display_flip_to_imported` takes its own references.
+        unsafe {
+            android_display_flip_to_imported(
+                self.context.0.as_ptr(),
+                self.surface.as_ptr(),
+                buffer.0.as_ptr(),
+            )
+        };
         Ok(Waitable::signaled())
     }
 }
@@ -327,6 +371,7 @@ impl DisplayT for DisplayAndroid {
         else {
             bail!("gpu_display_android only supports AHardwareBufferInfo imports");
         };
+        let buffer = ImportedBuffer::import(&self.context, &info)?;
 
         {
             let mut ahbs = self
@@ -335,7 +380,7 @@ impl DisplayT for DisplayAndroid {
                 .or_default()
                 .write()
                 .expect("failed to get a lock");
-            ahbs.insert(import_id, info);
+            ahbs.insert(import_id, buffer);
         }
         Ok(())
     }
@@ -357,13 +402,19 @@ impl AsRawDescriptor for DisplayAndroid {
     }
 }
 
-#[cfg(test)]
+// These tests rely on the stub native interface, which tracks imported buffers.
+#[cfg(all(test, feature = "android_display_stub"))]
 mod tests {
     use std::mem::ManuallyDrop;
 
     use super::*;
+    use crate::gpu_display_android_stub::flipped_buffers;
+    use crate::gpu_display_android_stub::imported_buffer_count;
+    use crate::gpu_display_android_stub::live_imported_buffers;
+    use crate::gpu_display_android_stub::reset_test_state;
 
     fn create_test_display() -> ManuallyDrop<DisplayAndroid> {
+        reset_test_state();
         ManuallyDrop::new(DisplayAndroid {
             context: Rc::new(AndroidDisplayContextWrapper(NonNull::dangling())),
             event: Event::new().unwrap(),
@@ -371,12 +422,7 @@ mod tests {
         })
     }
 
-    #[test]
-    fn release_import_removes_import_and_ignores_released_surface() {
-        let mut display = create_test_display();
-        let surface_id = 1;
-        let import_id = 2;
-
+    fn import(display: &mut DisplayAndroid, surface_id: u32, import_id: u32) {
         display
             .import_resource(
                 import_id,
@@ -389,21 +435,77 @@ mod tests {
                 },
             )
             .unwrap();
+    }
+
+    #[test]
+    fn release_import_releases_buffer_and_ignores_released_surface() {
+        let mut display = create_test_display();
+        let surface_id = 1;
+        let import_id = 2;
+
+        import(&mut display, surface_id, import_id);
         assert!(display.surface_ahbs_map[&surface_id]
             .read()
             .unwrap()
             .contains_key(&import_id));
+        assert_eq!(live_imported_buffers(), 1);
 
         display.release_import(surface_id, import_id);
         assert!(!display.surface_ahbs_map[&surface_id]
             .read()
             .unwrap()
             .contains_key(&import_id));
+        assert_eq!(live_imported_buffers(), 0);
 
         // Releasing an import for an already released or nonexistent surface should be a no-op
         // and must not insert an empty entry into `surface_ahbs_map`.
         display.release_surface(surface_id);
         display.release_import(surface_id, import_id);
         assert!(!display.surface_ahbs_map.contains_key(&surface_id));
+    }
+
+    #[test]
+    fn release_surface_releases_all_imported_buffers() {
+        let mut display = create_test_display();
+        import(&mut display, 1, 10);
+        import(&mut display, 1, 11);
+        import(&mut display, 2, 20);
+        assert_eq!(live_imported_buffers(), 3);
+
+        display.release_surface(1);
+        assert_eq!(live_imported_buffers(), 1);
+        display.release_surface(2);
+        assert_eq!(live_imported_buffers(), 0);
+    }
+
+    #[test]
+    fn flip_to_reuses_imported_buffer() {
+        let mut display = create_test_display();
+        let surface_id = 1;
+        import(&mut display, surface_id, 10);
+        import(&mut display, surface_id, 11);
+        assert_eq!(imported_buffer_count(), 2);
+
+        let mut surface = AndroidSurface {
+            context: display.context.clone(),
+            surface: NonNull::dangling(),
+            ahb_import_map: Arc::clone(&display.surface_ahbs_map[&surface_id]),
+        };
+        for import_id in [10, 11, 10, 11] {
+            surface.flip_to(import_id, None, None, None).unwrap();
+        }
+        assert!(surface.flip_to(12, None, None, None).is_err());
+
+        // Flipping never imports again, and each import id always maps to the same buffer.
+        assert_eq!(imported_buffer_count(), 2);
+        let flipped = flipped_buffers();
+        assert_eq!(flipped.len(), 4);
+        assert_ne!(flipped[0], flipped[1]);
+        assert_eq!(flipped[0], flipped[2]);
+        assert_eq!(flipped[1], flipped[3]);
+
+        drop(surface);
+        display.release_surface(surface_id);
+        assert_eq!(live_imported_buffers(), 0);
     }
 }
