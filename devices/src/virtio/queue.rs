@@ -11,6 +11,7 @@ use std::ops::DerefMut;
 
 pub mod packed_descriptor_chain;
 mod packed_queue;
+pub mod shm;
 pub mod split_descriptor_chain;
 mod split_queue;
 
@@ -377,6 +378,42 @@ macro_rules! define_queue_method {
             }
         }
     };
+}
+
+/// Validates ring areas given as `(addr, size, align, name)` tuples.
+///
+/// Each area must be `align`-byte aligned in guest and host memory, must not overflow `u64`, and
+/// must lie in a single guest memory region, so that `shm` accesses to its fields cannot fail.
+fn validate_ring_areas(mem: &GuestMemory, areas: &[(GuestAddress, u64, u64, &str)]) -> Result<()> {
+    for &(addr, size, align, name) in areas {
+        if addr.offset() % align != 0 {
+            bail!(
+                "virtio queue {} is not {}-byte aligned: {:#x}",
+                name,
+                align,
+                addr.offset(),
+            );
+        }
+        if addr.checked_add(size).is_none() {
+            bail!(
+                "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
+                name,
+                addr.offset(),
+                size,
+            );
+        }
+        if !mem.is_valid_range(addr, size) {
+            bail!(
+                "virtio queue {} goes outside guest memory: start:0x{:08x} size:0x{:08x}",
+                name,
+                addr.offset(),
+                size,
+            );
+        }
+        shm::check_host_aligned(mem, addr, align)
+            .with_context(|| format!("invalid virtio queue {name}"))?;
+    }
+    Ok(())
 }
 
 /// Virtqueue interface representing different types of virtqueues

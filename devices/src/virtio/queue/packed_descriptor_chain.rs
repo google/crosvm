@@ -92,6 +92,19 @@ pub struct PackedDescEvent {
 }
 
 impl PackedDescEvent {
+    /// Decodes a packed event suppression structure from a little-endian `u32`.
+    pub(crate) fn from_u32(raw: u32) -> Self {
+        Self {
+            desc: Le16::from(raw as u16),
+            flag: Le16::from((raw >> 16) as u16),
+        }
+    }
+
+    /// Encodes this event suppression structure as a single little-endian `u32`.
+    pub(crate) fn to_u32(self) -> u32 {
+        u32::from(u16::from(self.desc)) | (u32::from(u16::from(self.flag)) << 16)
+    }
+
     pub fn notification_type(&self) -> PackedNotificationType {
         let flag: u16 = self.flag.into();
 
@@ -245,5 +258,18 @@ impl DescriptorChainIter for PackedDescriptorChain {
 
     fn id(&self) -> Option<u16> {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packed_desc_event_u32_round_trip() {
+        let event = PackedDescEvent::from_u32(0x8001_1234);
+        assert_eq!(u16::from(event.desc), 0x1234);
+        assert_eq!(u16::from(event.flag), 0x8001);
+        assert_eq!(event.to_u32(), 0x8001_1234);
     }
 }

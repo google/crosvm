@@ -4,7 +4,6 @@
 
 use std::num::Wrapping;
 use std::sync::atomic::fence;
-use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 
 use anyhow::bail;
@@ -12,20 +11,18 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::Event;
-use data_model::Le32;
 use serde::Deserialize;
 use serde::Serialize;
 use snapshot::AnySnapshot;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use zerocopy::FromBytes;
-use zerocopy::Immutable;
-use zerocopy::IntoBytes;
-use zerocopy::KnownLayout;
 
+use crate::virtio::queue::shm;
+use crate::virtio::queue::validate_ring_areas;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
+use crate::virtio::Queue;
 use crate::virtio::QueueConfig;
 use crate::virtio::SplitDescriptorChain;
 
@@ -79,13 +76,6 @@ pub struct SplitQueueSnapshot {
     last_used: Wrapping<u16>,
 }
 
-#[repr(C)]
-#[derive(FromBytes, Immutable, IntoBytes, KnownLayout)]
-struct virtq_used_elem {
-    id: Le32,
-    len: Le32,
-}
-
 impl SplitQueue {
     /// Constructs an activated split virtio queue with the given configuration.
     pub fn new(
@@ -95,30 +85,11 @@ impl SplitQueue {
         interrupt: Interrupt,
     ) -> Result<SplitQueue> {
         let size = config.size();
-        if !size.is_power_of_two() {
-            bail!("split queue size {size} is not a power of 2");
-        }
-
         let desc_table = config.desc_table();
         let avail_ring = config.avail_ring();
         let used_ring = config.used_ring();
-
-        // Validate addresses and queue size to ensure that address calculation won't overflow.
-        let ring_sizes = Self::ring_sizes(size, desc_table, avail_ring, used_ring);
-        let rings = ring_sizes
-            .iter()
-            .zip(vec!["descriptor table", "available ring", "used ring"]);
-
-        for ((addr, size), name) in rings {
-            if addr.checked_add(*size as u64).is_none() {
-                bail!(
-                    "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                    name,
-                    addr.offset(),
-                    size,
-                );
-            }
-        }
+        let features = config.acked_features();
+        Self::validate_rings(mem, size, features, desc_table, avail_ring, used_ring)?;
 
         Ok(SplitQueue {
             mem: mem.clone(),
@@ -126,9 +97,9 @@ impl SplitQueue {
             interrupt,
             size,
             vector: config.vector(),
-            desc_table: config.desc_table(),
-            avail_ring: config.avail_ring(),
-            used_ring: config.used_ring(),
+            desc_table,
+            avail_ring,
+            used_ring,
             features: config.acked_features(),
             next_avail: config.next_avail(),
             next_used: config.next_used(),
@@ -153,10 +124,7 @@ impl SplitQueue {
         //
         // So, we read the value from guest memory.
         let used_index_addr = self.used_ring.unchecked_add(2);
-        self.next_used = self
-            .mem
-            .read_obj_from_addr_volatile(used_index_addr)
-            .unwrap();
+        self.next_used = Wrapping(shm::load_u16(&self.mem, used_index_addr).unwrap());
 
         // Since the backend has not told us what its actual last_used value
         // was, we have to assume that an interrupt must be sent when next
@@ -231,18 +199,38 @@ impl SplitQueue {
         index.0 & self.size.wrapping_sub(1)
     }
 
-    fn ring_sizes(
-        queue_size: u16,
+    fn validate_rings(
+        mem: &GuestMemory,
+        size: u16,
+        features: u64,
         desc_table: GuestAddress,
         avail_ring: GuestAddress,
         used_ring: GuestAddress,
-    ) -> Vec<(GuestAddress, usize)> {
-        let queue_size = queue_size as usize;
-        vec![
-            (desc_table, 16 * queue_size),
-            (avail_ring, 6 + 2 * queue_size),
-            (used_ring, 6 + 8 * queue_size),
-        ]
+    ) -> Result<()> {
+        if !size.is_power_of_two() || size > Queue::MAX_SIZE {
+            bail!("split queue size {size} is not a power of 2");
+        }
+
+        let queue_size = u64::from(size);
+        // `used_event` and `avail_event` only exist with VIRTIO_RING_F_EVENT_IDX.
+        let event_size = if features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
+            2
+        } else {
+            0
+        };
+        validate_ring_areas(
+            mem,
+            &[
+                (desc_table, 16 * queue_size, 16, "descriptor table"),
+                (
+                    avail_ring,
+                    4 + 2 * queue_size + event_size,
+                    2,
+                    "available ring",
+                ),
+                (used_ring, 4 + 8 * queue_size + event_size, 4, "used ring"),
+            ],
+        )
     }
 
     // Set the `avail_event` field in the used ring.
@@ -253,11 +241,8 @@ impl SplitQueue {
     // This value is only used if the `VIRTIO_F_EVENT_IDX` feature has been negotiated.
     fn set_avail_event(&mut self, avail_index: Wrapping<u16>) {
         fence(Ordering::SeqCst);
-
         let avail_event_addr = self.used_ring.unchecked_add(4 + 8 * u64::from(self.size));
-        self.mem
-            .write_obj_at_addr_volatile(avail_index.0, avail_event_addr)
-            .unwrap();
+        shm::store_u16(&self.mem, avail_event_addr, avail_index.0).unwrap();
     }
 
     // Query the value of a single-bit flag in the available ring.
@@ -266,10 +251,7 @@ impl SplitQueue {
     fn get_avail_flag(&self, flag: u16) -> bool {
         fence(Ordering::SeqCst);
 
-        let avail_flags: u16 = self
-            .mem
-            .read_obj_from_addr_volatile(self.avail_ring)
-            .unwrap();
+        let avail_flags: u16 = shm::load_u16(&self.mem, self.avail_ring).unwrap();
 
         avail_flags & flag == flag
     }
@@ -285,10 +267,7 @@ impl SplitQueue {
         fence(Ordering::SeqCst);
 
         let used_event_addr = self.avail_ring.unchecked_add(4 + 2 * u64::from(self.size));
-        let used_event: u16 = self
-            .mem
-            .read_obj_from_addr_volatile(used_event_addr)
-            .unwrap();
+        let used_event: u16 = shm::load_u16(&self.mem, used_event_addr).unwrap();
 
         Wrapping(used_event)
     }
@@ -296,26 +275,12 @@ impl SplitQueue {
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
     pub fn peek(&mut self) -> Option<DescriptorChain> {
-        // Get a `VolatileSlice` covering the `struct virtq_avail` fixed header (`flags` and `idx`)
-        // and variable-length `ring`. This ensures that the raw pointers generated below point into
-        // valid `GuestMemory` regions.
-        let avail_ring_size = 2 * size_of::<u16>() + (size_of::<u16>() * usize::from(self.size));
-        let avail_ring_vslice = self
-            .mem
-            .get_slice_at_addr(self.avail_ring, avail_ring_size)
-            .unwrap();
-
-        // SAFETY: offset of `virtq_avail.idx` (2) is always within the `VolatileSlice` bounds.
-        let avail_index_ptr = unsafe { avail_ring_vslice.as_mut_ptr().add(2) } as *mut u16;
-        // SAFETY: `GuestMemory::get_slice_at_addr()` returns a valid `VolatileSlice`, and
-        // `avail_index_ptr` is a valid `*mut u16` contained within that slice.
-        let avail_index_atomic = unsafe { AtomicU16::from_ptr(avail_index_ptr) };
-
         // Check if the driver has published any new descriptors beyond `self.next_avail`. This uses
         // a `Relaxed` load because we do not need a memory barrier if there are no new descriptors.
         // If the ring is not empty, the `fence()` below will provide the necessary ordering,
         // pairing with the write memory barrier in the driver.
-        let avail_index: u16 = avail_index_atomic.load(Ordering::Relaxed);
+        let avail_index_addr = self.avail_ring.unchecked_add(2);
+        let avail_index: u16 = shm::load_u16(&self.mem, avail_index_addr).unwrap();
         let next_avail = self.next_avail;
         if next_avail.0 == avail_index {
             return None;
@@ -327,13 +292,9 @@ impl SplitQueue {
         fence(Ordering::Acquire);
 
         // Calculate the offset of `ring[next_avail % size]` within `struct virtq_avail`.
-        let ring_offset = 4 + (usize::from(self.wrap_queue_index(next_avail)) * 2);
-        debug_assert!(ring_offset + size_of::<u16>() <= avail_ring_size);
-        // SAFETY: The available ring index was wrapped to fall within the queue size above, so
-        // `ring_offset` is always in bounds.
-        let ring_ptr = unsafe { avail_ring_vslice.as_ptr().add(ring_offset) } as *const u16;
-        // SAFETY: `ring_ptr` is a valid `*const u16` within `avail_ring_vslice`.
-        let descriptor_index: u16 = unsafe { std::ptr::read_volatile(ring_ptr) };
+        let ring_offset = 4 + (u64::from(self.wrap_queue_index(next_avail)) * 2);
+        let ring_addr = self.avail_ring.unchecked_add(ring_offset);
+        let descriptor_index: u16 = shm::load_u16(&self.mem, ring_addr).unwrap();
 
         let chain = SplitDescriptorChain::new(self.desc_table, self.size, descriptor_index);
         DescriptorChain::new(chain, &self.mem, descriptor_index)
@@ -390,48 +351,21 @@ impl SplitQueue {
         &mut self,
         desc_chains: impl IntoIterator<Item = (DescriptorChain, u32)>,
     ) {
-        // Get a `VolatileSlice` covering the `struct virtq_used` fixed header (`flags` and `idx`)
-        // and variable-length `ring`. This ensures that the raw pointers generated below point into
-        // valid `GuestMemory` regions.
-        let used_ring_size =
-            2 * size_of::<u16>() + (size_of::<virtq_used_elem>() * usize::from(self.size));
-        let used_ring_vslice = self
-            .mem
-            .get_slice_at_addr(self.used_ring, used_ring_size)
-            .unwrap();
-
-        // SAFETY: `elems_ptr` is always a valid pointer due to `used_ring_vslice()`.
-        let elems_ptr = unsafe { used_ring_vslice.as_mut_ptr().add(4) } as *mut virtq_used_elem;
-
-        // SAFETY: `used_index_ptr` is always a valid pointer due to `used_ring_vslice()`.
-        let used_index_ptr = unsafe { used_ring_vslice.as_mut_ptr().add(2) } as *mut u16;
-
-        // SAFETY: `used_index_ptr` is always a valid pointer
-        let used_index_atomic = unsafe { AtomicU16::from_ptr(used_index_ptr) };
-
         let mut next_used = self.next_used;
         for (desc_chain, len) in desc_chains {
             let desc_index = desc_chain.index();
             debug_assert!(desc_index < self.size);
-            let id = Le32::from(u32::from(desc_index));
-            let len = Le32::from(len);
-
-            let wrapped_index = usize::from(self.wrap_queue_index(next_used));
-            // SAFETY: `wrapped_index` is always in bounds due to `wrap_queue_index()`.
-            let elem_ptr = unsafe { elems_ptr.add(wrapped_index) };
-
-            // SAFETY: `elem_ptr` is always a valid pointer
-            unsafe {
-                std::ptr::write_volatile(std::ptr::addr_of_mut!((*elem_ptr).id), id);
-                std::ptr::write_volatile(std::ptr::addr_of_mut!((*elem_ptr).len), len);
-            };
-
+            let wrapped_index = u64::from(self.wrap_queue_index(next_used));
+            let elem_addr = self.used_ring.unchecked_add(4 + wrapped_index * 8);
+            shm::store_u32(&self.mem, elem_addr, u32::from(desc_index)).unwrap();
+            shm::store_u32(&self.mem, elem_addr.unchecked_add(4), len).unwrap();
             next_used += Wrapping(1);
         }
 
         if next_used != self.next_used {
             fence(Ordering::Release);
-            used_index_atomic.store(next_used.0, Ordering::Relaxed);
+            let used_idx_addr = self.used_ring.unchecked_add(2);
+            shm::store_u16(&self.mem, used_idx_addr, next_used.0).unwrap();
             self.next_used = next_used;
         }
     }
@@ -599,6 +533,14 @@ impl SplitQueue {
         interrupt: Interrupt,
     ) -> anyhow::Result<SplitQueue> {
         let s: SplitQueueSnapshot = AnySnapshot::from_any(queue_value)?;
+        Self::validate_rings(
+            mem,
+            s.size,
+            s.features,
+            s.desc_table,
+            s.avail_ring,
+            s.used_ring,
+        )?;
         let queue = SplitQueue {
             mem: mem.clone(),
             event,
@@ -888,5 +830,162 @@ mod tests {
         // At this moment driver has finished all the previous interrupts, so it
         // should inject interrupt again.
         assert_eq!(queue.trigger_interrupt(), true);
+    }
+
+    fn activate_split(
+        mem: &GuestMemory,
+        desc_table: u64,
+        avail_ring: u64,
+        used_ring: u64,
+    ) -> anyhow::Result<Queue> {
+        activate_split_with_features(mem, 0, desc_table, avail_ring, used_ring)
+    }
+
+    fn activate_split_with_features(
+        mem: &GuestMemory,
+        features: u64,
+        desc_table: u64,
+        avail_ring: u64,
+        used_ring: u64,
+    ) -> anyhow::Result<Queue> {
+        let mut queue = QueueConfig::new(QUEUE_SIZE.try_into().unwrap(), features);
+        queue.set_desc_table(GuestAddress(desc_table));
+        queue.set_avail_ring(GuestAddress(avail_ring));
+        queue.set_used_ring(GuestAddress(used_ring));
+        queue.ack_features(features);
+        queue.set_ready(true);
+        queue.activate(mem, Event::new().unwrap(), Interrupt::new_for_test())
+    }
+
+    #[test]
+    fn activate_requires_event_fields_only_with_event_idx() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        let event_idx = 1u64 << VIRTIO_RING_F_EVENT_IDX;
+        // Rings that end right before where `used_event` / `avail_event` would be.
+        let avail_end = GUEST_MEMORY_SIZE - (4 + 2 * QUEUE_SIZE as u64);
+        let used_end = GUEST_MEMORY_SIZE - (4 + 8 * QUEUE_SIZE as u64);
+
+        assert!(activate_split(&mem, DESC_OFFSET, avail_end, USED_OFFSET).is_ok());
+        assert!(activate_split(&mem, DESC_OFFSET, AVAIL_OFFSET, used_end).is_ok());
+        assert!(
+            activate_split_with_features(&mem, event_idx, DESC_OFFSET, avail_end, USED_OFFSET)
+                .is_err()
+        );
+        assert!(
+            activate_split_with_features(&mem, event_idx, DESC_OFFSET, AVAIL_OFFSET, used_end)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn restore_requires_event_fields_only_with_event_idx() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        let avail_end = GUEST_MEMORY_SIZE - (4 + 2 * QUEUE_SIZE as u64);
+        let restore = |features| {
+            let snap = AnySnapshot::to_any(SplitQueueSnapshot {
+                size: QUEUE_SIZE as u16,
+                vector: 0,
+                desc_table: GuestAddress(DESC_OFFSET),
+                avail_ring: GuestAddress(avail_end),
+                used_ring: GuestAddress(USED_OFFSET),
+                next_avail: Wrapping(0),
+                next_used: Wrapping(0),
+                features,
+                last_used: Wrapping(0),
+            })
+            .unwrap();
+            SplitQueue::restore(snap, &mem, Event::new().unwrap(), Interrupt::new_for_test())
+        };
+        assert!(restore(0).is_ok());
+        assert!(restore(1u64 << VIRTIO_RING_F_EVENT_IDX).is_err());
+    }
+
+    #[test]
+    fn activate_rejects_rings_unaligned_in_host_memory() {
+        // The region base is page-aligned in host memory but not in guest memory, so rings that
+        // are aligned in guest memory are unaligned in host memory.
+        let base = 0x1001;
+        let mem = GuestMemory::new(&[(GuestAddress(base), GUEST_MEMORY_SIZE)]).unwrap();
+        let desc_table = base + 0xf;
+        assert_eq!(desc_table % 16, 0);
+        assert!(activate_split(
+            &mem,
+            desc_table,
+            desc_table + AVAIL_OFFSET,
+            desc_table + USED_OFFSET
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn activate_rejects_misaligned_and_out_of_bounds_rings() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        assert!(activate_split(&mem, DESC_OFFSET, AVAIL_OFFSET, USED_OFFSET).is_ok());
+        assert!(activate_split(&mem, DESC_OFFSET + 8, AVAIL_OFFSET, USED_OFFSET).is_err());
+        assert!(activate_split(&mem, DESC_OFFSET, AVAIL_OFFSET + 1, USED_OFFSET).is_err());
+        assert!(activate_split(&mem, DESC_OFFSET, AVAIL_OFFSET, USED_OFFSET + 2).is_err());
+        assert!(activate_split(&mem, DESC_OFFSET, 0x2000_0000, USED_OFFSET).is_err());
+        assert!(activate_split(&mem, DESC_OFFSET, AVAIL_OFFSET, GUEST_MEMORY_SIZE - 8).is_err());
+    }
+
+    #[test]
+    fn restore_validates_ring_alignment_and_bounds() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        let queue = activate_split(&mem, DESC_OFFSET, AVAIL_OFFSET, USED_OFFSET).unwrap();
+        let snap = queue.snapshot().unwrap();
+        assert!(
+            SplitQueue::restore(snap, &mem, Event::new().unwrap(), Interrupt::new_for_test())
+                .is_ok()
+        );
+
+        for (size, desc_table, avail_ring, used_ring) in [
+            (0, DESC_OFFSET, AVAIL_OFFSET, USED_OFFSET),
+            (3, DESC_OFFSET, AVAIL_OFFSET, USED_OFFSET),
+            (
+                QUEUE_SIZE as u16,
+                DESC_OFFSET + 8,
+                AVAIL_OFFSET,
+                USED_OFFSET,
+            ),
+            (
+                QUEUE_SIZE as u16,
+                DESC_OFFSET,
+                AVAIL_OFFSET + 1,
+                USED_OFFSET,
+            ),
+            (
+                QUEUE_SIZE as u16,
+                DESC_OFFSET,
+                AVAIL_OFFSET,
+                USED_OFFSET + 2,
+            ),
+            (QUEUE_SIZE as u16, DESC_OFFSET, 0x2000_0000, USED_OFFSET),
+            (
+                QUEUE_SIZE as u16,
+                DESC_OFFSET,
+                AVAIL_OFFSET,
+                GUEST_MEMORY_SIZE - 8,
+            ),
+        ] {
+            let bad_snap = AnySnapshot::to_any(SplitQueueSnapshot {
+                size,
+                vector: 0,
+                desc_table: GuestAddress(desc_table),
+                avail_ring: GuestAddress(avail_ring),
+                used_ring: GuestAddress(used_ring),
+                next_avail: Wrapping(0),
+                next_used: Wrapping(0),
+                features: 0,
+                last_used: Wrapping(0),
+            })
+            .unwrap();
+            assert!(SplitQueue::restore(
+                bad_snap,
+                &mem,
+                Event::new().unwrap(),
+                Interrupt::new_for_test()
+            )
+            .is_err());
+        }
     }
 }

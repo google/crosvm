@@ -4,9 +4,10 @@
 
 #![deny(missing_docs)]
 
+use std::mem::offset_of;
+use std::mem::size_of;
 use std::num::Wrapping;
 use std::sync::atomic::fence;
-use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 
 use anyhow::bail;
@@ -30,7 +31,10 @@ use crate::virtio::queue::packed_descriptor_chain::PackedDescEvent;
 use crate::virtio::queue::packed_descriptor_chain::PackedDescriptorChain;
 use crate::virtio::queue::packed_descriptor_chain::PackedNotificationType;
 use crate::virtio::queue::packed_descriptor_chain::RING_EVENT_FLAGS_DESC;
+use crate::virtio::queue::shm;
+use crate::virtio::queue::validate_ring_areas;
 use crate::virtio::Interrupt;
+use crate::virtio::Queue;
 use crate::virtio::QueueConfig;
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -135,29 +139,38 @@ impl PackedQueue {
         interrupt: Interrupt,
     ) -> Result<Self> {
         let size = config.size();
+        if size == 0 || size > Queue::MAX_SIZE {
+            bail!("invalid packed queue size {size}");
+        }
 
         let desc_table = config.desc_table();
         let driver_area = config.avail_ring();
         let device_area = config.used_ring();
 
-        // Validate addresses and queue size to ensure that address calculation won't overflow.
-        let ring_sizes = Self::area_sizes(size, desc_table, driver_area, device_area);
-        let rings = ring_sizes.iter().zip(vec![
-            "descriptor table",
-            "driver_event_suppression",
-            "device_event_suppression",
-        ]);
-
-        for ((addr, size), name) in rings {
-            if addr.checked_add(*size as u64).is_none() {
-                bail!(
-                    "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                    name,
-                    addr.offset(),
-                    size,
-                );
-            }
-        }
+        // Validate queue size, alignments, u64 overflow, and guest memory bounds.
+        validate_ring_areas(
+            mem,
+            &[
+                (
+                    desc_table,
+                    u64::from(size) * size_of::<PackedDesc>() as u64,
+                    16,
+                    "descriptor table",
+                ),
+                (
+                    driver_area,
+                    size_of::<PackedDescEvent>() as u64,
+                    4,
+                    "driver_event_suppression",
+                ),
+                (
+                    device_area,
+                    size_of::<PackedDescEvent>() as u64,
+                    4,
+                    "device_event_suppression",
+                ),
+            ],
+        )?;
 
         Ok(PackedQueue {
             mem: mem.clone(),
@@ -165,9 +178,9 @@ impl PackedQueue {
             interrupt,
             size,
             vector: config.vector(),
-            desc_table: config.desc_table(),
-            driver_event_suppression: config.avail_ring(),
-            device_event_suppression: config.used_ring(),
+            desc_table,
+            driver_event_suppression: driver_area,
+            device_event_suppression: device_area,
             features: config.acked_features(),
             avail_index: PackedQueueIndex::default(),
             use_index: PackedQueueIndex::default(),
@@ -220,28 +233,13 @@ impl PackedQueue {
         &self.interrupt
     }
 
-    fn area_sizes(
-        queue_size: u16,
-        desc_table: GuestAddress,
-        driver_area: GuestAddress,
-        device_area: GuestAddress,
-    ) -> Vec<(GuestAddress, usize)> {
-        vec![
-            (desc_table, 16 * queue_size as usize),
-            (driver_area, 4),
-            (device_area, 4),
-        ]
-    }
-
     /// Set the device event suppression
     ///
     /// This field is used to specify the timing of when the driver notifies the
     /// device that the descriptor table is ready to be processed.
     fn set_avail_event(&mut self, event: PackedDescEvent) {
         fence(Ordering::SeqCst);
-        self.mem
-            .write_obj_at_addr_volatile(event, self.device_event_suppression)
-            .unwrap();
+        shm::store_u32(&self.mem, self.device_event_suppression, event.to_u32()).unwrap();
     }
 
     // Get the driver event suppression.
@@ -249,12 +247,7 @@ impl PackedQueue {
     // driver that the descriptor table is ready to be processed.
     fn get_driver_event(&self) -> PackedDescEvent {
         fence(Ordering::SeqCst);
-
-        let desc: PackedDescEvent = self
-            .mem
-            .read_obj_from_addr_volatile(self.driver_event_suppression)
-            .unwrap();
-        desc
+        PackedDescEvent::from_u32(shm::load_u32(&self.mem, self.driver_event_suppression).unwrap())
     }
 
     /// Get the first available descriptor chain without removing it from the queue.
@@ -314,19 +307,8 @@ impl PackedQueue {
         &mut self,
         desc_chains: impl IntoIterator<Item = (DescriptorChain, u32)>,
     ) {
-        // Get a `VolatileSlice` covering the descriptor table. This ensures that the raw pointers
-        // generated below point into valid `GuestMemory` regions.
-        let desc_table_size = size_of::<PackedDesc>() * usize::from(self.size);
-        let desc_table_vslice = self
-            .mem
-            .get_slice_at_addr(self.desc_table, desc_table_size)
-            .unwrap();
-
-        let desc_table_ptr = desc_table_vslice.as_mut_ptr() as *mut PackedDesc;
-
         for (desc_chain, len) in desc_chains {
             debug_assert!(desc_chain.index() < self.size);
-
             let chain_id = desc_chain
                 .id
                 .expect("Packed descriptor chain should have id");
@@ -341,24 +323,30 @@ impl PackedQueue {
                 flags |= VIRTQ_DESC_F_WRITE;
             }
 
-            // SAFETY: `desc_ptr` is always a valid pointer
-            let desc_ptr = unsafe { desc_table_ptr.add(usize::from(self.use_index.index.0)) };
-
-            // SAFETY: `desc_ptr` is always a valid pointer
-            unsafe {
-                std::ptr::write_volatile(std::ptr::addr_of_mut!((*desc_ptr).len), len.into());
-                std::ptr::write_volatile(std::ptr::addr_of_mut!((*desc_ptr).id), chain_id.into());
-            }
-
-            // Writing to flags should come at the very end to avoid showing the
-            // driver fragmented descriptor data
+            let desc_addr = self
+                .desc_table
+                .unchecked_add(u64::from(self.use_index.index.0) * size_of::<PackedDesc>() as u64);
+            shm::store_u32(
+                &self.mem,
+                desc_addr.unchecked_add(offset_of!(PackedDesc, len) as u64),
+                len,
+            )
+            .unwrap();
+            shm::store_u16(
+                &self.mem,
+                desc_addr.unchecked_add(offset_of!(PackedDesc, id) as u64),
+                chain_id,
+            )
+            .unwrap();
+            // Release fence ensures len and id are visible before the driver sees the updated
+            // flags.
             fence(Ordering::Release);
-
-            // SAFETY: `desc_ptr` is always a valid pointer
-            let desc_flags_atomic = unsafe {
-                AtomicU16::from_ptr(std::ptr::addr_of_mut!((*desc_ptr).flags) as *mut u16)
-            };
-            desc_flags_atomic.store(u16::to_le(flags), Ordering::Relaxed);
+            shm::store_u16(
+                &self.mem,
+                desc_addr.unchecked_add(offset_of!(PackedDesc, flags) as u64),
+                flags,
+            )
+            .unwrap();
 
             self.use_index.add_index(desc_chain.count, self.size());
         }
@@ -517,5 +505,130 @@ mod tests {
         let chain = queue.peek().unwrap();
         assert_eq!(chain.count, 2);
         assert_eq!(chain.id, Some(1));
+    }
+
+    fn activate_packed(
+        mem: &GuestMemory,
+        size: u16,
+        desc_table: u64,
+        driver_area: u64,
+        device_area: u64,
+    ) -> Result<Queue> {
+        let features = 1u64 << VIRTIO_F_RING_PACKED;
+        let mut config = QueueConfig::new(Queue::MAX_SIZE, features);
+        config.set_size(size);
+        config.set_desc_table(GuestAddress(desc_table));
+        config.set_avail_ring(GuestAddress(driver_area));
+        config.set_used_ring(GuestAddress(device_area));
+        config.ack_features(features);
+        config.set_ready(true);
+        config.activate(mem, Event::new().unwrap(), Interrupt::new_for_test())
+    }
+
+    #[test]
+    fn activate_validates_size_alignment_and_bounds() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), GUEST_MEMORY_SIZE)]).unwrap();
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            DESC_OFFSET,
+            DRIVER_EVENT_OFFSET,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_ok());
+        // Packed queues do not require power-of-two size.
+        assert!(activate_packed(
+            &mem,
+            100,
+            DESC_OFFSET,
+            DRIVER_EVENT_OFFSET,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_ok());
+        // Invalid size (0).
+        assert!(activate_packed(
+            &mem,
+            0,
+            DESC_OFFSET,
+            DRIVER_EVENT_OFFSET,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_err());
+        // Misaligned areas.
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            DESC_OFFSET + 8,
+            DRIVER_EVENT_OFFSET,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_err());
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            DESC_OFFSET,
+            DRIVER_EVENT_OFFSET + 2,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_err());
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            DESC_OFFSET,
+            DRIVER_EVENT_OFFSET,
+            DEVICE_EVENT_OFFSET + 2,
+        )
+        .is_err());
+        // Out-of-bounds / straddling areas.
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            0x2000_0000,
+            DRIVER_EVENT_OFFSET,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_err());
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            DESC_OFFSET,
+            0x2000_0000,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_err());
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            DESC_OFFSET,
+            DRIVER_EVENT_OFFSET,
+            0x2000_0000,
+        )
+        .is_err());
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            GUEST_MEMORY_SIZE - 16,
+            DRIVER_EVENT_OFFSET,
+            DEVICE_EVENT_OFFSET,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn activate_rejects_areas_unaligned_in_host_memory() {
+        // The region base is page-aligned in host memory but not in guest memory, so areas that
+        // are aligned in guest memory are unaligned in host memory.
+        let base = 0x1001;
+        let mem = GuestMemory::new(&[(GuestAddress(base), GUEST_MEMORY_SIZE)]).unwrap();
+        let desc_table = base + 0xf;
+        assert_eq!(desc_table % 16, 0);
+        assert!(activate_packed(
+            &mem,
+            QUEUE_SIZE,
+            desc_table,
+            desc_table + DRIVER_EVENT_OFFSET,
+            desc_table + DEVICE_EVENT_OFFSET,
+        )
+        .is_err());
     }
 }
