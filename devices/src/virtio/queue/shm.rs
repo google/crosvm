@@ -6,7 +6,7 @@
 //!
 //! All raw-pointer and `VolatileSlice` operations used by `SplitQueue`, `PackedQueue`,
 //! `SplitDescriptorChain`, `PackedDescriptorChain`, `Reader`, and `Writer` are isolated in this
-//! module.
+//! module so the rest of the virtqueue subsystem compiles under `#![deny(unsafe_code)]`.
 
 use std::cmp;
 use std::io;

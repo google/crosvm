@@ -5,12 +5,14 @@
 //! virtqueue interface
 
 #![deny(missing_docs)]
+#![deny(unsafe_code)]
 
 use std::ops::Deref;
 use std::ops::DerefMut;
 
 pub mod packed_descriptor_chain;
 mod packed_queue;
+#[allow(unsafe_code)]
 pub mod shm;
 pub mod split_descriptor_chain;
 mod split_queue;

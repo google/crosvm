@@ -5,6 +5,7 @@
 //! Split virtqueue descriptor chain iterator
 
 #![deny(missing_docs)]
+#![deny(unsafe_code)]
 
 use anyhow::bail;
 use anyhow::Context;
