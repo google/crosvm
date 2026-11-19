@@ -2,14 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Raw shared-memory primitives for virtqueue ring accesses.
+//! Raw shared-memory primitives for virtqueue ring and descriptor accesses.
 //!
-//! All raw-pointer atomic load/store operations used for `SplitQueue` and `PackedQueue` ring
-//! accesses, and the host alignment check that rings are validated with, are isolated in this
-//! module.
+//! All raw-pointer atomic operations used for `SplitQueue` and `PackedQueue` ring accesses, the
+//! host alignment check that rings are validated with, and `SplitDescriptorChain` and
+//! `PackedDescriptorChain` descriptor reads are isolated in this module.
 
+use std::mem::size_of;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 
 use anyhow::ensure;
@@ -17,6 +19,8 @@ use anyhow::Context;
 use anyhow::Result;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::FromBytes;
+use zerocopy::IntoBytes;
 
 /// Atomically loads a little-endian `u16` from `addr` with `Ordering::Relaxed`.
 ///
@@ -112,6 +116,22 @@ pub fn check_host_aligned(mem: &GuestMemory, addr: GuestAddress, align: u64) -> 
         align
     );
     Ok(())
+}
+
+/// Reads an object of type `T` from `addr`, loading each byte atomically with
+/// `Ordering::Relaxed`.
+pub fn read_obj<T: FromBytes + IntoBytes>(mem: &GuestMemory, addr: GuestAddress) -> Result<T> {
+    let size = size_of::<T>();
+    let vslice = mem
+        .get_slice_at_addr(addr, size)
+        .with_context(|| format!("failed to read {} bytes at {:#x}", size, addr.offset()))?;
+    let p = vslice.as_mut_ptr();
+    let mut obj = T::new_zeroed();
+    for (i, slot) in obj.as_mut_bytes().iter_mut().enumerate() {
+        // SAFETY: `i < size_of::<T>()` is in bounds of `vslice`.
+        *slot = unsafe { AtomicU8::from_ptr(p.add(i)).load(Ordering::Relaxed) };
+    }
+    Ok(obj)
 }
 
 #[cfg(test)]
