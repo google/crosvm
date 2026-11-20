@@ -145,11 +145,18 @@ impl<M: Mapper> Mapper for &M {
 
 pub struct Server<F: FileSystem + Sync> {
     fs: F,
+    max_write: u32,
 }
 
 impl<F: FileSystem + Sync> Server<F> {
     pub fn new(fs: F) -> Server<F> {
-        Server { fs }
+        let max_write = fs.max_buffer_size();
+        Server { fs, max_write }
+    }
+
+    pub(crate) fn with_max_write(fs: F, max_write: u32) -> Server<F> {
+        let max_write = min(fs.max_buffer_size(), max_write);
+        Server { fs, max_write }
     }
 
     pub fn handle_message<R: Reader + ZeroCopyReader, W: Writer + ZeroCopyWriter, M: Mapper>(
@@ -702,7 +709,7 @@ impl<F: FileSystem + Sync> Server<F> {
             ..
         } = r.read_struct()?;
 
-        if size > self.fs.max_buffer_size() {
+        if size > self.max_write {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -1033,7 +1040,7 @@ impl<F: FileSystem + Sync> Server<F> {
                     enabled.remove(FsOptions::ATOMIC_O_TRUNC);
                 }
 
-                let max_write = self.fs.max_buffer_size();
+                let max_write = self.max_write;
                 let max_pages = min(
                     max(max_readahead, max_write) / pagesize() as u32,
                     u16::MAX as u32,
@@ -1097,7 +1104,10 @@ impl<F: FileSystem + Sync> Server<F> {
             );
         }
 
-        if !w.has_sufficient_buffer(size) {
+        if !size
+            .checked_add(size_of::<OutHeader>() as u32)
+            .is_some_and(|total| w.has_sufficient_buffer(total))
+        {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,
@@ -1189,7 +1199,10 @@ impl<F: FileSystem + Sync> Server<F> {
             );
         }
 
-        if !w.has_sufficient_buffer(size) {
+        if !size
+            .checked_add(size_of::<OutHeader>() as u32)
+            .is_some_and(|total| w.has_sufficient_buffer(total))
+        {
             return reply_error(
                 io::Error::from_raw_os_error(libc::ENOMEM),
                 in_header.unique,

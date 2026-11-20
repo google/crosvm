@@ -110,7 +110,8 @@ impl Writer for DevFuseWriter {
     }
 
     fn has_sufficient_buffer(&self, size: u32) -> bool {
-        (self.write_buf.position() as usize + size as usize) < self.write_buf.get_ref().capacity()
+        (self.write_buf.position() as usize).saturating_add(size as usize)
+            <= self.write_buf.get_ref().capacity()
     }
 }
 
@@ -173,7 +174,7 @@ pub fn start_message_loop<F: FileSystem + Sync>(
     output_buffer_size: u32,
     fs: F,
 ) -> Result<()> {
-    let server = Server::new(fs);
+    let server = Server::with_max_write(fs, input_buffer_size);
     do_start_message_loop(dev_fuse, input_buffer_size, output_buffer_size, &server)
 }
 
@@ -186,14 +187,19 @@ fn do_start_message_loop<F: FileSystem + Sync>(
     let mut dev_fuse_reader = {
         let rfile = dev_fuse.try_clone().map_err(Error::EndpointSetup)?;
         let buf_reader = BufReader::with_capacity(
-            input_buffer_size as usize + size_of::<sys::InHeader>() + size_of::<sys::WriteIn>(),
+            std::cmp::max(
+                sys::FUSE_MIN_READ_BUFFER as usize,
+                input_buffer_size as usize + size_of::<sys::InHeader>() + size_of::<sys::WriteIn>(),
+            ),
             rfile,
         );
         DevFuseReader::new(buf_reader)
     };
     let mut dev_fuse_writer = {
         let wfile = dev_fuse;
-        let write_buf = Cursor::new(Vec::with_capacity(output_buffer_size as usize));
+        let write_buf = Cursor::new(Vec::with_capacity(
+            output_buffer_size as usize + size_of::<sys::OutHeader>(),
+        ));
         DevFuseWriter::new(wfile, write_buf)
     };
     let dev_fuse_mapper = DevFuseMapper::new();
@@ -229,7 +235,7 @@ pub mod internal {
         fs: F,
     ) -> Result<()> {
         let result = thread::scope(|s| {
-            let server = Arc::new(Server::new(fs));
+            let server = Arc::new(Server::with_max_write(fs, input_buffer_size));
             for _ in 0..thread_numbers {
                 let dev_fuse = dev_fuse
                     .try_clone()
