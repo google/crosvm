@@ -78,6 +78,7 @@ impl VirtioPciCommonConfig {
         data: &[u8],
         queues: &mut [QueueConfig],
         device: &mut dyn VirtioDevice,
+        msix_vectors: u16,
     ) {
         match data.len() {
             1 => self.write_common_config_byte(offset, data[0]),
@@ -86,6 +87,7 @@ impl VirtioPciCommonConfig {
                 // This unwrap (and those below) cannot fail since data.len() is checked.
                 u16::from_le_bytes(data.try_into().unwrap()),
                 queues,
+                msix_vectors,
             ),
             4 => self.write_common_config_dword(
                 offset,
@@ -136,12 +138,25 @@ impl VirtioPciCommonConfig {
         }
     }
 
-    fn write_common_config_word(&mut self, offset: u64, value: u16, queues: &mut [QueueConfig]) {
+    fn write_common_config_word(
+        &mut self,
+        offset: u64,
+        value: u16,
+        queues: &mut [QueueConfig],
+        msix_vectors: u16,
+    ) {
+        // A vector past the end of the MSI-X table can't be mapped, so it reads back as
+        // NO_VECTOR (virtio 1.2, 4.1.5.1.2.1).
+        let vector = if value < msix_vectors {
+            value
+        } else {
+            VIRTIO_MSI_NO_VECTOR
+        };
         match offset {
-            0x10 => self.msix_config = value,
+            0x10 => self.msix_config = vector,
             0x16 => self.queue_select = value,
             0x18 => self.with_queue_mut(queues, |q| q.set_size(value)),
-            0x1a => self.with_queue_mut(queues, |q| q.set_vector(value)),
+            0x1a => self.with_queue_mut(queues, |q| q.set_vector(vector)),
             0x1c => self.with_queue_mut(queues, |q| q.set_ready(value == 1)),
             _ => {
                 warn!("invalid virtio register word write: 0x{:x}", offset);
@@ -261,6 +276,7 @@ mod tests {
     const QUEUE_SIZE: u16 = 256;
     const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
     const DUMMY_FEATURES: u64 = 0x5555_aaaa;
+    const MSIX_VECTORS: u16 = 2;
     impl VirtioDevice for DummyDevice {
         fn keep_rds(&self) -> Vec<RawDescriptor> {
             Vec::new()
@@ -299,38 +315,72 @@ mod tests {
         let mut queues = Vec::new();
 
         // Can set all bits of driver_status.
-        regs.write(0x14, &[0x55], &mut queues, dev);
+        regs.write(0x14, &[0x55], &mut queues, dev, MSIX_VECTORS);
         let mut read_back = vec![0x00];
         regs.read(0x14, &mut read_back, &mut queues, dev);
         assert_eq!(read_back[0], 0x55);
 
         // The config generation register is read only.
-        regs.write(0x15, &[0xaa], &mut queues, dev);
+        regs.write(0x15, &[0xaa], &mut queues, dev, MSIX_VECTORS);
         let mut read_back = vec![0x00];
         regs.read(0x15, &mut read_back, &mut queues, dev);
         assert_eq!(read_back[0], 0x55);
 
         // Device features is read-only and passed through from the device.
-        regs.write(0x04, &[0, 0, 0, 0], &mut queues, dev);
+        regs.write(0x04, &[0, 0, 0, 0], &mut queues, dev, MSIX_VECTORS);
         let mut read_back = [0u8; 4];
         regs.read(0x04, &mut read_back, &mut queues, dev);
         assert_eq!(u32::from_le_bytes(read_back), DUMMY_FEATURES as u32);
 
         // Feature select registers are read/write.
-        regs.write(0x00, &[1, 2, 3, 4], &mut queues, dev);
+        regs.write(0x00, &[1, 2, 3, 4], &mut queues, dev, MSIX_VECTORS);
         let mut read_back = [0u8; 4];
         regs.read(0x00, &mut read_back, &mut queues, dev);
         assert_eq!(u32::from_le_bytes(read_back), 0x0403_0201);
-        regs.write(0x08, &[1, 2, 3, 4], &mut queues, dev);
+        regs.write(0x08, &[1, 2, 3, 4], &mut queues, dev, MSIX_VECTORS);
         let mut read_back = [0u8; 4];
         regs.read(0x08, &mut read_back, &mut queues, dev);
         assert_eq!(u32::from_le_bytes(read_back), 0x0403_0201);
 
         // 'queue_select' can be read and written.
-        regs.write(0x16, &[0xaa, 0x55], &mut queues, dev);
+        regs.write(0x16, &[0xaa, 0x55], &mut queues, dev, MSIX_VECTORS);
         let mut read_back = vec![0x00, 0x00];
         regs.read(0x16, &mut read_back, &mut queues, dev);
         assert_eq!(read_back[0], 0xaa);
         assert_eq!(read_back[1], 0x55);
+    }
+
+    #[test]
+    fn write_msix_vectors() {
+        let mut regs = VirtioPciCommonConfig {
+            driver_status: 0,
+            config_generation: 0,
+            device_feature_select: 0,
+            driver_feature_select: 0,
+            queue_select: 0,
+            msix_config: VIRTIO_MSI_NO_VECTOR,
+        };
+
+        let dev = &mut DummyDevice(DeviceType::Rng) as &mut dyn VirtioDevice;
+        let mut queues = vec![QueueConfig::new(QUEUE_SIZE, 0)];
+
+        // The table's last vector reads back as written, and the one past its end as NO_VECTOR.
+        for offset in [0x10, 0x1a] {
+            let mut read_back = [0u8; 2];
+            let last = MSIX_VECTORS - 1;
+            regs.write(offset, &last.to_le_bytes(), &mut queues, dev, MSIX_VECTORS);
+            regs.read(offset, &mut read_back, &mut queues, dev);
+            assert_eq!(u16::from_le_bytes(read_back), last);
+
+            regs.write(
+                offset,
+                &MSIX_VECTORS.to_le_bytes(),
+                &mut queues,
+                dev,
+                MSIX_VECTORS,
+            );
+            regs.read(offset, &mut read_back, &mut queues, dev);
+            assert_eq!(u16::from_le_bytes(read_back), VIRTIO_MSI_NO_VECTOR);
+        }
     }
 }

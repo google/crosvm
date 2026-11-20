@@ -921,12 +921,16 @@ impl PciDevice for VirtioPciDevice {
 
         if bar_index == self.settings_bar {
             match offset {
-                COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.write(
-                    offset - COMMON_CONFIG_BAR_OFFSET,
-                    data,
-                    &mut self.queues,
-                    self.device.as_mut(),
-                ),
+                COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => {
+                    let msix_vectors = self.msix_config.lock().num_vectors();
+                    self.common_config.write(
+                        offset - COMMON_CONFIG_BAR_OFFSET,
+                        data,
+                        &mut self.queues,
+                        self.device.as_mut(),
+                        msix_vectors,
+                    )
+                }
                 ISR_CONFIG_BAR_OFFSET..=ISR_CONFIG_LAST => {
                     if let Some(v) = data.first() {
                         if let Some(interrupt) = &self.interrupt {
