@@ -364,17 +364,19 @@ impl BusDevice for Vmwdt {
         let cpu_index: usize = (info.offset / VMWDT_REG_LEN) as usize;
         let reg_offset = (info.offset % VMWDT_REG_LEN) as u32;
 
-        if cpu_index > self.vm_wdts.lock().len() {
-            error!("Bad write cpu_index {}", cpu_index);
-            return;
-        }
-
         match reg_offset {
             VMWDT_REG_STATUS => {
                 self.ensure_started();
                 let mut wdts_locked = self.vm_wdts.lock();
-                let cpu_watchdog = &mut wdts_locked[cpu_index];
+                let Some(cpu_watchdog) = wdts_locked.get_mut(cpu_index) else {
+                    error!("Bad write cpu_index {}", cpu_index);
+                    return;
+                };
 
+                if reg_val != 0 && cpu_watchdog.timer_freq_hz == 0 {
+                    error!("Bad write: CPU {} clock frequency is 0", cpu_index);
+                    return;
+                }
                 cpu_watchdog.is_enabled = reg_val != 0;
 
                 if reg_val != 0 {
@@ -395,7 +397,14 @@ impl BusDevice for Vmwdt {
             VMWDT_REG_LOAD_CNT => {
                 self.ensure_started();
                 let mut wdts_locked = self.vm_wdts.lock();
-                let cpu_watchdog = &mut wdts_locked[cpu_index];
+                let Some(cpu_watchdog) = wdts_locked.get_mut(cpu_index) else {
+                    error!("Bad write cpu_index {}", cpu_index);
+                    return;
+                };
+                if cpu_watchdog.timer_freq_hz == 0 {
+                    error!("Bad write: CPU {} clock frequency is 0", cpu_index);
+                    return;
+                }
                 let process_id = cpu_watchdog.process_id;
                 let thread_id = cpu_watchdog.thread_id;
                 let guest_time_ms = Vmwdt::get_guest_time_ms(process_id, thread_id)
@@ -422,7 +431,10 @@ impl BusDevice for Vmwdt {
             }
             VMWDT_REG_CLOCK_FREQ_HZ => {
                 let mut wdts_locked = self.vm_wdts.lock();
-                let cpu_watchdog = &mut wdts_locked[cpu_index];
+                let Some(cpu_watchdog) = wdts_locked.get_mut(cpu_index) else {
+                    error!("Bad write cpu_index {}", cpu_index);
+                    return;
+                };
 
                 debug!(
                     "CPU:{:x} wrote VMWDT_REG_CLOCK_FREQ_HZ {:x}",
@@ -430,7 +442,7 @@ impl BusDevice for Vmwdt {
                 );
                 cpu_watchdog.timer_freq_hz = reg_val as u64;
             }
-            _ => unreachable!(),
+            _ => error!("Bad write offset {:#x} for vmwdt", info.offset),
         }
     }
 }
@@ -656,5 +668,33 @@ mod tests {
 
         // Stop the device.
         std::mem::drop(device);
+    }
+
+    #[test]
+    fn test_watchdog_bad_writes() {
+        let (vm_evt_wrtube, _vm_evt_rdtube) = Tube::directional_pair().unwrap();
+        let (vm_ctrl_wrtube, vm_ctrl_rdtube) = Tube::pair().unwrap();
+        let irq = IrqEdgeEvent::new().unwrap();
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            vm_ctrl_wrtube
+                .send(&VmResponse::VcpuPidTidResponse {
+                    pid_tid_map: BTreeMap::from([(0, (process::id(), gettid() as u32))]),
+                })
+                .unwrap();
+        }
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube, irq, vm_ctrl_rdtube).unwrap();
+
+        // STATUS for the vCPU index one past the last vCPU.
+        let past_last_cpu = TEST_VMWDT_CPU_NO as u64 * VMWDT_REG_LEN;
+        device.write(vmwdt_bus_address(past_last_cpu), &[1, 0, 0, 0]);
+
+        // An offset that isn't a register.
+        device.write(vmwdt_bus_address(1), &[1, 0, 0, 0]);
+
+        // Loading and enabling the watchdog before its clock frequency is set.
+        device.write(vmwdt_bus_address(VMWDT_REG_LOAD_CNT as u64), &[1, 0, 0, 0]);
+        device.write(vmwdt_bus_address(VMWDT_REG_STATUS as u64), &[1, 0, 0, 0]);
+        assert!(!device.vm_wdts.lock()[0].is_enabled);
     }
 }
