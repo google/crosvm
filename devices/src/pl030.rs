@@ -136,7 +136,7 @@ impl BusDevice for Pl030 {
             RTCCR => {
                 self.counter_delta_time = get_epoch_time();
             }
-            o => panic!("pl030: bad write {o}"),
+            o => warn!("pl030: bad write {o}"),
         }
     }
 
@@ -161,7 +161,10 @@ impl BusDevice for Pl030 {
             AMBA_ID_OFFSET => PL030_AMBA_ID,
             AMBA_MASK_OFFSET => PL030_AMBA_MASK,
 
-            o => panic!("pl030: bad read {o}"),
+            o => {
+                warn!("pl030: bad read {o}");
+                0
+            }
         };
         *data_array = reg_content.to_ne_bytes();
     }
@@ -236,5 +239,15 @@ mod tests {
         device.write(pl030_bus_address(RTCMR), &[1, 2, 3, 4]);
         device.read(pl030_bus_address(RTCMR), &mut register);
         assert_eq!(register, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_unhandled_offset() {
+        let mut device = Pl030::new(IrqEdgeEvent::new().unwrap());
+        let mut register = [0xff, 0xff, 0xff, 0xff];
+
+        device.write(pl030_bus_address(0x14), &[1, 2, 3, 4]);
+        device.read(pl030_bus_address(0x14), &mut register);
+        assert_eq!(register, [0, 0, 0, 0]);
     }
 }
