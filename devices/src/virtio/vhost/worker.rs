@@ -203,14 +203,14 @@ impl<T: Vhost> Worker<T> {
                     }
                     Token::ControlNotify => match self.server_tube.recv() {
                         Ok(VhostDevRequest::MsixEntryChanged(index)) => {
-                            let mut qindex = 0;
-                            for (&queue_index, queue) in self.queues.iter() {
-                                if queue.vector() == index as u16 {
-                                    qindex = queue_index;
-                                    break;
-                                }
-                            }
-                            let response = match self.set_vring_call_for_entry(qindex, index) {
+                            let result = self
+                                .queues
+                                .iter()
+                                .filter(|(_, queue)| usize::from(queue.vector()) == index)
+                                .try_for_each(|(&queue_index, _)| {
+                                    self.set_vring_call_for_entry(queue_index, index)
+                                });
+                            let response = match result {
                                 Ok(()) => VhostDevResponse::Ok,
                                 Err(e) => {
                                     error!(
