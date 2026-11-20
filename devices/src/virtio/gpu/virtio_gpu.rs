@@ -474,6 +474,9 @@ impl VirtioGpuScanout {
             }
             other => RutabagaMagmaHandle::try_from(other).ok()?,
         };
+        if handle.handle_type != rutabaga_gfx::RUTABAGA_HANDLE_TYPE_MEM_DMABUF {
+            return None;
+        }
         let dmabuf = to_safe_descriptor(handle.os_handle);
 
         let (width, height, format, stride, offset, modifier) = match resource.scanout_data {
@@ -1190,19 +1193,21 @@ impl VirtioGpu {
             let export = RutabagaMagmaHandle::try_from(export)
                 .context("failed to retrieve the handle info")
                 .context(ErrUnspec)?;
-            if let Ok(vulkan_info) = self.rutabaga.vulkan_info(resource_id) {
+            // Prefer descriptor handling even in the presence `vulkan_info` to avoid
+            // the need for a vulkan instance in the main crosvm process.
+            if export.handle_type != RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD {
+                source = Some(VmMemorySource::Descriptor {
+                    descriptor: to_safe_descriptor(export.os_handle),
+                    offset: 0,
+                    size: resource.size,
+                });
+            } else if let Ok(vulkan_info) = self.rutabaga.vulkan_info(resource_id) {
                 source = Some(VmMemorySource::Vulkan {
                     descriptor: to_safe_descriptor(export.os_handle),
                     handle_type: export.handle_type,
                     memory_idx: vulkan_info.memory_idx,
                     device_uuid: vulkan_info.device_id.device_uuid,
                     driver_uuid: vulkan_info.device_id.driver_uuid,
-                    size: resource.size,
-                });
-            } else if export.handle_type != RUTABAGA_HANDLE_TYPE_MEM_OPAQUE_FD {
-                source = Some(VmMemorySource::Descriptor {
-                    descriptor: to_safe_descriptor(export.os_handle),
-                    offset: 0,
                     size: resource.size,
                 });
             }
