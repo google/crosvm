@@ -441,6 +441,8 @@ impl Log for State {
     }
 }
 
+const BUF_CAPACITY: usize = 1024;
+
 // Struct that implements io::Write to be used for writing directly to the syslog
 pub struct Syslogger<'a> {
     buf: Vec<u8>,
@@ -468,35 +470,50 @@ impl<'a> Syslogger<'a> {
     }
 }
 
+fn log_line(state: &State, level: log::Level, line: &[u8]) {
+    // Also drop CR+LF line endings.
+    let line = match line.split_last() {
+        Some((b'\r', trimmed)) => trimmed,
+        _ => line,
+    };
+    // Match is to explicitly limit lifetime of args
+    // https://github.com/rust-lang/rust/issues/92698
+    // https://github.com/rust-lang/rust/issues/15023
+    #[allow(clippy::match_single_binding)]
+    match format_args!("{}", String::from_utf8_lossy(line)) {
+        args => {
+            let mut record_builder = log::Record::builder();
+            record_builder.level(level);
+            record_builder.target("syslogger");
+            record_builder.args(args);
+            let record = record_builder.build();
+            state.log(&record);
+        }
+    }
+}
+
 impl io::Write for Syslogger<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let state = (self.get_state_fn)();
-        self.buf.extend_from_slice(buf);
+        let mut remaining = buf;
 
-        if let Some(last_newline_idx) = self.buf.iter().rposition(|&x| x == b'\n') {
-            for line in (self.buf[..last_newline_idx]).split(|&x| x == b'\n') {
-                // Also drop CR+LF line endings.
-                let send_line = match line.split_last() {
-                    Some((b'\r', trimmed)) => trimmed,
-                    _ => line,
-                };
-                // Match is to explicitly limit lifetime of args
-                // https://github.com/rust-lang/rust/issues/92698
-                // https://github.com/rust-lang/rust/issues/15023
-                #[allow(clippy::match_single_binding)]
-                match format_args!("{}", String::from_utf8_lossy(send_line)) {
-                    args => {
-                        let mut record_builder = log::Record::builder();
-                        record_builder.level(self.level);
-                        record_builder.target("syslogger");
-                        record_builder.args(args);
-                        let record = record_builder.build();
-                        state.log(&record);
-                    }
+        // Take at most what fits, so neither the buffer nor a logged line exceeds BUF_CAPACITY.
+        while !remaining.is_empty() {
+            let space = BUF_CAPACITY - self.buf.len();
+            let (chunk, rest) = remaining.split_at(remaining.len().min(space));
+            remaining = rest;
+            self.buf.extend_from_slice(chunk);
+
+            if let Some(last_newline_idx) = self.buf.iter().rposition(|&x| x == b'\n') {
+                for line in self.buf[..last_newline_idx].split(|&x| x == b'\n') {
+                    log_line(&state, self.level, line);
                 }
+                self.buf.drain(..=last_newline_idx);
+            } else if self.buf.len() >= BUF_CAPACITY {
+                // Don't let a guest that sends no newline grow the buffer without bound.
+                log_line(&state, self.level, &self.buf);
+                self.buf.clear();
             }
-
-            self.buf.drain(..=last_newline_idx);
         }
         Ok(buf.len())
     }

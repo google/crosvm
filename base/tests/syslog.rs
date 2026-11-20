@@ -165,6 +165,39 @@ fn syslogger_partial() {
 }
 
 #[test]
+fn syslogger_long_line() {
+    let output = MockWrite::new();
+    let mut cfg = LogConfig::default();
+    cfg.pipe_formatter = Some(Box::new(pipe_formatter));
+    cfg.pipe = Some(Box::new(output.clone()));
+    let state = Mutex::new(State::new(cfg).unwrap());
+
+    let mut syslogger = Syslogger::test_only_from_state(Level::Info, || state.lock());
+
+    // A full buffer with no newline is logged as one line.
+    let long = "a".repeat(1024);
+    for c in long.bytes() {
+        syslogger.write_all(&[c]).expect("error writing char");
+    }
+    syslogger.write_all(b"b\n").expect("error writing string");
+    // So is a write that ends in 1024 bytes after its last newline.
+    syslogger
+        .write_all(format!("c\n{long}").as_bytes())
+        .expect("error writing string");
+    // A single write longer than the buffer is logged in buffer-sized lines.
+    syslogger
+        .write_all(format!("{long}{long}d\n").as_bytes())
+        .expect("error writing string");
+
+    std::mem::drop(syslogger);
+    std::mem::drop(state);
+    assert_eq!(
+        format!("{long}\nb\nc\n{long}\n{long}\n{long}\nd\n"),
+        String::from_utf8_lossy(&output.into_inner()[..])
+    );
+}
+
+#[test]
 fn log_priority_try_from_number() {
     assert_eq!("0".try_into(), Ok(Priority::Emergency));
     assert!(Priority::try_from("100").is_err());
