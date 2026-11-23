@@ -8,6 +8,7 @@ use cros_async::Executor;
 use cros_async::ExecutorKind;
 
 use crate::asynchronous::BlockAsync;
+use crate::DiskFormat;
 use crate::DiskOption;
 
 pub fn get_seg_max(_queue_size: u16) -> u32 {
@@ -22,7 +23,7 @@ pub fn check_dontcache_support(_fd: RawDescriptor, _write: bool) -> bool {
 impl DiskOption {
     /// Open the specified disk file.
     pub fn open(&self) -> anyhow::Result<Box<dyn disk::DiskFile>> {
-        Ok(disk::open_disk_file(disk::DiskFileParams {
+        let params = disk::DiskFileParams {
             path: self.path.clone(),
             is_read_only: self.read_only,
             is_sparse_file: self.sparse,
@@ -33,7 +34,11 @@ impl DiskOption {
             is_direct: self.direct,
             lock: self.lock,
             ..Default::default()
-        })?)
+        };
+        Ok(match self.format {
+            DiskFormat::Auto => disk::open_disk_file(params)?,
+            DiskFormat::Raw => disk::open_disk_file_as(params, disk::ImageType::Raw)?,
+        })
     }
 }
 

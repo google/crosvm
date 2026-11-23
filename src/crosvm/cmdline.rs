@@ -889,6 +889,8 @@ pub struct RunCommand {
     ///         (default: false)
     ///     dontcache=BOOL - Drop page cache immediately after use.
     ///         (default: false)
+    ///     format=auto|raw - Disk image format; use "raw" to
+    ///         skip header auto-detection. (default: auto)
     ///     async-executor=epoll|uring - set the async executor kind
     ///         to simulate the block device with. This takes
     ///         precedence over the global --async-executor option.

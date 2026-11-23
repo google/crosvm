@@ -89,6 +89,14 @@ fn deserialize_disk_id<'de, D: Deserializer<'de>>(
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DiskFormat {
+    #[default]
+    Auto,
+    Raw,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 // LINT.IfChange
@@ -149,6 +157,9 @@ pub struct DiskOption {
     /// Specify whether to cache reads/writes.
     #[serde(default)]
     pub dontcache: bool,
+    /// Disk image format. When set to `Raw`, header auto-detection is skipped.
+    #[serde(default)]
+    pub format: DiskFormat,
 }
 // LINT.ThenChange(/src/crosvm/cmdline.rs)
 
@@ -171,6 +182,7 @@ impl Default for DiskOption {
             bootindex: None,
             pci_address: None,
             dontcache: false,
+            format: DiskFormat::default(),
         }
     }
 }
@@ -504,10 +516,32 @@ mod tests {
             }
         );
 
+        // format
+        let params = from_block_arg("/path/to/disk.img,format=raw").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                format: DiskFormat::Raw,
+                ..Default::default()
+            }
+        );
+        let params = from_block_arg("/path/to/disk.img,format=auto").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                format: DiskFormat::Auto,
+                ..Default::default()
+            }
+        );
+        assert!(from_block_arg("/path/to/disk.img,format=unknown").is_err());
+
         // All together
         let params = from_block_arg(&format!(
             "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL\
-             ,direct,async-executor={ex_kind_opt},packed-queue=false,pci-address=00:01.1"
+             ,direct,async-executor={ex_kind_opt},packed-queue=false,pci-address=00:01.1\
+             ,format=raw"
         ))
         .unwrap();
         assert_eq!(
@@ -526,9 +560,62 @@ mod tests {
                     dev: 1,
                     func: 1,
                 }),
+                format: DiskFormat::Raw,
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn open_with_raw_format_skips_autodetect() {
+        use base::VolatileSlice;
+
+        let dir = tempfile::tempdir().unwrap();
+        let headers: &[&[u8]] = &[
+            b"QFI\xfb",
+            b"composite_disk\x1d",
+            &0xED26FF3Au32.to_le_bytes(),
+        ];
+
+        for (i, magic) in headers.iter().enumerate() {
+            let path = dir.path().join(format!("disk_{i}.img"));
+            let mut contents = vec![0u8; 4096];
+            contents[..magic.len()].copy_from_slice(magic);
+            std::fs::write(&path, &contents).unwrap();
+
+            let detected =
+                disk::detect_image_type(&std::fs::File::open(&path).unwrap(), false).unwrap();
+
+            // When the format parser is compiled in, auto-detection invokes it and rejects the
+            // truncated header.
+            let auto_opt = DiskOption {
+                path: path.clone(),
+                read_only: true,
+                sparse: false,
+                lock: false,
+                format: DiskFormat::Auto,
+                ..Default::default()
+            };
+            if detected != disk::ImageType::Raw {
+                assert!(
+                    auto_opt.open().is_err(),
+                    "expected auto-detection to parse magic {magic:?}"
+                );
+            }
+
+            // Explicit raw format bypasses header detection and exposes the raw bytes directly.
+            let raw_opt = DiskOption {
+                format: DiskFormat::Raw,
+                ..auto_opt
+            };
+            let disk = raw_opt.open().unwrap();
+            assert_eq!(disk.get_len().unwrap(), 4096);
+
+            let mut read_back = vec![0u8; magic.len()];
+            disk.read_exact_at_volatile(VolatileSlice::new(&mut read_back), 0)
+                .unwrap();
+            assert_eq!(read_back.as_slice(), *magic);
+        }
     }
 
     #[test]
@@ -547,6 +634,7 @@ mod tests {
             path: "./rootfs".into(),
             id: Some(*b"BLK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
             async_executor: Some(ExecutorKind::default()),
+            format: DiskFormat::Raw,
             ..Default::default()
         };
         let json = serde_json::to_string(&original).unwrap();
