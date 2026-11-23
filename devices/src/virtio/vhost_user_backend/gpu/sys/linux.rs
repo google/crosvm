@@ -8,10 +8,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
 use base::clone_descriptor;
 use base::error;
+use base::safe_descriptor_from_cmdline_fd;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
@@ -244,6 +246,9 @@ pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to the control socket to listen on for GPU commands
     control_socket_path: Option<PathBuf>,
+    #[argh(option, arg_name = "FD")]
+    /// file descriptor of a connected GPU render server socket
+    render_server_fd: Option<RawDescriptor>,
     #[argh(
         option,
         from_str_fn(gpu_parameters_from_str),
@@ -258,6 +263,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let Options {
         x_display,
         control_socket_path,
+        render_server_fd,
         params: mut gpu_parameters,
         resource_bridge,
         socket,
@@ -265,6 +271,17 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         fd,
         wayland_sock,
     } = opts;
+
+    if fd.is_some() && fd == render_server_fd {
+        bail!("--fd and --render-server-fd cannot refer to the same descriptor");
+    }
+
+    let rutabaga_server_descriptor = render_server_fd
+        .map(|raw_fd| {
+            safe_descriptor_from_cmdline_fd(&raw_fd)
+                .context("failed to validate --render-server-fd")
+        })
+        .transpose()?;
 
     // Standalone vhost-user GPU device runs out-of-process, so external_blob must be enforced
     // to allow blobs to be exported to descriptors for sharing with the hypervisor or host display.
@@ -350,8 +367,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         Vec::new(), // resource_bridges, handled separately by us
         display_backends,
         &gpu_parameters,
-        /* rutabaga_server_descriptor */
-        None,
+        rutabaga_server_descriptor,
         event_devices,
         base_features,
         &channels,
@@ -407,4 +423,46 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let _ = ex.run_until(async {});
 
     res?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_render_server_fd_option() {
+        let opts = Options::from_args(&["gpu"], &["--render-server-fd", "42"]).unwrap();
+        assert_eq!(opts.render_server_fd, Some(42));
+
+        let opts_default = Options::from_args(&["gpu"], &[]).unwrap();
+        assert_eq!(opts_default.render_server_fd, None);
+    }
+
+    #[test]
+    fn reject_duplicate_fd_and_render_server_fd() {
+        let opts =
+            Options::from_args(&["gpu"], &["--fd", "42", "--render-server-fd", "42"]).unwrap();
+        let err = run_gpu_device(opts).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("--fd and --render-server-fd cannot refer to the same descriptor"));
+    }
+
+    #[test]
+    fn reject_invalid_render_server_fd() {
+        let opts = Options::from_args(
+            &["gpu"],
+            &[
+                "--resource-bridge",
+                "/nonexistent/render_server_fd_test.sock",
+                "--render-server-fd",
+                "-1",
+            ],
+        )
+        .unwrap();
+        let err = run_gpu_device(opts).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("failed to validate --render-server-fd"));
+    }
 }
