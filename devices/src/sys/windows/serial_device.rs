@@ -78,7 +78,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
                 evt,
                 pipe_in,
                 pipe_out,
-                Default::default(),
+                param.serial_options(),
                 keep_rds.to_vec(),
             ))
         }

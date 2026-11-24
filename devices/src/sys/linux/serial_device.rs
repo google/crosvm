@@ -225,7 +225,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
                 input,
                 output,
                 None,
-                Default::default(),
+                param.serial_options(),
                 keep_rds.to_vec(),
             ))
         }
@@ -252,13 +252,7 @@ pub(crate) fn create_unix_stream_serial_device<T: SerialDevice>(
         Some(Box::new(input)),
         Some(Box::new(output)),
         None,
-        SerialOptions {
-            name: param.name.clone(),
-            out_timestamp: param.out_timestamp,
-            console: param.console,
-            pci_address: param.pci_address,
-            max_queue_sizes: param.max_queue_sizes.clone(),
-        },
+        param.serial_options(),
         keep_rds.to_vec(),
     ))
 }

@@ -196,6 +196,16 @@ pub struct SerialOptions {
 }
 
 impl SerialParameters {
+    pub(crate) fn serial_options(&self) -> SerialOptions {
+        SerialOptions {
+            name: self.name.clone(),
+            out_timestamp: self.out_timestamp,
+            console: self.console,
+            pci_address: self.pci_address,
+            max_queue_sizes: self.max_queue_sizes.clone(),
+        }
+    }
+
     /// Helper function to create a serial device from the defined parameters.
     ///
     /// # Arguments
@@ -297,13 +307,7 @@ impl SerialParameters {
             input,
             output,
             sync,
-            SerialOptions {
-                name: self.name.clone(),
-                out_timestamp: self.out_timestamp,
-                console: self.console,
-                pci_address: self.pci_address,
-                max_queue_sizes: self.max_queue_sizes.clone(),
-            },
+            self.serial_options(),
             keep_rds.to_vec(),
         ))
     }
