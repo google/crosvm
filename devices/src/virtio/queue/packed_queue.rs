@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 #![deny(missing_docs)]
-#![deny(unsafe_code)]
 
 use std::mem::offset_of;
 use std::mem::size_of;
