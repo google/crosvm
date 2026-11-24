@@ -2,17 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Raw shared-memory primitives for the virtqueue layer.
+//! Raw shared-memory primitives for virtqueue ring and descriptor accesses.
 //!
-//! All raw-pointer and `VolatileSlice` operations used by `SplitQueue`, `PackedQueue`,
-//! `SplitDescriptorChain`, `PackedDescriptorChain`, `Reader`, and `Writer` are isolated in this
-//! module.
+//! All raw-pointer atomic operations used for `SplitQueue` and `PackedQueue` ring accesses, the
+//! host alignment check that rings are validated with, and `SplitDescriptorChain` and
+//! `PackedDescriptorChain` descriptor reads are isolated in this module.
 
-use std::cmp;
-use std::io;
 use std::mem::size_of;
-use std::mem::MaybeUninit;
-use std::ptr::copy_nonoverlapping;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU8;
@@ -21,7 +17,6 @@ use std::sync::atomic::Ordering;
 use anyhow::ensure;
 use anyhow::Context;
 use anyhow::Result;
-use cros_async::MemRegionIter;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::FromBytes;
@@ -139,108 +134,8 @@ pub fn read_obj<T: FromBytes + IntoBytes>(mem: &GuestMemory, addr: GuestAddress)
     Ok(obj)
 }
 
-/// Copy up to `size` bytes from `src` into `dst`.
-///
-/// Returns the total number of bytes copied.
-///
-/// # Safety
-///
-/// The caller must ensure that it is safe to write `size` bytes of data into `dst`.
-///
-/// After the function returns, it is only safe to assume that the number of bytes indicated by the
-/// return value (which may be less than the requested `size`) have been initialized. Bytes beyond
-/// that point are not initialized by this function.
-unsafe fn copy_regions_to_mut_ptr(
-    mem: &GuestMemory,
-    src: MemRegionIter,
-    dst: *mut u8,
-    size: usize,
-) -> io::Result<usize> {
-    let mut copied = 0;
-    for src_region in src {
-        if copied >= size {
-            break;
-        }
-
-        let remaining = size - copied;
-        let count = cmp::min(remaining, src_region.len);
-
-        let vslice = mem
-            .get_slice_at_addr(GuestAddress(src_region.offset), count)
-            .map_err(|_e| io::Error::from(io::ErrorKind::InvalidData))?;
-
-        // SAFETY: `get_slice_at_addr()` verified that the region points to valid memory, and
-        // the `count` calculation ensures we will write at most `size` bytes into `dst`.
-        unsafe {
-            copy_nonoverlapping(vslice.as_ptr(), dst.add(copied), count);
-        }
-
-        copied += count;
-    }
-
-    Ok(copied)
-}
-
-/// Reads an object of type `T` from `src` without consuming regions, returning `(obj,
-/// size_of::<T>())`.
-pub fn peek_obj_from_regions<T: FromBytes>(
-    mem: &GuestMemory,
-    src: MemRegionIter,
-) -> io::Result<(T, usize)> {
-    let mut obj = MaybeUninit::<T>::uninit();
-    let needed = size_of::<T>();
-    // SAFETY: We pass a valid pointer and size of `obj`.
-    let copied = unsafe { copy_regions_to_mut_ptr(mem, src, obj.as_mut_ptr() as *mut u8, needed)? };
-    if copied != needed {
-        return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
-    }
-    // SAFETY: `FromBytes` guarantees any set of initialized bytes is a valid value for `T`, and
-    // we initialized all bytes in `obj` in the copy above.
-    Ok((unsafe { obj.assume_init() }, needed))
-}
-
-/// Copies bytes from `src` regions in `mem` into `buf`, returning the number of bytes copied.
-pub fn copy_regions_to_slice(
-    mem: &GuestMemory,
-    src: MemRegionIter,
-    buf: &mut [u8],
-) -> io::Result<usize> {
-    // SAFETY: We pass a valid pointer and size combination derived from `buf`.
-    unsafe { copy_regions_to_mut_ptr(mem, src, buf.as_mut_ptr(), buf.len()) }
-}
-
-/// Copies bytes from `src` into the destination `dst` regions in `mem`, returning the total number
-/// of bytes written.
-pub fn copy_slice_to_regions(
-    mem: &GuestMemory,
-    dst: MemRegionIter,
-    src: &[u8],
-) -> io::Result<usize> {
-    let mut rem = src;
-    let mut total = 0;
-    for region in dst {
-        if rem.is_empty() {
-            break;
-        }
-        let count = cmp::min(rem.len(), region.len);
-        let vslice = mem
-            .get_slice_at_addr(GuestAddress(region.offset), count)
-            .map_err(|_e| io::Error::from(io::ErrorKind::InvalidData))?;
-        // SAFETY:
-        // Safe because we have already verified that `vs` points to valid memory.
-        unsafe {
-            copy_nonoverlapping(rem.as_ptr(), vslice.as_mut_ptr(), count);
-        }
-        rem = &rem[count..];
-        total += count;
-    }
-    Ok(total)
-}
-
 #[cfg(test)]
 mod tests {
-    use cros_async::MemRegion;
-
     use super::*;
 
     #[test]
@@ -290,29 +185,5 @@ mod tests {
         assert!(check_host_aligned(&mem, GuestAddress(0x1002), 2).is_err());
         assert!(check_host_aligned(&mem, GuestAddress(0x1003), 2).is_ok());
         assert!(load_u16(&mem, GuestAddress(0x1002)).is_err());
-    }
-
-    #[test]
-    fn copy_slice_to_regions_rejects_invalid_region() {
-        let mem = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let regions = [
-            MemRegion {
-                offset: 0x2000,
-                len: 4,
-            },
-            MemRegion {
-                offset: 0x10,
-                len: 4,
-            },
-        ];
-
-        let err =
-            copy_slice_to_regions(&mem, MemRegionIter::new(&regions), &[1, 2, 3, 4]).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-        assert_eq!(
-            mem.read_obj_from_addr::<[u8; 4]>(GuestAddress(0x10))
-                .unwrap(),
-            [0; 4]
-        );
     }
 }
