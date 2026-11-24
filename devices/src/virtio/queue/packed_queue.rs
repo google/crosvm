@@ -258,7 +258,9 @@ impl PackedQueue {
             .checked_add((self.avail_index.index.0 as u64) * 16)
             .expect("peeked address will not overflow");
 
-        let desc = shm::read_obj::<PackedDesc>(&self.mem, desc_addr)
+        let desc = self
+            .mem
+            .read_obj_from_addr::<PackedDesc>(desc_addr)
             .inspect_err(|_e| {
                 error!("failed to read desc {:#x}", desc_addr.offset());
             })

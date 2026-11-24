@@ -197,7 +197,9 @@ impl DescriptorChainIter for PackedDescriptorChain {
             .desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc = super::shm::read_obj::<PackedDesc>(mem, desc_addr)?;
+        let desc = mem
+            .read_obj_from_addr::<PackedDesc>(desc_addr)
+            .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
 
         let address: u64 = desc.addr();
         let len: u32 = desc.len();

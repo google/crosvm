@@ -99,7 +99,9 @@ impl DescriptorChainIter for SplitDescriptorChain {
             .desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc = super::shm::read_obj::<Desc>(mem, desc_addr)?;
+        let desc = mem
+            .read_obj_from_addr::<Desc>(desc_addr)
+            .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
 
         let address: u64 = desc.addr.into();
         let len: u32 = desc.len.into();
