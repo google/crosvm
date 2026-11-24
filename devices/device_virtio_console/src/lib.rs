@@ -66,8 +66,7 @@ impl Console {
         let max_queue_sizes =
             max_queue_sizes.unwrap_or_else(|| vec![QUEUE_SIZE; console.max_queues()]);
 
-        // TODO: Move these checks into cmdline validation or something so it is more user
-        // friendly when it fails.
+        // `--serial` validation rejects invalid sizes; these asserts only guard other callers.
         assert_eq!(max_queue_sizes.len(), console.max_queues());
         for qs in &max_queue_sizes {
             assert!(qs.is_power_of_two());

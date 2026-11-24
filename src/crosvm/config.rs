@@ -378,6 +378,21 @@ pub fn validate_serial_parameters(params: &SerialParameters) -> Result<(), Strin
         ));
     }
 
+    if let Some(sizes) = &params.max_queue_sizes {
+        if params.hardware != SerialHardware::VirtioConsole {
+            return Err(invalid_value_err(
+                format!("{sizes:?}"),
+                "max-queue-sizes is only supported for virtio-console hardware type",
+            ));
+        }
+        if sizes.len() != 2 || !sizes.iter().all(|s| s.is_power_of_two()) {
+            return Err(invalid_value_err(
+                format!("{sizes:?}"),
+                "max-queue-sizes must have 2 power-of-two entries",
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -1547,6 +1562,23 @@ mod tests {
     fn parse_serial_virtio_console_invalid_num_lower() {
         parse_serial_options("type=syslog,hardware=virtio-console,num=0")
             .expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_serial_max_queue_sizes_validation() {
+        let parsed =
+            parse_serial_options("type=sink,hardware=virtio-console,max-queue-sizes=[128,256]")
+                .expect("parse should have succeeded");
+        assert_eq!(parsed.max_queue_sizes, Some(vec![128, 256]));
+
+        parse_serial_options("type=sink,hardware=serial,max-queue-sizes=[128,256]")
+            .expect_err("expected max-queue-sizes error for serial hardware");
+        parse_serial_options("type=sink,hardware=virtio-console,max-queue-sizes=[128]")
+            .expect_err("expected max-queue-sizes length error");
+        parse_serial_options("type=sink,hardware=virtio-console,max-queue-sizes=[0,256]")
+            .expect_err("expected max-queue-sizes power-of-two error for 0");
+        parse_serial_options("type=sink,hardware=virtio-console,max-queue-sizes=[3,256]")
+            .expect_err("expected max-queue-sizes power-of-two error for 3");
     }
 
     #[test]
