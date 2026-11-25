@@ -1748,15 +1748,9 @@ impl Gpu {
         }
     }
 
-    /// `observe_display_event` is set when the guest reads `events_read`.
-    fn get_config(&self, observe_display_event: bool) -> virtio_gpu_config {
+    fn get_config(&self, display_event_pending: bool) -> virtio_gpu_config {
         let mut events_read = 0;
 
-        let display_event_pending = if observe_display_event {
-            self.display_event.observe_and_is_pending()
-        } else {
-            self.display_event.is_pending()
-        };
         if display_event_pending {
             events_read |= VIRTIO_GPU_EVENT_DISPLAY;
         }
@@ -1860,17 +1854,22 @@ impl VirtioDevice for Gpu {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        let reads_events_read = offset < std::mem::size_of::<Le32>() as u64;
+        // Only a guest read of `events_read` observes the display event.
+        let display_event_pending = if offset < std::mem::size_of::<Le32>() as u64 {
+            self.display_event.observe_and_is_pending()
+        } else {
+            self.display_event.is_pending()
+        };
         copy_config(
             data,
             0,
-            self.get_config(reads_events_read).as_bytes(),
+            self.get_config(display_event_pending).as_bytes(),
             offset,
         );
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        let mut cfg = self.get_config(false);
+        let mut cfg = virtio_gpu_config::default();
         copy_config(cfg.as_mut_bytes(), offset, data, 0);
         if (cfg.events_clear.to_native() & VIRTIO_GPU_EVENT_DISPLAY) != 0 {
             self.display_event.acknowledge_observed();
@@ -2235,6 +2234,8 @@ impl ResourceBridges {
 
 #[cfg(all(test, unix))]
 mod tests {
+    use std::mem::offset_of;
+
     use super::*;
 
     fn create_test_gpu(fixed_blob_mapping: bool) -> Gpu {
@@ -2257,6 +2258,39 @@ mod tests {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             None,
         )
+    }
+
+    fn read_config_u32(gpu: &Gpu, offset: u64) -> u32 {
+        let mut data = [0u8; 4];
+        gpu.read_config(offset, &mut data);
+        u32::from_le_bytes(data)
+    }
+
+    #[test]
+    fn config_events_clear_acknowledges_only_observed_display_event() {
+        let mut gpu = create_test_gpu(false);
+        let events_read = offset_of!(virtio_gpu_config, events_read) as u64;
+        let events_clear = offset_of!(virtio_gpu_config, events_clear) as u64;
+        let num_scanouts = offset_of!(virtio_gpu_config, num_scanouts) as u64;
+        let display = VIRTIO_GPU_EVENT_DISPLAY.to_le_bytes();
+
+        gpu.display_event.signal();
+
+        // Reading another field does not observe the event, so clearing it is a no-op.
+        assert_eq!(
+            read_config_u32(&gpu, num_scanouts),
+            VIRTIO_GPU_MAX_SCANOUTS as u32
+        );
+        gpu.write_config(events_clear, &display);
+        assert!(gpu.display_event.is_pending());
+
+        assert_eq!(read_config_u32(&gpu, events_read), VIRTIO_GPU_EVENT_DISPLAY);
+        // Clearing other events keeps the display event.
+        gpu.write_config(events_clear, &0u32.to_le_bytes());
+        assert!(gpu.display_event.is_pending());
+        gpu.write_config(events_clear, &display);
+        assert!(!gpu.display_event.is_pending());
+        assert_eq!(read_config_u32(&gpu, events_read), 0);
     }
 
     #[test]

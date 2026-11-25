@@ -548,21 +548,26 @@ impl DisplayEvent {
         self.generation.load(Ordering::SeqCst) != self.acked.load(Ordering::SeqCst)
     }
 
-    /// Called when the guest reads `events_read`. Records the current generation for a later
-    /// `events_clear` and returns whether it is pending, from a single load of the generation so
-    /// that the guest acknowledges exactly the state reported to it.
+    /// Records the current generation for a later `events_clear` and returns whether it is
+    /// pending (called when the guest reads `events_read`). Both come from a single load of the
+    /// generation, so the guest acknowledges exactly the state reported to it.
     pub fn observe_and_is_pending(&self) -> bool {
         let generation = self.generation.load(Ordering::SeqCst);
         self.observed.store(generation, Ordering::SeqCst);
         generation != self.acked.load(Ordering::SeqCst)
     }
 
-    /// Called when the guest writes `VIRTIO_GPU_EVENT_DISPLAY` to `events_clear`.
+    /// Acknowledges up to the generation last seen by `observe_and_is_pending` (called when the
+    /// guest writes `VIRTIO_GPU_EVENT_DISPLAY` to `events_clear`).
     pub fn acknowledge_observed(&self) {
         self.acked
             .fetch_max(self.observed.load(Ordering::SeqCst), Ordering::SeqCst);
     }
 
+    /// Restores the pending state from a snapshot, which only stores a `bool`.
+    ///
+    /// When `pending` is `true`, `observed` stays behind `generation`, so an `events_clear` in
+    /// flight across snapshot/restore does not drop the event.
     fn set_pending(&self, pending: bool) {
         if pending == self.is_pending() {
             return;
@@ -785,6 +790,12 @@ impl VirtioGpu {
     fn remove_displays(&mut self, display_ids: Vec<u32>) -> GpuControlResult {
         for display_id in display_ids {
             if let Some(mut scanout) = self.scanouts.remove(&display_id) {
+                // Release the cursor along with the display it is on.
+                if self.cursor_scanout.parent_scanout_id == Some(display_id) {
+                    self.cursor_scanout.release_surface(&self.display);
+                    self.cursor_scanout.resource_id = None;
+                    self.cursor_scanout.parent_scanout_id = None;
+                }
                 scanout.release_surface(&self.display);
             } else {
                 return GpuControlResult::NoSuchDisplay { display_id };
@@ -912,6 +923,10 @@ impl VirtioGpu {
         y: u32,
     ) -> VirtioGpuResult {
         self.update_scanout_resource(SurfaceType::Cursor, None, scanout_id, None, resource_id)?;
+        if resource_id == 0 {
+            // The cursor is disabled, or it is on another scanout and must not move.
+            return Ok(OkNoData);
+        }
 
         self.cursor_scanout.set_position(&self.display, x, y)?;
 
@@ -1436,21 +1451,27 @@ impl VirtioGpu {
         scanout_data: Option<VirtioScanoutBlobData>,
         resource_id: u32,
     ) -> VirtioGpuResult {
+        if scanout_id as usize >= VIRTIO_GPU_MAX_SCANOUTS {
+            return Err(ErrInvalidScanoutId);
+        }
+
         // Virtio spec: "The driver can use resource_id = 0 to disable a scanout."
         //
         // This does not require the scanout to still exist: the guest may disable a scanout after
         // the host has already removed the display, e.g. while handling a display hotplug.
         if resource_id == 0 {
             let scanout = match scanout_type {
-                SurfaceType::Cursor => Some(&mut self.cursor_scanout),
+                // All scanouts share one cursor, so only disable it from the scanout it is on.
+                SurfaceType::Cursor => Some(&mut self.cursor_scanout)
+                    .filter(|cursor| cursor.parent_scanout_id == Some(scanout_id)),
                 SurfaceType::Scanout => self.scanouts.get_mut(&scanout_id),
             };
             if let Some(scanout) = scanout {
                 // Ignore any initial set_scanout(..., resource_id: 0) calls.
-                if scanout.resource_id.is_some() {
+                if scanout.resource_id.take().is_some() {
                     scanout.release_surface(&self.display);
                 }
-                scanout.resource_id = None;
+                scanout.parent_scanout_id = None;
             }
             return Ok(OkNoData);
         }
@@ -1518,6 +1539,9 @@ impl VirtioGpu {
             None => return Ok(OkNoData),
         };
         scanout.resource_id = Some(resource_id);
+        if scanout_type == SurfaceType::Cursor {
+            scanout.parent_scanout_id = Some(scanout_id);
+        }
 
         Ok(OkNoData)
     }
@@ -2014,15 +2038,21 @@ mod tests {
         let event = virtio_gpu.scanouts_updated.clone();
 
         // Resize the display by adding the new display before removing the old one.
-        virtio_gpu.process_gpu_control_command(GpuControlCommand::AddDisplays {
-            displays: vec![DisplayParameters::default_with_mode(DisplayMode::Windowed(
-                1024, 768,
-            ))],
-        });
+        assert!(matches!(
+            virtio_gpu.process_gpu_control_command(GpuControlCommand::AddDisplays {
+                displays: vec![DisplayParameters::default_with_mode(DisplayMode::Windowed(
+                    1024, 768,
+                ))],
+            }),
+            GpuControlResult::DisplaysUpdated
+        ));
         assert!(event.observe_and_is_pending());
-        virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
-            display_ids: vec![0],
-        });
+        assert!(matches!(
+            virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
+                display_ids: vec![0],
+            }),
+            GpuControlResult::DisplaysUpdated
+        ));
         event.acknowledge_observed();
         assert!(event.is_pending());
 
@@ -2045,24 +2075,28 @@ mod tests {
             .set_scanout(scanout_rect(800, 600), 0, resource_id, None)
             .unwrap();
         assert!(virtio_gpu.scanouts[&0].surface_id.is_some());
-        virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
-            display_ids: vec![0],
-        });
+        assert!(matches!(
+            virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
+                display_ids: vec![0],
+            }),
+            GpuControlResult::DisplaysUpdated
+        ));
 
-        // The guest disables the scanout and the cursor of a display the host already removed.
+        // The guest disables the scanout of a display the host already removed.
         virtio_gpu
             .set_scanout(scanout_rect(0, 0), 0, 0, None)
             .unwrap();
-        virtio_gpu
-            .update_scanout_resource(SurfaceType::Cursor, None, 0, None, 0)
-            .unwrap();
-        assert!(virtio_gpu.cursor_scanout.surface_id.is_none());
-        assert!(virtio_gpu.cursor_scanout.resource_id.is_none());
 
         // Disabling a scanout that never existed is also a no-op.
         virtio_gpu
             .set_scanout(scanout_rect(0, 0), 5, 0, None)
             .unwrap();
+
+        // A scanout id the device never reports is rejected.
+        assert!(matches!(
+            virtio_gpu.set_scanout(scanout_rect(0, 0), VIRTIO_GPU_MAX_SCANOUTS as u32, 0, None),
+            Err(ErrInvalidScanoutId)
+        ));
 
         // Enabling a removed scanout is still rejected.
         assert!(matches!(
@@ -2075,5 +2109,66 @@ mod tests {
             .set_scanout(scanout_rect(800, 600), 1, resource_id, None)
             .unwrap();
         assert!(virtio_gpu.scanouts[&1].surface_id.is_some());
+    }
+
+    #[test]
+    fn disable_cursor_only_from_its_scanout() {
+        let mut virtio_gpu = new_test_virtio_gpu();
+        let resource_id = 1;
+        create_exportable_resource(&mut virtio_gpu, resource_id);
+
+        // The guest moves the cursor from display 0 to display 1, then disables the cursor plane
+        // of display 0.
+        virtio_gpu
+            .update_scanout_resource(SurfaceType::Cursor, None, 0, None, resource_id)
+            .unwrap();
+        assert_eq!(virtio_gpu.cursor_scanout.parent_scanout_id, Some(0));
+        virtio_gpu
+            .update_scanout_resource(SurfaceType::Cursor, None, 1, None, resource_id)
+            .unwrap();
+        assert_eq!(virtio_gpu.cursor_scanout.parent_scanout_id, Some(1));
+        virtio_gpu.update_cursor(0, 0, 0, 0).unwrap();
+
+        // The cursor stays on display 1.
+        assert_eq!(virtio_gpu.cursor_scanout.parent_scanout_id, Some(1));
+        assert!(virtio_gpu.cursor_scanout.resource_id.is_some());
+
+        // Disabling it from display 1 works.
+        virtio_gpu.update_cursor(0, 1, 0, 0).unwrap();
+        assert_eq!(virtio_gpu.cursor_scanout.parent_scanout_id, None);
+        assert!(virtio_gpu.cursor_scanout.resource_id.is_none());
+    }
+
+    #[test]
+    fn remove_display_releases_its_cursor() {
+        let mut virtio_gpu = new_test_virtio_gpu();
+        let resource_id = 1;
+        create_exportable_resource(&mut virtio_gpu, resource_id);
+
+        // Removing a display the cursor is not on keeps the cursor.
+        virtio_gpu
+            .update_scanout_resource(SurfaceType::Cursor, None, 1, None, resource_id)
+            .unwrap();
+        assert!(matches!(
+            virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
+                display_ids: vec![0],
+            }),
+            GpuControlResult::DisplaysUpdated
+        ));
+        assert_eq!(virtio_gpu.cursor_scanout.parent_scanout_id, Some(1));
+        assert!(virtio_gpu.cursor_scanout.resource_id.is_some());
+
+        // Removing the display the cursor is on releases the cursor.
+        assert!(matches!(
+            virtio_gpu.process_gpu_control_command(GpuControlCommand::RemoveDisplays {
+                display_ids: vec![1],
+            }),
+            GpuControlResult::DisplaysUpdated
+        ));
+        assert_eq!(virtio_gpu.cursor_scanout.parent_scanout_id, None);
+        assert!(virtio_gpu.cursor_scanout.resource_id.is_none());
+
+        // The guest then disables the cursor plane of the removed display.
+        virtio_gpu.update_cursor(0, 1, 0, 0).unwrap();
     }
 }
